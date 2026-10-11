@@ -24,3 +24,8 @@ rustc-ice-*.txt
 #.idea/
 
 workgittree/
+
+
+# Added by cargo
+
+/target
