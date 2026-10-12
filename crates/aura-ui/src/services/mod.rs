@@ -6,4 +6,4 @@ pub mod workspace_service;
 
 pub use execution_service::ExecutionService;
 pub use format_service::FormatService;
-pub use workspace_service::WorkspaceService;
+pub use workspace_service::{WorkspaceDiskEvent, WorkspaceService};

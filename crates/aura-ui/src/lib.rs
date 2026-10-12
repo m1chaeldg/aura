@@ -11,7 +11,7 @@ pub use app_state::{AuraAppState, CommandPaletteItem};
 pub use preferences::AuraPreferences;
 pub use aura_core::design;
 pub use keybindings::{Action, KeybindingPreset};
-pub use services::{ExecutionService, FormatService, WorkspaceService};
+pub use services::{ExecutionService, FormatService, WorkspaceDiskEvent, WorkspaceService};
 pub use stores::{
     EditorTab, LayoutOrientation, LayoutStore, ResponseTab, SessionStore, WorkspaceStore,
     WorkspaceTab, WorkspaceTreeNode,
