@@ -242,6 +242,10 @@ impl Render for AuraWorkspaceView {
                             this.state.new_request();
                             cx.notify();
                         },
+                        |this, folder_path, _window, cx| {
+                            this.state.toggle_folder(folder_path);
+                            cx.notify();
+                        },
                     ))
                     .child(
                         div()

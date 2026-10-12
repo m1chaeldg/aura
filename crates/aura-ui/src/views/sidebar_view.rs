@@ -13,6 +13,7 @@ impl SidebarView {
         cx: &mut Context<V>,
         on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
         on_new: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
         let border_color = rgb(0x333333);
         let text_muted = rgb(0x7a7a7a);
@@ -30,6 +31,7 @@ impl SidebarView {
                     state,
                     cx,
                     on_select,
+                    on_toggle_folder,
                     &mut element_counter,
                     &mut item_elements,
                 );
@@ -210,6 +212,7 @@ fn render_tree_node<V: 'static>(
     state: &AuraAppState,
     cx: &mut Context<V>,
     on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
+    on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     counter: &mut u64,
     out: &mut Vec<AnyElement>,
 ) {
@@ -235,13 +238,14 @@ fn render_tree_node<V: 'static>(
     match node {
         WorkspaceTreeNode::Folder {
             name,
-            path: _,
+            path,
             is_expanded,
             children,
         } => {
             let chevron = if *is_expanded { "▾" } else { "▸" };
             let el_id = ElementId::NamedInteger("sidebar-folder".into(), *counter);
             *counter += 1;
+            let folder_path = path.clone();
 
             out.push(
                 div()
@@ -254,10 +258,16 @@ fn render_tree_node<V: 'static>(
                     .py_1()
                     .rounded_sm()
                     .hover(|s| s.bg(rgb(0x2a2a2c)))
+                    .cursor_pointer()
                     .border_b_1()
                     .border_color(border_indicator)
                     .text_xs()
                     .text_color(rgb(0xffffff))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if !is_rename {
+                            on_toggle_folder(this, &folder_path, window, cx);
+                        }
+                    }))
                     .child(div().text_color(rgb(0x7a7a7a)).child(chevron))
                     .child("📁")
                     .child(if is_rename {
@@ -276,7 +286,7 @@ fn render_tree_node<V: 'static>(
 
             if *is_expanded {
                 for child in children {
-                    render_tree_node(child, depth + 1, state, cx, on_select, counter, out);
+                    render_tree_node(child, depth + 1, state, cx, on_select, on_toggle_folder, counter, out);
                 }
             }
         }

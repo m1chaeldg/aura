@@ -99,6 +99,11 @@ impl AuraAppState {
         self.inline_rename = None;
     }
 
+    /// Toggles folder expanded/collapsed state in the workspace store.
+    pub fn toggle_folder(&mut self, path: &Path) {
+        self.workspace_store.toggle_folder_expanded(path);
+    }
+
     /// Opens a workspace directory, saving it to preferences and initializing the store tree.
     pub fn open_workspace_sync(&mut self, root: &Path) -> anyhow::Result<()> {
         let mut prefs = crate::preferences::AuraPreferences::load();
@@ -603,7 +608,7 @@ fn build_tree_from_metadata(
                 tree.push(WorkspaceTreeNode::Folder {
                     name: name.clone(),
                     path: folder_path,
-                    is_expanded: false,
+                    is_expanded: true,
                     children,
                 });
             }

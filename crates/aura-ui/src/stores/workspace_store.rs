@@ -5,7 +5,7 @@ use aura_core::model::{AuraRequest, Collection, HttpMethod};
 use aura_sync::workspace_meta::WorkspaceMetadata;
 use aura_sync::toml_to_request;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -76,9 +76,9 @@ impl WorkspaceStore {
         metadata: WorkspaceMetadata,
         mut new_tree: Vec<WorkspaceTreeNode>,
     ) {
-        let mut expanded_paths = HashSet::new();
-        collect_expanded_paths(&self.tree, &mut expanded_paths);
-        restore_expanded_paths(&mut new_tree, &expanded_paths);
+        let mut expansion_states = HashMap::new();
+        collect_expansion_states(&self.tree, &mut expansion_states);
+        restore_expansion_states(&mut new_tree, &expansion_states);
 
         self.metadata = Some(metadata);
         self.tree = new_tree;
@@ -199,24 +199,22 @@ impl WorkspaceStore {
     }
 }
 
-fn collect_expanded_paths(nodes: &[WorkspaceTreeNode], set: &mut HashSet<PathBuf>) {
+fn collect_expansion_states(nodes: &[WorkspaceTreeNode], map: &mut HashMap<PathBuf, bool>) {
     for node in nodes {
         if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
-            if *is_expanded {
-                set.insert(path.clone());
-            }
-            collect_expanded_paths(children, set);
+            map.insert(path.clone(), *is_expanded);
+            collect_expansion_states(children, map);
         }
     }
 }
 
-fn restore_expanded_paths(nodes: &mut [WorkspaceTreeNode], set: &HashSet<PathBuf>) {
+fn restore_expansion_states(nodes: &mut [WorkspaceTreeNode], map: &HashMap<PathBuf, bool>) {
     for node in nodes {
         if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
-            if set.contains(path) {
-                *is_expanded = true;
+            if let Some(&expanded) = map.get(path) {
+                *is_expanded = expanded;
             }
-            restore_expanded_paths(children, set);
+            restore_expansion_states(children, map);
         }
     }
 }
