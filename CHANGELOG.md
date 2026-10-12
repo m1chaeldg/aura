@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Modular Cargo Workspace Architecture (`AGENTS.md`)**:
+  - Partitioned monolithic repository into 5 domain-isolated crates:
+    - `aura-core`: Zero-dependency domain models (`AuraRequest`, `AuraResponse`, `HttpMethod`), cascading templating, token-boundary secret scrubber, JWT inspector, and design tokens.
+    - `aura-scripting`: Sandboxed offline `deno_core` V8 runtime with BDD assertions (`pm.test`, `pm.expect`) and console logging.
+    - `aura-engine`: Asynchronous Tokio HTTP dispatcher, collection runner, mock server, and diagnostic log broadcaster.
+    - `aura-sync`: Lossless two-way TOML synchronization and format importers (Postman, Insomnia, OpenAPI, cURL).
+    - `aura-ui`: GPUI presentation layer implementing the Service-Store pattern.
+  - Configured root `aura` crate as a seamless facade library and desktop binary entrypoint (`aura.exe`) ensuring 100% backward compatibility.
+- **Service-Store & Modular Component Pattern**:
+  - **Layer A (Domain Stores)**: `WorkspaceStore` (collections and folder indexing), `SessionStore` (tabs, active tab index, and dirty modification tracking), and `LayoutStore` (split ratio 0.10–0.90, 50/50 reset, and orientation).
+  - **Layer B (Async Services)**: `ExecutionService` (with cooperative cancellation via `tokio_util::sync::CancellationToken`), `WorkspaceService` (background directory traversal and file persistence off the main UI loop), and `FormatService` (background syntax parsing).
+  - **Layer C (Modular Views)**: Decomposed 909-line view monolith into isolated, single-responsibility components under 300 lines each: `SidebarView`, `TabBarView`, `RequestHeaderView`, `RequestEditorView`, `ResponsePaneView`, `SplitResizerView`, `CommandPaletteView`, and `AuraWorkspaceView`.
 - **Core Architecture & Engine**:
   - High-performance asynchronous HTTP engine dispatching GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS via `reqwest`.
   - Built-in sandboxed V8 scripting runtime powered by `deno_core` for offline pre-request, post-response, and BDD test suites (`aura.test(...)`, `expect(...)`).
@@ -38,5 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Diagnostic Logging & Console**:
   - Structured, rolling file logging to `aura.log`.
   - In-memory real-time event broadcaster for the UI log viewer dock and script developer console.
-- **Testing**:
-  - Comprehensive unit test suite and live integration test suite against live Postman Echo endpoints.
+- **Testing & Verification**:
+  - Comprehensive workspace test suites (37 tests) with zero test regressions across unit, integration, and load suites.
+
+### Changed
+- Re-architected monolithic code structure into a modular Cargo workspace, reducing compilation unit memory pressure and eliminating linker contention.
+- Refactored `AuraWorkspaceView` from a 909-line monolith into composable sub-views strictly adhering to view size caps in `AGENTS.md`.
+
+### Fixed
+- Fixed Windows mmap memory exhaustion (`os error 1455`) during parallel test execution by partitioning crate translation units.
+- Fixed missing MSVC ETW and registry symbol linkage (`advapi32`) when compiling V8 and `deno_core`.

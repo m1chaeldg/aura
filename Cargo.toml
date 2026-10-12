@@ -1,27 +1,28 @@
+[workspace]
+members = [
+    "crates/aura-core",
+    "crates/aura-scripting",
+    "crates/aura-engine",
+    "crates/aura-sync",
+    "crates/aura-ui",
+]
+
 [package]
 name = "aura"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-deno_core = "0.330.0"
-gpui = "0.2.2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
-tracing-appender = "0.2"
-url = "2"
-regex = "1"
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-parking_lot = "0.12"
+aura-core = { path = "crates/aura-core" }
+aura-scripting = { path = "crates/aura-scripting" }
+aura-engine = { path = "crates/aura-engine" }
+aura-sync = { path = "crates/aura-sync" }
+aura-ui = { path = "crates/aura-ui" }
 anyhow = "1"
-async-trait = "0.1"
+gpui = "0.2.2"
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+uuid = { version = "1", features = ["v4"] }
+serde_json = "1.0"

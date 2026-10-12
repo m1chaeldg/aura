@@ -51,6 +51,44 @@ A high-performance REST API client engineered in Rust, featuring local workspace
 - **Structured Diagnostics**:
   - Rolling log files (`aura.log`) and in-memory broadcaster for the UI log viewer.
 
+- **Modular Cargo Workspace Architecture**:
+  - Partitioned into 5 domain crates + root facade adhering to [`AGENTS.md`](./AGENTS.md):
+    - `crates/aura-core`: Zero-dependency domain models, templating, token-boundary secret scrubber, JWT inspector, and design tokens.
+    - `crates/aura-scripting`: Embedded offline V8 scripting sandbox powered by `deno_core`.
+    - `crates/aura-engine`: Asynchronous HTTP engine, collection runner, mock server, and log broadcaster.
+    - `crates/aura-sync`: Lossless bidirectional TOML synchronization and format importers.
+    - `crates/aura-ui`: GPUI presentation components, domain stores, and asynchronous services.
+- **Service-Store & Modular Component Pattern**:
+  - **Domain Stores (Layer A)**: `WorkspaceStore`, `SessionStore`, and `LayoutStore` manage state deterministically and reactively.
+  - **Async Services (Layer B)**: `ExecutionService` (with cooperative cancellation via `CancellationToken`), `WorkspaceService` (background disk I/O off the UI loop), and `FormatService`.
+  - **Modular GPUI Views (Layer C)**: Isolated sub-views under 300 lines each (`SidebarView`, `TabBarView`, `RequestHeaderView`, `RequestEditorView`, `ResponsePaneView`, `SplitResizerView`, `CommandPaletteView`, and `AuraWorkspaceView`).
+
+## Workspace Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        GPUI Views (Presentation)                       │
+│   SidebarView │ TabBarView │ RequestHeaderView │ EditorView │ Response │
+└───────────────────┬─────────────────────────────────┬──────────────────┘
+                    │ observes & renders              │ dispatches user intents
+                    ▼                                 ▼
+┌───────────────────────────────────────┐   ┌────────────────────────────┐
+│         Stores (GPUI Models)          │   │       Async Services       │
+│  - WorkspaceStore (collections, files)│◄──┤ - ExecutionService (HTTP,  │
+│  - SessionStore (tabs, dirty tracking)│   │   scripts, cancellation)   │
+│  - LayoutStore (splits, orientation)  │   │ - WorkspaceService (disk)  │
+└───────────────────────────────────────┘   └────────────────────────────┘
+```
+
+| Crate | Purpose | Dependencies |
+|---|---|---|
+| [`aura-core`](./crates/aura-core) | Domain models, templating, security, design tokens | `serde`, `chrono`, `regex` (Zero GUI / async) |
+| [`aura-scripting`](./crates/aura-scripting) | Sandboxed offline JavaScript / V8 runtime | `deno_core`, `aura-core` |
+| [`aura-engine`](./crates/aura-engine) | Async HTTP dispatcher, runner, mock server | `reqwest`, `tokio`, `aura-core`, `aura-scripting` |
+| [`aura-sync`](./crates/aura-sync) | Two-way TOML synchronization & format importers | `toml`, `aura-core` |
+| [`aura-ui`](./crates/aura-ui) | GPUI views, domain stores, async services | `gpui`, `aura-core`, `aura-engine`, `aura-sync` |
+| `aura` (Root) | Backward-compatible facade & desktop binary entrypoint | Re-exports all domain crates |
+
 ## Getting Started
 
 ### Prerequisites
@@ -92,8 +130,15 @@ The repository includes a ready-to-use VS Code environment:
 ### Running the Test Suite
 
 ```bash
-# Run all unit tests, load runner tests, and live Postman Echo integration tests
-cargo test
+# Run all unit tests, load runner tests, and live Postman Echo integration tests across the workspace
+cargo test --workspace --tests -j 2
+
+# Run tests for an individual crate
+cargo test -p aura-core
+cargo test -p aura-engine
+cargo test -p aura-scripting
+cargo test -p aura-sync
+cargo test -p aura-ui
 ```
 
 ### Live Postman Echo Endpoints Tested
