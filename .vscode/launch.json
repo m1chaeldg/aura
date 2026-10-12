@@ -1,0 +1,64 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Aura (CodeLLDB)",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=aura",
+          "--package=aura"
+        ],
+        "filter": {
+          "name": "aura",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "type": "cppvsdbg",
+      "request": "launch",
+      "name": "Debug Aura (Windows MSVC)",
+      "program": "${workspaceFolder}/target/debug/aura.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aura: Build (Debug)"
+    },
+    {
+      "type": "cppvsdbg",
+      "request": "launch",
+      "name": "Run Aura (Release - Windows MSVC)",
+      "program": "${workspaceFolder}/target/release/aura.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aura: Build (Release)"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug All Tests (CodeLLDB)",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--package=aura"
+        ]
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Aura: Hot Reload",
+      "type": "shell",
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/watch.ps1"
+        ]
+      },
+      "linux": {
+        "command": "${workspaceFolder}/scripts/watch.sh"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/scripts/watch.sh"
+      },
+      "isBackground": true,
+      "problemMatcher": "$rustc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true,
+        "clear": true,
+        "showReuseMessage": false
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Aura: Hot Reload (cargo-watch)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "watch",
+        "-c",
+        "-w",
+        "src",
+        "-w",
+        "Cargo.toml",
+        "-x",
+        "run --bin aura"
+      ],
+      "isBackground": true,
+      "problemMatcher": "$rustc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true,
+        "clear": true
+      },
+      "group": "none"
+    },
+    {
+      "label": "Aura: Install cargo-watch",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["install", "cargo-watch"],
+      "problemMatcher": "$rustc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Aura: Build (Debug)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--bin", "aura"],
+      "problemMatcher": "$rustc",
+      "group": "build"
+    },
+    {
+      "label": "Aura: Build (Release)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--release", "--bin", "aura"],
+      "problemMatcher": "$rustc",
+      "group": "build"
+    },
+    {
+      "label": "Aura: Run (One-Shot)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["run", "--bin", "aura"],
+      "problemMatcher": "$rustc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Aura: Test",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["test"],
+      "problemMatcher": "$rustc",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Aura: Clippy Linter",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["clippy", "--", "-D", "warnings"],
+      "problemMatcher": "$rustc"
+    }
+  ]
+}

@@ -54,6 +54,21 @@ cargo build --release
 cargo run --bin aura
 ```
 
+### Hot Reload & VS Code Launcher
+
+The repository includes a ready-to-use VS Code environment:
+
+- **Hot Reload Launcher (`Ctrl+Shift+B`)**:
+  - Run the default build task (`Aura: Hot Reload`) to automatically watch `src/` and `Cargo.toml`.
+  - Automatically utilizes `cargo-watch` if installed (`cargo install cargo-watch`).
+  - Seamlessly falls back to a native built-in PowerShell watcher on Windows (`scripts/watch.ps1`) if `cargo-watch` is not installed.
+  - POSIX runner (`scripts/watch.sh`) provided for macOS / Linux.
+- **Run & Debug (`F5`)**:
+  - `Debug Aura (CodeLLDB)`: Full LLDB breakpoint debugging.
+  - `Debug Aura (Windows MSVC)`: Native MSVC debugger for Windows.
+  - `Debug All Tests (CodeLLDB)`: Run and step through tests.
+
+
 ### Running the Test Suite
 
 ```bash
