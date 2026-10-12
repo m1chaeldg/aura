@@ -173,11 +173,18 @@ impl Render for AuraWorkspaceView {
                                     .text_xs()
                                     .text_color(text_color)
                                     .child("📁 Open Workspace")
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                                            let _ = this.state.open_workspace_sync(&folder);
-                                            cx.notify();
-                                        }
+                                    .on_click(cx.listener(|_this, _, _window, cx| {
+                                        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                            let mut cx = cx.clone();
+                                            async move {
+                                                if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
+                                                    this.update(&mut cx, |this, cx| {
+                                                        let _ = this.state.open_workspace_sync(&folder);
+                                                        cx.notify();
+                                                    }).ok();
+                                                }
+                                            }
+                                        }).detach();
                                     })),
                             )
                             .child(
