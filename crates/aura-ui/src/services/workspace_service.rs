@@ -179,7 +179,8 @@ impl WorkspaceService {
         &self,
         root: &Path,
     ) -> Result<(tokio_util::sync::CancellationToken, UnboundedReceiver<WorkspaceDiskEvent>)> {
-        let (tx, rx) = unbounded_channel();
+        let (debounced_tx, debounced_rx) = unbounded_channel();
+        let (raw_tx, raw_rx) = std::sync::mpsc::channel::<WorkspaceDiskEvent>();
         let suppression_tokens = Arc::clone(&self.suppression_tokens);
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let cancel_for_thread = cancel_token.clone();
@@ -212,7 +213,7 @@ impl WorkspaceService {
                     };
 
                     if let Some(e) = disk_event {
-                        let _ = tx.send(e);
+                        let _ = raw_tx.send(e);
                     }
                 }
             }
@@ -220,15 +221,32 @@ impl WorkspaceService {
 
         watcher.watch(root, RecursiveMode::Recursive)?;
 
-        // Detach watcher to background thread until cancelled
+        // Dedicated background worker: debounces filesystem bursts off the UI thread
         std::thread::spawn(move || {
             let _keep_alive = watcher;
             while !cancel_for_thread.is_cancelled() {
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                match raw_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(first_event) => {
+                        // Debounce: allow Windows Explorer burst writes / copies to finish
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        let mut last_event = first_event;
+                        while let Ok(extra) = raw_rx.try_recv() {
+                            last_event = extra;
+                        }
+
+                        if cancel_for_thread.is_cancelled() {
+                            break;
+                        }
+
+                        let _ = debounced_tx.send(last_event);
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
             }
         });
 
-        Ok((cancel_token, rx))
+        Ok((cancel_token, debounced_rx))
     }
 
     /// Reconciles disk state and updates `workspace.json`.

@@ -56,41 +56,21 @@ impl AuraWorkspaceView {
 
         let watcher_res = self.state.workspace_service.start_watcher(&root);
         if let Ok((cancel_token, mut rx)) = watcher_res {
-            self.watcher_cancel = Some(cancel_token.clone());
+            self.watcher_cancel = Some(cancel_token);
 
             cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
                 let mut cx = cx.clone();
                 async move {
-                    loop {
-                        tokio::select! {
-                            _ = cancel_token.cancelled() => {
-                                break;
+                    while let Some(_event) = rx.recv().await {
+                        let update_res = this.update(&mut cx, |this, cx| {
+                            if let Err(e) = this.state.reconcile_workspace_sync() {
+                                tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
                             }
-                            event = rx.recv() => {
-                                match event {
-                                    Some(_first_event) => {
-                                        // Debounce rapid filesystem events across 150ms
-                                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-                                        while rx.try_recv().is_ok() {}
+                            cx.notify();
+                        });
 
-                                        if cancel_token.is_cancelled() {
-                                            break;
-                                        }
-
-                                        let update_res = this.update(&mut cx, |this, cx| {
-                                            if let Err(e) = this.state.reconcile_workspace_sync() {
-                                                tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
-                                            }
-                                            cx.notify();
-                                        });
-
-                                        if update_res.is_err() {
-                                            break;
-                                        }
-                                    }
-                                    None => break,
-                                }
-                            }
+                        if update_res.is_err() {
+                            break;
                         }
                     }
                 }

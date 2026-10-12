@@ -14,6 +14,12 @@ fn main() -> Result<()> {
     tracing::info!("Brand Accent: {} (Action Blue)", colors::PRIMARY);
     tracing::info!("Launching Desktop GUI Window...");
 
+    // Initialize global multi-thread Tokio runtime for background async services
+    let tokio_rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let _tokio_guard = tokio_rt.enter();
+
     let app = Application::new();
     app.run(|cx| {
         let window_options = WindowOptions::default();
