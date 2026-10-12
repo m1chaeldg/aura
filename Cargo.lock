@@ -526,6 +526,7 @@ dependencies = [
  "aura-scripting",
  "aura-sync",
  "chrono",
+ "dirs 5.0.1",
  "gpui",
  "parking_lot",
  "serde",
