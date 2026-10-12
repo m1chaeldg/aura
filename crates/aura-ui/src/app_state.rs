@@ -93,6 +93,96 @@ impl AuraAppState {
         self.inline_rename = None;
     }
 
+    /// Opens a workspace directory, saving it to preferences and initializing the store tree.
+    pub fn open_workspace_sync(&mut self, root: &Path) -> anyhow::Result<()> {
+        let mut prefs = crate::preferences::AuraPreferences::load();
+        prefs.last_workspace_path = Some(root.to_path_buf());
+        let _ = prefs.save();
+
+        let existing = aura_sync::workspace_meta::WorkspaceMetadata::load_from_disk(root).ok();
+        let metadata = aura_sync::workspace_meta::WorkspaceMetadata::reconcile_with_disk(root, existing)?;
+        let _ = metadata.save_to_disk(root);
+        let tree = build_tree_from_metadata(root, &metadata.order)?;
+
+        self.workspace_store.set_workspace(root.to_path_buf(), metadata, tree);
+        Ok(())
+    }
+
+    /// Asynchronously opens a workspace directory.
+    pub async fn open_workspace_directory(&mut self, root: &Path) -> anyhow::Result<()> {
+        self.open_workspace_sync(root)
+    }
+
+    /// Opens a file in a tab, parsing request or replacing an unmodified untitled tab.
+    pub fn open_file_in_tab(&mut self, path: &Path) -> anyhow::Result<()> {
+        if let Some(pos) = self.tabs.iter().position(|t| t.file_path.as_deref() == Some(path)) {
+            self.select_tab(pos);
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let file_stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled");
+        let req = if content.trim().is_empty() {
+            AuraRequest::new(file_stem, HttpMethod::GET, "https://postman-echo.com/get")
+        } else {
+            match aura_sync::toml_to_request(&content, None) {
+                Ok(r) => r,
+                Err(_) => AuraRequest::new(file_stem, HttpMethod::GET, "https://postman-echo.com/get"),
+            }
+        };
+
+        for tab in &mut self.tabs {
+            tab.is_active = false;
+        }
+
+        let mut new_tab = WorkspaceTab::new(req);
+        if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
+            new_tab.title = fname.to_string();
+        }
+        new_tab.file_path = Some(path.to_path_buf());
+
+        if self.tabs.len() == 1
+            && self.tabs[0].file_path.is_none()
+            && !self.tabs[0].is_dirty
+            && self.tabs[0].title == "Untitled Request"
+        {
+            self.tabs[0] = new_tab;
+            self.active_tab_index = 0;
+        } else {
+            self.tabs.push(new_tab);
+            self.active_tab_index = self.tabs.len() - 1;
+        }
+
+        Ok(())
+    }
+
+    /// Reconciles workspace store with disk changes and prunes deleted open tabs.
+    pub async fn reconcile_workspace_with_disk(&mut self) -> anyhow::Result<()> {
+        if let Some(root) = self.workspace_store.workspace_root.clone() {
+            let existing = aura_sync::workspace_meta::WorkspaceMetadata::load_from_disk(&root).ok();
+            let metadata = aura_sync::workspace_meta::WorkspaceMetadata::reconcile_with_disk(&root, existing)?;
+            let _ = metadata.save_to_disk(&root);
+            let tree = build_tree_from_metadata(&root, &metadata.order)?;
+            self.workspace_store.apply_external_sync(metadata, tree);
+
+            let mut ids_to_close = Vec::new();
+            for tab in &self.tabs {
+                if let Some(ref fp) = tab.file_path {
+                    if !fp.exists() {
+                        ids_to_close.push(tab.id.clone());
+                    }
+                }
+            }
+            for id in ids_to_close {
+                self.close_tab(&id);
+            }
+        }
+        Ok(())
+    }
+
     /// Discover and load collections from workspace directory
     pub fn load_workspace_collections(&mut self, dir: &Path) -> anyhow::Result<usize> {
         let mut loaded = 0;
@@ -450,4 +540,46 @@ impl AuraAppState {
             }
         }
     }
+}
+
+fn build_tree_from_metadata(
+    dir: &Path,
+    order: &[aura_sync::workspace_meta::WorkspaceOrderItem],
+) -> anyhow::Result<Vec<crate::stores::workspace_store::WorkspaceTreeNode>> {
+    use aura_sync::workspace_meta::WorkspaceOrderItem;
+    use crate::stores::workspace_store::WorkspaceTreeNode;
+
+    let mut tree = Vec::new();
+    for item in order {
+        match item {
+            WorkspaceOrderItem::Folder { name, order } => {
+                let folder_path = dir.join(name);
+                let children = build_tree_from_metadata(&folder_path, order)?;
+                tree.push(WorkspaceTreeNode::Folder {
+                    name: name.clone(),
+                    path: folder_path,
+                    is_expanded: false,
+                    children,
+                });
+            }
+            WorkspaceOrderItem::Request { name } => {
+                let req_path = dir.join(name);
+                let method = if let Ok(content) = std::fs::read_to_string(&req_path) {
+                    if let Ok(req) = aura_sync::toml_to_request(&content, None) {
+                        req.method
+                    } else {
+                        HttpMethod::GET
+                    }
+                } else {
+                    HttpMethod::GET
+                };
+                tree.push(WorkspaceTreeNode::Request {
+                    name: name.clone(),
+                    path: req_path,
+                    method,
+                });
+            }
+        }
+    }
+    Ok(tree)
 }

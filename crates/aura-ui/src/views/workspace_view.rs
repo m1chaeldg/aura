@@ -17,17 +17,29 @@ pub struct AuraWorkspaceView {
 impl AuraWorkspaceView {
     pub fn new() -> Self {
         let mut state = AuraAppState::new();
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let _ = state.load_workspace_collections(&cwd);
-        let aura_dir = cwd.join(".aura");
-        if aura_dir.exists() {
-            let _ = state.load_workspace_collections(&aura_dir);
+        let prefs = crate::preferences::AuraPreferences::load();
+        if let Some(ref path) = prefs.last_workspace_path {
+            if path.exists() && path.is_dir() {
+                let _ = state.open_workspace_sync(path);
+            }
         }
-        let collections_dir = cwd.join("collections");
-        if collections_dir.exists() {
-            let _ = state.load_workspace_collections(&collections_dir);
+
+        if state.workspace_store.workspace_root.is_none() {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let _ = state.load_workspace_collections(&cwd);
+            let aura_dir = cwd.join(".aura");
+            if aura_dir.exists() {
+                let _ = state.load_workspace_collections(&aura_dir);
+            }
+            let collections_dir = cwd.join("collections");
+            if collections_dir.exists() {
+                let _ = state.load_workspace_collections(&collections_dir);
+            }
         }
-        state.new_request();
+
+        if state.tabs.is_empty() {
+            state.new_request();
+        }
         Self { state }
     }
 }
@@ -147,6 +159,29 @@ impl Render for AuraWorkspaceView {
                             )
                             .child(
                                 div()
+                                    .id("open-workspace-btn")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_md()
+                                    .bg(surface_tile_2)
+                                    .border_1()
+                                    .border_color(border_color)
+                                    .hover(|s| s.bg(rgb(0x333333)))
+                                    .text_xs()
+                                    .text_color(text_color)
+                                    .child("📁 Open Workspace")
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                                            let _ = this.state.open_workspace_sync(&folder);
+                                            cx.notify();
+                                        }
+                                    })),
+                            )
+                            .child(
+                                div()
                                     .px_2()
                                     .py_1()
                                     .rounded_md()
@@ -166,8 +201,13 @@ impl Render for AuraWorkspaceView {
                     .child(SidebarView::render(
                         &self.state,
                         cx,
-                        |this, col_id, req_id, _window, cx| {
-                            this.state.open_collection_request(col_id, req_id);
+                        |this, col_id, req_id_or_path, _window, cx| {
+                            if col_id.is_empty() {
+                                let path = std::path::PathBuf::from(req_id_or_path);
+                                let _ = this.state.open_file_in_tab(&path);
+                            } else {
+                                this.state.open_collection_request(col_id, req_id_or_path);
+                            }
                             cx.notify();
                         },
                         |this, _window, cx| {
