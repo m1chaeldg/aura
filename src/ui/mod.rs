@@ -1,5 +1,8 @@
 //! GPUI Component Views and Application State strictly adhering to DESIGN.md.
 
+pub mod workspace_view;
+pub use workspace_view::AuraWorkspaceView;
+
 use crate::model::{AuraRequest, AuraResponse, HttpMethod};
 use serde::{Deserialize, Serialize};
 
