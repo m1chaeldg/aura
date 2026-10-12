@@ -12,41 +12,100 @@ use gpui::*;
 
 pub struct AuraWorkspaceView {
     pub state: AuraAppState,
+    #[allow(dead_code)]
+    watcher_cancel: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl AuraWorkspaceView {
-    pub fn new() -> Self {
-        let mut state = AuraAppState::new();
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let mut view = Self {
+            state: AuraAppState::new(),
+            watcher_cancel: None,
+        };
         let prefs = crate::preferences::AuraPreferences::load();
         if let Some(ref path) = prefs.last_workspace_path {
-            if path.exists() && path.is_dir() {
-                let _ = state.open_workspace_sync(path);
+            if path.exists() && path.is_dir() && view.state.open_workspace_sync(path).is_ok() {
+                view.start_workspace_watcher(path.clone(), cx);
             }
         }
 
-        if state.workspace_store.workspace_root.is_none() {
+        if view.state.workspace_store.workspace_root.is_none() {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let _ = state.load_workspace_collections(&cwd);
+            let _ = view.state.load_workspace_collections(&cwd);
             let aura_dir = cwd.join(".aura");
             if aura_dir.exists() {
-                let _ = state.load_workspace_collections(&aura_dir);
+                let _ = view.state.load_workspace_collections(&aura_dir);
             }
             let collections_dir = cwd.join("collections");
             if collections_dir.exists() {
-                let _ = state.load_workspace_collections(&collections_dir);
+                let _ = view.state.load_workspace_collections(&collections_dir);
             }
         }
 
-        if state.tabs.is_empty() {
-            state.new_request();
+        if view.state.tabs.is_empty() {
+            view.state.new_request();
         }
-        Self { state }
+        view
+    }
+
+    /// Spawns background filesystem watcher and wires debounced sync updates to GPUI context.
+    pub fn start_workspace_watcher(&mut self, root: std::path::PathBuf, cx: &mut Context<Self>) {
+        if let Some(cancel) = self.watcher_cancel.take() {
+            cancel.cancel();
+        }
+
+        let watcher_res = self.state.workspace_service.start_watcher(&root);
+        if let Ok((cancel_token, mut rx)) = watcher_res {
+            self.watcher_cancel = Some(cancel_token.clone());
+
+            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                let mut cx = cx.clone();
+                async move {
+                    loop {
+                        tokio::select! {
+                            _ = cancel_token.cancelled() => {
+                                break;
+                            }
+                            event = rx.recv() => {
+                                match event {
+                                    Some(_first_event) => {
+                                        // Debounce rapid filesystem events across 150ms
+                                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                                        while rx.try_recv().is_ok() {}
+
+                                        if cancel_token.is_cancelled() {
+                                            break;
+                                        }
+
+                                        let update_res = this.update(&mut cx, |this, cx| {
+                                            if let Err(e) = this.state.reconcile_workspace_sync() {
+                                                tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
+                                            }
+                                            cx.notify();
+                                        });
+
+                                        if update_res.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    None => break,
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .detach();
+        }
     }
 }
 
 impl Default for AuraWorkspaceView {
     fn default() -> Self {
-        Self::new()
+        Self {
+            state: AuraAppState::new(),
+            watcher_cancel: None,
+        }
     }
 }
 
@@ -179,8 +238,10 @@ impl Render for AuraWorkspaceView {
                                             async move {
                                                 if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
                                                     this.update(&mut cx, |this, cx| {
-                                                        let _ = this.state.open_workspace_sync(&folder);
-                                                        cx.notify();
+                                                        if let Ok(()) = this.state.open_workspace_sync(&folder) {
+                                                            this.start_workspace_watcher(folder, cx);
+                                                            cx.notify();
+                                                        }
                                                     }).ok();
                                                 }
                                             }

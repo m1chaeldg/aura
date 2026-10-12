@@ -189,13 +189,17 @@ fn reconcile_directory(dir: &Path, existing_order: &[WorkspaceOrderItem]) -> Res
             Err(_) => continue,
         };
 
-        if file_name.starts_with('.') || file_name == "node_modules" || file_name == "target" {
+        if file_name.starts_with('.')
+            || file_name == "node_modules"
+            || file_name == "target"
+            || file_name == "workspace.json"
+        {
             continue;
         }
 
         if path.is_dir() {
             discovered_folders.push((file_name, path));
-        } else if path.is_file() && file_name.ends_with(".aura") {
+        } else if path.is_file() {
             discovered_requests.push(file_name);
         }
     }

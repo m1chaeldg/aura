@@ -61,3 +61,62 @@ async fn test_watcher_echo_suppression() {
     service.suppress_path(&path);
     assert!(service.is_suppressed(&path));
 }
+
+#[tokio::test]
+async fn test_watcher_external_disk_sync_flow() {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path();
+
+    let mut state = aura_ui::app_state::AuraAppState::new();
+    state.open_workspace_sync(root).expect("open workspace");
+    assert!(state.workspace_store.tree.is_empty());
+
+    let (cancel_token, mut rx) = state.workspace_service.start_watcher(root).expect("start watcher");
+
+    // 1. External creation: simulate Windows Explorer pasting a folder and file
+    let folder_path = root.join("Payments");
+    fs::create_dir_all(&folder_path).unwrap();
+    let file_path = folder_path.join("Charge.aura");
+    fs::write(&file_path, "[request]\nname = \"Charge\"\nmethod = \"POST\"\nurl = \"https://api.com\"").unwrap();
+
+    // Watcher should emit an event
+    let event = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await;
+    assert!(event.is_ok(), "Watcher timed out waiting for external disk change event");
+    assert!(event.unwrap().is_some());
+
+    // Debounce drain simulation
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    while rx.try_recv().is_ok() {}
+
+    // Reconcile
+    state.reconcile_workspace_sync().expect("reconcile");
+
+    // Verify Payments folder and Charge.aura appear in tree
+    assert_eq!(state.workspace_store.tree.len(), 1);
+    let folder = &state.workspace_store.tree[0];
+    assert_eq!(folder.name(), "Payments");
+    if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { children, .. } = folder {
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].name(), "Charge.aura");
+    } else {
+        panic!("Expected folder");
+    }
+
+    // 2. External deletion: simulate deleting file in Windows Explorer
+    fs::remove_file(&file_path).unwrap();
+    let del_event = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await;
+    assert!(del_event.is_ok(), "Watcher timed out waiting for delete event");
+    assert!(del_event.unwrap().is_some());
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    while rx.try_recv().is_ok() {}
+
+    state.reconcile_workspace_sync().expect("reconcile delete");
+    let folder_after = &state.workspace_store.tree[0];
+    if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { children, .. } = folder_after {
+        assert!(children.is_empty(), "Folder should be empty after deleting file");
+    }
+
+    cancel_token.cancel();
+}
+

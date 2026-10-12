@@ -58,5 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `AuraWorkspaceView` from a 909-line monolith into composable sub-views strictly adhering to view size caps in `AGENTS.md`.
 
 ### Fixed
+- Fixed two-way external workspace synchronization: wired live filesystem watcher in `AuraWorkspaceView` with debounced reconciliation, enabling instantaneous sidebar treeview reload when external files or folders are pasted, created, moved, renamed, or deleted in Windows Explorer.
 - Fixed Windows mmap memory exhaustion (`os error 1455`) during parallel test execution by partitioning crate translation units.
 - Fixed missing MSVC ETW and registry symbol linkage (`advapi32`) when compiling V8 and `deno_core`.

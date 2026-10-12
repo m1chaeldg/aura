@@ -53,6 +53,12 @@ pub struct AuraAppState {
     pub workspace_store: WorkspaceStore,
     pub inline_rename: Option<InlineRenameState>,
     pub drag_target: Option<PathBuf>,
+    #[serde(skip, default = "default_workspace_service")]
+    pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
+}
+
+fn default_workspace_service() -> std::sync::Arc<crate::services::WorkspaceService> {
+    std::sync::Arc::new(crate::services::WorkspaceService::new())
 }
 
 impl Default for AuraAppState {
@@ -79,6 +85,7 @@ impl Default for AuraAppState {
             workspace_store: WorkspaceStore::new(),
             inline_rename: None,
             drag_target: None,
+            workspace_service: default_workspace_service(),
         }
     }
 }
@@ -172,8 +179,8 @@ impl AuraAppState {
         Ok(())
     }
 
-    /// Reconciles workspace store with disk changes and prunes deleted open tabs.
-    pub async fn reconcile_workspace_with_disk(&mut self) -> anyhow::Result<()> {
+    /// Synchronously reconciles workspace store with disk changes and prunes deleted open tabs.
+    pub fn reconcile_workspace_sync(&mut self) -> anyhow::Result<()> {
         if let Some(root) = self.workspace_store.workspace_root.clone() {
             let existing = aura_sync::workspace_meta::WorkspaceMetadata::load_from_disk(&root).ok();
             let metadata = aura_sync::workspace_meta::WorkspaceMetadata::reconcile_with_disk(&root, existing)?;
@@ -194,6 +201,11 @@ impl AuraAppState {
             }
         }
         Ok(())
+    }
+
+    /// Reconciles workspace store with disk changes and prunes deleted open tabs.
+    pub async fn reconcile_workspace_with_disk(&mut self) -> anyhow::Result<()> {
+        self.reconcile_workspace_sync()
     }
 
     /// Discover and load collections from workspace directory

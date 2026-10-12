@@ -178,20 +178,23 @@ impl WorkspaceService {
     pub fn start_watcher(
         &self,
         root: &Path,
-    ) -> Result<UnboundedReceiver<WorkspaceDiskEvent>> {
+    ) -> Result<(tokio_util::sync::CancellationToken, UnboundedReceiver<WorkspaceDiskEvent>)> {
         let (tx, rx) = unbounded_channel();
         let suppression_tokens = Arc::clone(&self.suppression_tokens);
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+        let cancel_for_thread = cancel_token.clone();
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
                 for path in event.paths {
-                    // Ignore workspace.json writes and hidden files
-                    if path.ends_with("workspace.json")
-                        || path
-                            .file_name()
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.starts_with('.'))
-                            .unwrap_or(false)
+                    // Ignore workspace.json writes, hidden files, and build directories
+                    if path.file_name().and_then(|s| s.to_str()) == Some("workspace.json")
+                        || path.components().any(|c| {
+                            let s = c.as_os_str().to_string_lossy();
+                            s == "node_modules"
+                                || s == "target"
+                                || (s.starts_with('.') && s != "." && s != "..")
+                        })
                     {
                         continue;
                     }
@@ -204,7 +207,8 @@ impl WorkspaceService {
                         EventKind::Create(_) => Some(WorkspaceDiskEvent::Created(path)),
                         EventKind::Modify(_) => Some(WorkspaceDiskEvent::Modified(path)),
                         EventKind::Remove(_) => Some(WorkspaceDiskEvent::Deleted(path)),
-                        _ => None,
+                        EventKind::Any => Some(WorkspaceDiskEvent::Modified(path)),
+                        _ => Some(WorkspaceDiskEvent::Modified(path)),
                     };
 
                     if let Some(e) = disk_event {
@@ -216,15 +220,15 @@ impl WorkspaceService {
 
         watcher.watch(root, RecursiveMode::Recursive)?;
 
-        // Detach watcher to background task to keep it alive
+        // Detach watcher to background thread until cancelled
         std::thread::spawn(move || {
             let _keep_alive = watcher;
-            loop {
-                std::thread::park();
+            while !cancel_for_thread.is_cancelled() {
+                std::thread::sleep(std::time::Duration::from_millis(200));
             }
         });
 
-        Ok(rx)
+        Ok((cancel_token, rx))
     }
 
     /// Reconciles disk state and updates `workspace.json`.

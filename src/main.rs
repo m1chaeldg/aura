@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         let window_options = WindowOptions::default();
 
         let _ = cx.open_window(window_options, |_window, cx| {
-            cx.new(|_cx| AuraWorkspaceView::new())
+            cx.new(|cx| AuraWorkspaceView::new(cx))
         });
     });
 
