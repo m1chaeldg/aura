@@ -14,6 +14,6 @@ pub use keybindings::{Action, KeybindingPreset};
 pub use services::{ExecutionService, FormatService, WorkspaceService};
 pub use stores::{
     EditorTab, LayoutOrientation, LayoutStore, ResponseTab, SessionStore, WorkspaceStore,
-    WorkspaceTab,
+    WorkspaceTab, WorkspaceTreeNode,
 };
 pub use views::AuraWorkspaceView;

@@ -6,4 +6,4 @@ pub mod workspace_store;
 
 pub use layout_store::{EditorTab, LayoutOrientation, LayoutStore, ResponseTab};
 pub use session_store::{SessionStore, WorkspaceTab};
-pub use workspace_store::WorkspaceStore;
+pub use workspace_store::{WorkspaceStore, WorkspaceTreeNode};
