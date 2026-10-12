@@ -94,6 +94,7 @@ pub struct AuraAppState {
     pub is_log_viewer_open: bool,
     pub command_palette_search: String,
     pub selected_palette_index: usize,
+    pub collections: Vec<crate::model::Collection>,
     pub keybinding_preset: KeybindingPreset,
     pub status_message: Option<String>,
 }
@@ -112,6 +113,7 @@ impl Default for AuraAppState {
             is_log_viewer_open: false,
             command_palette_search: String::new(),
             selected_palette_index: 0,
+            collections: Vec::new(),
             keybinding_preset: KeybindingPreset::VsCode,
             status_message: None,
         }
@@ -121,6 +123,93 @@ impl Default for AuraAppState {
 impl AuraAppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Discover and load collections from workspace directory
+    pub fn load_workspace_collections(&mut self, dir: &std::path::Path) -> anyhow::Result<usize> {
+        let mut loaded = 0;
+        if !dir.exists() {
+            return Ok(0);
+        }
+        let mut paths_to_check = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    paths_to_check.push(p);
+                } else if p.is_dir() {
+                    if let Ok(sub_entries) = std::fs::read_dir(&p) {
+                        for sub in sub_entries.flatten() {
+                            let sub_p = sub.path();
+                            if sub_p.is_file() {
+                                paths_to_check.push(sub_p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for p in paths_to_check {
+            let fname = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if fname.ends_with(".collection.json")
+                || fname.ends_with(".collection.toml")
+                || fname.ends_with(".aura.json")
+                || fname.ends_with(".aura.toml")
+            {
+                if let Ok(content) = std::fs::read_to_string(&p) {
+                    if fname.ends_with(".json") {
+                        if let Ok(col) = serde_json::from_str::<crate::model::Collection>(&content) {
+                            if !self.collections.iter().any(|c| c.id == col.id) {
+                                self.collections.push(col);
+                                loaded += 1;
+                            }
+                        }
+                    } else if fname.ends_with(".toml") {
+                        if let Ok(col) = toml::from_str::<crate::model::Collection>(&content) {
+                            if !self.collections.iter().any(|c| c.id == col.id) {
+                                self.collections.push(col);
+                                loaded += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(loaded)
+    }
+
+    /// Open request by collection and request IDs
+    pub fn open_collection_request(&mut self, collection_id: &str, request_id: &str) -> bool {
+        for col in &self.collections {
+            if col.id == collection_id {
+                // Search top-level requests
+                if let Some(req) = col.requests.iter().find(|r| r.id == request_id) {
+                    self.open_request(req.clone());
+                    return true;
+                }
+                // Search folders recursively
+                fn find_in_folders<'a>(
+                    folders: &'a [crate::model::Folder],
+                    req_id: &str,
+                ) -> Option<&'a crate::model::AuraRequest> {
+                    for f in folders {
+                        if let Some(req) = f.requests.iter().find(|r| r.id == req_id) {
+                            return Some(req);
+                        }
+                        if let Some(req) = find_in_folders(&f.subfolders, req_id) {
+                            return Some(req);
+                        }
+                    }
+                    None
+                }
+                if let Some(req) = find_in_folders(&col.folders, request_id) {
+                    self.open_request(req.clone());
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Open or focus a tab for a request

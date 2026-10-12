@@ -277,3 +277,43 @@ fn test_keyboard_shortcuts_and_keybinding_presets() {
     state.handle_key_action(Action::ResetDivider);
     assert_eq!(state.split_ratio, 0.5);
 }
+
+#[test]
+fn test_workspace_collections_loading_and_activation() {
+    let mut state = AuraAppState::new();
+    assert!(state.collections.is_empty());
+
+    // Create a temporary directory with a dummy collection file
+    let tmp = std::env::temp_dir().join(format!("aura_test_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let col_path = tmp.join("sample.collection.json");
+    let mut req = AuraRequest::new("Live GET Echo", HttpMethod::GET, "https://postman-echo.com/get");
+    req.id = "req-echo-1".to_string();
+    let col = aura::model::Collection {
+        id: "col-1".to_string(),
+        name: "Echo Test Suite".to_string(),
+        auth: aura::model::AuthConfig::Inherit,
+        variables: std::collections::HashMap::new(),
+        requests: vec![req],
+        folders: Vec::new(),
+    };
+    std::fs::write(&col_path, serde_json::to_string_pretty(&col).unwrap()).unwrap();
+
+    let loaded = state.load_workspace_collections(&tmp).unwrap();
+    assert_eq!(loaded, 1);
+    assert_eq!(state.collections.len(), 1);
+    assert_eq!(state.collections[0].name, "Echo Test Suite");
+
+    // Open request from collection
+    let opened = state.open_collection_request("col-1", "req-echo-1");
+    assert!(opened);
+    assert_eq!(state.tabs.len(), 1);
+    assert_eq!(state.tabs[0].title, "Live GET Echo");
+
+    // Opening it again should focus the existing tab, not duplicate
+    let reopened = state.open_collection_request("col-1", "req-echo-1");
+    assert!(reopened);
+    assert_eq!(state.tabs.len(), 1);
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
