@@ -3,6 +3,8 @@
 use aura_core::model::{AuraRequest, AuraResponse, HttpMethod};
 use serde::{Deserialize, Serialize};
 
+use std::path::{Path, PathBuf};
+
 /// Represents an open tab in the multi-tab workspace
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceTab {
@@ -13,6 +15,7 @@ pub struct WorkspaceTab {
     pub is_active: bool,
     pub request: AuraRequest,
     pub response: Option<AuraResponse>,
+    pub file_path: Option<PathBuf>,
 }
 
 impl WorkspaceTab {
@@ -25,6 +28,7 @@ impl WorkspaceTab {
             is_active: true,
             request,
             response: None,
+            file_path: None,
         }
     }
 
@@ -67,6 +71,60 @@ impl SessionStore {
         let new_tab = WorkspaceTab::new(request);
         self.tabs.push(new_tab);
         self.active_tab_index = self.tabs.len() - 1;
+    }
+
+    /// Open a request backed by a file path, activating existing tab if already open.
+    pub fn open_request_file(&mut self, request: AuraRequest, path: PathBuf) {
+        if let Some(pos) = self.tabs.iter().position(|t| t.file_path.as_ref() == Some(&path)) {
+            self.select_tab(pos);
+            return;
+        }
+
+        for tab in &mut self.tabs {
+            tab.is_active = false;
+        }
+
+        let mut new_tab = WorkspaceTab::new(request);
+        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+            new_tab.title = file_name.to_string();
+        }
+        new_tab.file_path = Some(path);
+        self.tabs.push(new_tab);
+        self.active_tab_index = self.tabs.len() - 1;
+    }
+
+    /// Updates tab titles and paths when a file or directory is renamed.
+    pub fn handle_item_renamed(&mut self, old_path: &Path, new_path: &Path, new_name: &str) {
+        for tab in &mut self.tabs {
+            if let Some(ref fp) = tab.file_path.clone() {
+                if fp == old_path {
+                    tab.file_path = Some(new_path.to_path_buf());
+                    tab.title = new_name.to_string();
+                } else if let Ok(suffix) = fp.strip_prefix(old_path) {
+                    tab.file_path = Some(new_path.join(suffix));
+                }
+            }
+        }
+    }
+
+    /// Closes tabs corresponding to a deleted file or folder.
+    pub fn handle_item_deleted(&mut self, deleted_path: &Path) {
+        let matching_ids: Vec<String> = self
+            .tabs
+            .iter()
+            .filter(|t| {
+                if let Some(ref fp) = t.file_path {
+                    fp == deleted_path || fp.starts_with(deleted_path)
+                } else {
+                    false
+                }
+            })
+            .map(|t| t.id.clone())
+            .collect();
+
+        for id in matching_ids {
+            self.close_tab(&id);
+        }
     }
 
     /// Select active tab by index
