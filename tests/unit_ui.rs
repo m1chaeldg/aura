@@ -317,3 +317,32 @@ fn test_workspace_collections_loading_and_activation() {
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn test_divider_drag_clamping_and_reset() {
+    let mut state = AuraAppState::new();
+    assert_eq!(state.split_ratio, 0.50);
+    assert!(!state.is_dragging_divider);
+
+    state.start_dragging_divider();
+    assert!(state.is_dragging_divider);
+
+    // Drag forward within normal bounds
+    state.drag_divider(0.15);
+    assert!((state.split_ratio - 0.65).abs() < 1e-5);
+
+    // Drag past upper limit (0.85)
+    state.drag_divider(0.50);
+    assert_eq!(state.split_ratio, 0.85);
+
+    // Drag past lower limit (0.15)
+    state.drag_divider(-0.90);
+    assert_eq!(state.split_ratio, 0.15);
+
+    // Double-click reset
+    state.reset_divider();
+    assert_eq!(state.split_ratio, 0.50);
+
+    state.stop_dragging_divider();
+    assert!(!state.is_dragging_divider);
+}

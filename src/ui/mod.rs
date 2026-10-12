@@ -95,6 +95,7 @@ pub struct AuraAppState {
     pub command_palette_search: String,
     pub selected_palette_index: usize,
     pub collections: Vec<crate::model::Collection>,
+    pub is_dragging_divider: bool,
     pub keybinding_preset: KeybindingPreset,
     pub status_message: Option<String>,
 }
@@ -114,6 +115,7 @@ impl Default for AuraAppState {
             command_palette_search: String::new(),
             selected_palette_index: 0,
             collections: Vec::new(),
+            is_dragging_divider: false,
             keybinding_preset: KeybindingPreset::VsCode,
             status_message: None,
         }
@@ -317,9 +319,24 @@ impl AuraAppState {
         self.split_ratio = ratio.clamp(0.1, 0.9);
     }
 
+    /// Start dragging divider
+    pub fn start_dragging_divider(&mut self) {
+        self.is_dragging_divider = true;
+    }
+
+    /// Stop dragging divider
+    pub fn stop_dragging_divider(&mut self) {
+        self.is_dragging_divider = false;
+    }
+
+    /// Adjust pane divider by delta ratio (clamped between 0.15 and 0.85)
+    pub fn drag_divider(&mut self, delta_ratio: f32) {
+        self.split_ratio = (self.split_ratio + delta_ratio).clamp(0.15, 0.85);
+    }
+
     /// Reset pane divider to 50/50 split
     pub fn reset_divider(&mut self) {
-        self.split_ratio = 0.5;
+        self.split_ratio = 0.50;
     }
 
     /// Toggle layout between Horizontal and Vertical
