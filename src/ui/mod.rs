@@ -274,7 +274,7 @@ impl AuraAppState {
         if let Some(pos) = self.tabs.iter().position(|t| t.id == id) {
             self.tabs.remove(pos);
             if self.tabs.is_empty() {
-                self.active_tab_index = 0;
+                self.new_request();
             } else if self.active_tab_index >= self.tabs.len() {
                 self.active_tab_index = self.tabs.len() - 1;
                 self.tabs[self.active_tab_index].is_active = true;

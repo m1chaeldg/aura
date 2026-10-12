@@ -12,6 +12,12 @@ pub struct AuraWorkspaceView {
 impl AuraWorkspaceView {
     pub fn new() -> Self {
         let mut state = AuraAppState::new();
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let _ = state.load_workspace_collections(&cwd);
+        let aura_dir = cwd.join(".aura");
+        if aura_dir.exists() {
+            let _ = state.load_workspace_collections(&aura_dir);
+        }
         state.new_request();
         Self { state }
     }
@@ -24,7 +30,7 @@ impl Default for AuraWorkspaceView {
 }
 
 impl Render for AuraWorkspaceView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let active_tab = self.state.tabs.get(self.state.active_tab_index);
         let active_title = active_tab
             .map(|t| t.title.clone())
@@ -142,6 +148,7 @@ impl Render for AuraWorkspaceView {
                             // Layout orientation toggle
                             .child(
                                 div()
+                                    .id("toggle-layout-btn")
                                     .flex()
                                     .items_center()
                                     .gap_1()
@@ -153,7 +160,11 @@ impl Render for AuraWorkspaceView {
                                     .border_color(border_color)
                                     .text_xs()
                                     .text_color(text_color)
-                                    .child(if is_horizontal { "◫ Side-by-Side" } else { "⬒ Stacked" }),
+                                    .child(if is_horizontal { "◫ Side-by-Side" } else { "⬒ Stacked" })
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_orientation();
+                                        cx.notify();
+                                    })),
                             )
                             // Privacy & Sandbox Badge
                             .child(
@@ -168,8 +179,255 @@ impl Render for AuraWorkspaceView {
                             ),
                     ),
             )
-            // Multi-Tab Document Workspace Bar
-            .child(
+            // Central Workspace Body: Collections Sidebar on the left + Document Area on the right
+            .child({
+                let mut req_counter = 0u64;
+                let mut col_children: Vec<AnyElement> = Vec::new();
+
+                if self.state.collections.is_empty() {
+                    col_children.push(
+                        div()
+                            .px_3()
+                            .py_4()
+                            .text_xs()
+                            .text_color(text_muted)
+                            .child("No collections in workspace.")
+                            .into_any_element(),
+                    );
+                } else {
+                    for col in &self.state.collections {
+                        let total_requests = col.requests.len()
+                            + col
+                                .folders
+                                .iter()
+                                .map(|f| f.requests.len())
+                                .sum::<usize>();
+
+                        let mut col_items: Vec<AnyElement> = Vec::new();
+
+                        // Header for collection
+                        col_items.push(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .px_2()
+                                .py_1()
+                                .rounded_sm()
+                                .bg(surface_tile_2)
+                                .text_xs()
+                                .text_color(rgb(0xffffff))
+                                .child(format!("📁 {} ({})", col.name, total_requests))
+                                .into_any_element(),
+                        );
+
+                        // Direct collection requests
+                        for req in &col.requests {
+                            let cid = col.id.clone();
+                            let rid = req.id.clone();
+                            let req_name = req.name.clone();
+                            let badge_col = match req.method {
+                                HttpMethod::GET => rgb(0x0066cc),
+                                HttpMethod::POST => rgb(0x28a745),
+                                HttpMethod::PUT => rgb(0xf5a623),
+                                HttpMethod::PATCH => rgb(0x8e44ad),
+                                HttpMethod::DELETE => rgb(0xe74c3c),
+                                _ => rgb(0x7a7a7a),
+                            };
+
+                            col_items.push(
+                                div()
+                                    .id(ElementId::NamedInteger("sidebar-req".into(), req_counter))
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .px_3()
+                                    .py_1()
+                                    .rounded_sm()
+                                    .text_xs()
+                                    .text_color(rgb(0xcccccc))
+                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                        this.state.open_collection_request(&cid, &rid);
+                                        cx.notify();
+                                    }))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .px_1()
+                                                    .rounded_sm()
+                                                    .bg(rgb(0x1b1b1d))
+                                                    .text_xs()
+                                                    .text_color(badge_col)
+                                                    .child(req.method.as_str()),
+                                            )
+                                            .child(req_name),
+                                    )
+                                    .into_any_element(),
+                            );
+                            req_counter += 1;
+                        }
+
+                        // Subfolders
+                        for folder in &col.folders {
+                            col_items.push(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .px_4()
+                                    .py_1()
+                                    .text_xs()
+                                    .text_color(text_muted)
+                                    .child(format!("↳ 📂 {}", folder.name))
+                                    .into_any_element(),
+                            );
+
+                            for req in &folder.requests {
+                                let cid = col.id.clone();
+                                let rid = req.id.clone();
+                                let req_name = req.name.clone();
+                                let badge_col = match req.method {
+                                    HttpMethod::GET => rgb(0x0066cc),
+                                    HttpMethod::POST => rgb(0x28a745),
+                                    HttpMethod::PUT => rgb(0xf5a623),
+                                    HttpMethod::PATCH => rgb(0x8e44ad),
+                                    HttpMethod::DELETE => rgb(0xe74c3c),
+                                    _ => rgb(0x7a7a7a),
+                                };
+
+                                col_items.push(
+                                    div()
+                                        .id(ElementId::NamedInteger(
+                                            "sidebar-req".into(),
+                                            req_counter,
+                                        ))
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .pl_6()
+                                        .pr_3()
+                                        .py_1()
+                                        .rounded_sm()
+                                        .text_xs()
+                                        .text_color(rgb(0xcccccc))
+                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                            this.state.open_collection_request(&cid, &rid);
+                                            cx.notify();
+                                        }))
+                                        .child(
+                                            div()
+                                                .px_1()
+                                                .rounded_sm()
+                                                .bg(rgb(0x1b1b1d))
+                                                .text_xs()
+                                                .text_color(badge_col)
+                                                .child(req.method.as_str()),
+                                        )
+                                        .child(req_name)
+                                        .into_any_element(),
+                                );
+                                req_counter += 1;
+                            }
+                        }
+
+                        col_children.push(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .py_1()
+                                .children(col_items)
+                                .into_any_element(),
+                        );
+                    }
+                }
+
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_1()
+                    // Collections Sidebar
+                    .child(
+                        div()
+                            .w(px(240.0))
+                            .flex()
+                            .flex_col()
+                            .bg(rgb(0x222224))
+                            .border_r_1()
+                            .border_color(border_color)
+                            // Sidebar Header
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .px_3()
+                                    .py_2()
+                                    .border_b_1()
+                                    .border_color(border_color)
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(text_muted)
+                                            .child(format!(
+                                                "COLLECTIONS ({})",
+                                                self.state.collections.len()
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .id("sidebar-new-btn")
+                                            .text_xs()
+                                            .text_color(accent_blue)
+                                            .child("+ New")
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.state.new_request();
+                                                cx.notify();
+                                            })),
+                                    ),
+                            )
+                            // Collections Tree
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_1()
+                                    .p_2()
+                                    .gap_1()
+                                    .children(col_children),
+                            )
+                            // Sidebar Footer Status
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .px_3()
+                                    .py_2()
+                                    .border_t_1()
+                                    .border_color(border_color)
+                                    .text_xs()
+                                    .text_color(text_muted)
+                                    .child(
+                                        div()
+                                            .text_color(green_color)
+                                            .child("✓"),
+                                    )
+                                    .child("Workspace Synced"),
+                            ),
+                    )
+                    // Right Content Area: Tabs + Omnibar + Panes
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            // Multi-Tab Document Workspace Bar
+                            .child(
                 div()
                     .flex()
                     .items_center()
@@ -201,7 +459,10 @@ impl Render for AuraWorkspaceView {
                             _ => rgb(0x7a7a7a),
                         };
 
+                        let tab_id_close = tab.id.clone();
+
                         div()
+                            .id(ElementId::NamedInteger("workspace-tab".into(), idx as u64))
                             .flex()
                             .items_center()
                             .gap_2()
@@ -211,6 +472,10 @@ impl Render for AuraWorkspaceView {
                             .bg(tab_bg)
                             .border_1()
                             .border_color(tab_border)
+                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                this.state.select_tab(idx);
+                                cx.notify();
+                            }))
                             // HTTP Method Badge
                             .child(
                                 div()
@@ -245,6 +510,7 @@ impl Render for AuraWorkspaceView {
                             // Dedicated Close Button
                             .child(
                                 div()
+                                    .id(ElementId::NamedInteger("close-tab".into(), idx as u64))
                                     .flex()
                                     .items_center()
                                     .justify_center()
@@ -253,12 +519,17 @@ impl Render for AuraWorkspaceView {
                                     .rounded_full()
                                     .text_xs()
                                     .text_color(text_muted)
-                                    .child("×"),
+                                    .child("×")
+                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                        this.state.close_tab(&tab_id_close);
+                                        cx.notify();
+                                    })),
                             )
                     }))
                     // Persistent `+` New Request Quick Action
                     .child(
                         div()
+                            .id("new-request-btn")
                             .flex()
                             .items_center()
                             .justify_center()
@@ -268,7 +539,11 @@ impl Render for AuraWorkspaceView {
                             .bg(rgb(0x333333))
                             .text_xs()
                             .text_color(rgb(0xffffff))
-                            .child("+"),
+                            .child("+")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.new_request();
+                                cx.notify();
+                            })),
                     ),
             )
             // Main Request URL Bar
@@ -336,7 +611,8 @@ impl Render for AuraWorkspaceView {
                         div()
                             .flex()
                             .flex_col()
-                            .flex_1()
+                            .when(is_horizontal, |el| el.w(gpui::relative(self.state.split_ratio)))
+                            .when(!is_horizontal, |el| el.h(gpui::relative(self.state.split_ratio)))
                             .p_4()
                             .child(
                                 div()
@@ -375,23 +651,28 @@ impl Render for AuraWorkspaceView {
                     // Smooth Drag-to-Resize Divider with Double-Click Reset
                     .child(
                         div()
+                            .id("resizer-divider")
                             .flex()
                             .items_center()
                             .justify_center()
                             .when(is_horizontal, |el| {
-                                el.w_2()
+                                el.w(px(6.0))
                                     .border_l_1()
                                     .border_r_1()
                                     .border_color(border_color)
                                     .bg(surface_color)
                             })
                             .when(!is_horizontal, |el| {
-                                el.h_2()
+                                el.h(px(6.0))
                                     .border_t_1()
                                     .border_b_1()
                                     .border_color(border_color)
                                     .bg(surface_color)
                             })
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.reset_divider();
+                                cx.notify();
+                            }))
                             .child(
                                 div()
                                     .text_xs()
@@ -404,7 +685,8 @@ impl Render for AuraWorkspaceView {
                         div()
                             .flex()
                             .flex_col()
-                            .flex_1()
+                            .when(is_horizontal, |el| el.w(gpui::relative(1.0 - self.state.split_ratio)))
+                            .when(!is_horizontal, |el| el.h(gpui::relative(1.0 - self.state.split_ratio)))
                             .p_4()
                             .bg(rgb(0x1b1b1d))
                             .child(
@@ -437,7 +719,8 @@ impl Render for AuraWorkspaceView {
                                     .child("Ready to dispatch request to live Postman Echo endpoints."),
                             ),
                     ),
-            )
+            ),
+    )})
             // Bottom Status Bar with Ergonomics & Keymap Preset Info
             .child(
                 div()

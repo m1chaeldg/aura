@@ -346,3 +346,17 @@ fn test_divider_drag_clamping_and_reset() {
     state.stop_dragging_divider();
     assert!(!state.is_dragging_divider);
 }
+
+#[test]
+fn test_close_tab_last_remaining_auto_spawns_untitled() {
+    let mut state = AuraAppState::new();
+    state.new_request();
+    assert_eq!(state.tabs.len(), 1);
+
+    // Close the only tab
+    state.close_active_tab();
+    // Must auto-spawn an untitled request to prevent null tab state
+    assert_eq!(state.tabs.len(), 1);
+    assert_eq!(state.tabs[0].title, "Untitled Request");
+    assert_eq!(state.active_tab_index, 0);
+}

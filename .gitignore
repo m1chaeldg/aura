@@ -29,3 +29,6 @@ workgittree/
 # Added by cargo
 
 /target
+
+# Superpowers Visual Companion
+.superpowers/
