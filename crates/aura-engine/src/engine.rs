@@ -17,6 +17,12 @@ use std::time::Instant;
 /// 4. HTTP dispatch & timing
 /// 5. Post-response scripting & test assertion evaluation (deno_core)
 pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Result<AuraResponse> {
+    tracing::info!(
+        target: "aura_engine",
+        method = %req.method,
+        url = %req.url,
+        "Dispatching HTTP request"
+    );
     let mut working_vars = context.request_vars.clone();
     for (k, v) in &context.environment_vars {
         working_vars.entry(k.clone()).or_insert_with(|| v.clone());
@@ -122,6 +128,23 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
                 .header(reqwest::header::CONTENT_TYPE, "text/plain")
                 .body(rendered_body);
         }
+        BodyType::Raw { content, content_type } => {
+            let rendered_body = active_context.render(content);
+            let ct = content_type.as_deref().unwrap_or("text/plain");
+            request_builder = request_builder
+                .header(reqwest::header::CONTENT_TYPE, ct)
+                .body(rendered_body);
+        }
+        BodyType::Form(map) => {
+            let mut form_data = Vec::new();
+            for (k, v) in map {
+                form_data.push((
+                    active_context.render(k),
+                    active_context.render(v),
+                ));
+            }
+            request_builder = request_builder.form(&form_data);
+        }
         BodyType::FormUrlEncoded(items) => {
             let mut form_data = Vec::new();
             for item in items {
@@ -134,17 +157,20 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
             }
             request_builder = request_builder.form(&form_data);
         }
-        BodyType::Binary { relative_path } => {
-            if let Ok(bytes) = std::fs::read(relative_path) {
+        BodyType::Binary { file_path, .. } => {
+            if let Ok(bytes) = std::fs::read(file_path) {
                 request_builder = request_builder.body(bytes);
             }
         }
         BodyType::Multipart(fields) => {
             let mut form = reqwest::multipart::Form::new();
             for f in fields {
-                if f.enabled {
-                    if let Some(v) = &f.value {
-                        form = form.text(f.name.clone(), active_context.render(v));
+                if let Some(v) = &f.value {
+                    form = form.text(f.name.clone(), active_context.render(v));
+                } else if let Some(path) = &f.file_path {
+                    if let Ok(bytes) = std::fs::read(path) {
+                        let part = reqwest::multipart::Part::bytes(bytes);
+                        form = form.part(f.name.clone(), part);
                     }
                 }
             }
@@ -158,7 +184,10 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     let resp = request_builder
         .send()
         .await
-        .map_err(|e| anyhow!("Network error: {e}"))?;
+        .map_err(|e| {
+            tracing::error!(target: "aura_engine", error = %e, "HTTP network error encountered");
+            anyhow!("Network error: {e}")
+        })?;
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
     let status = resp.status().as_u16();
@@ -174,6 +203,14 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     let body_bytes = resp.bytes().await.unwrap_or_default();
     let size_bytes = body_bytes.len();
     let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+
+    tracing::info!(
+        target: "aura_engine",
+        status = status,
+        duration_ms = duration_ms,
+        size_bytes = size_bytes,
+        "HTTP response received successfully"
+    );
 
     // 5. Post-response & Test assertions execution
     let mut assertions = Vec::new();

@@ -124,7 +124,7 @@ pub fn apply_auth(
                 format!("Bearer {}", access_token),
             ));
         }
-        AuthConfig::AwsV4 {
+        AuthConfig::AwsSigV4 {
             access_key,
             secret_key: _,
             region,

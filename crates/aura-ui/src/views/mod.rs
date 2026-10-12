@@ -1,6 +1,7 @@
 //! Modular GPUI presentation components adhering to AGENTS.md Layer C.
 
 pub mod command_palette_view;
+pub mod log_viewer_view;
 pub mod request_editor_view;
 pub mod request_header_view;
 pub mod response_pane_view;
@@ -10,6 +11,7 @@ pub mod tab_bar_view;
 pub mod workspace_view;
 
 pub use command_palette_view::CommandPaletteView;
+pub use log_viewer_view::LogViewerView;
 pub use request_editor_view::RequestEditorView;
 pub use request_header_view::RequestHeaderView;
 pub use response_pane_view::ResponsePaneView;

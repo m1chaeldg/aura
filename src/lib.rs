@@ -14,6 +14,7 @@ pub use aura_core::model;
 pub use aura_core::security;
 pub use aura_core::templating;
 
+pub use aura_parser as parser;
 pub use aura_scripting as scripting;
 
 pub mod engine {

@@ -1,0 +1,14 @@
+[package]
+name = "aura-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aura-core = { path = "../aura-core" }
+nom = "7"
+thiserror = "1"
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

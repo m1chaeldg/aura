@@ -60,6 +60,11 @@ pub fn request_to_toml(req: &AuraRequest) -> Result<String> {
         BodyType::Json(s) => (Some("json".to_string()), Some(s.clone())),
         BodyType::Xml(s) => (Some("xml".to_string()), Some(s.clone())),
         BodyType::Text(s) => (Some("text".to_string()), Some(s.clone())),
+        BodyType::Raw { content, .. } => (Some("raw".to_string()), Some(content.clone())),
+        BodyType::Form(map) => {
+            let json = serde_json::to_string_pretty(map).unwrap_or_default();
+            (Some("form".to_string()), Some(json))
+        }
         BodyType::FormUrlEncoded(items) => {
             let json = serde_json::to_string_pretty(items).unwrap_or_default();
             (Some("form-urlencoded".to_string()), Some(json))
@@ -68,8 +73,8 @@ pub fn request_to_toml(req: &AuraRequest) -> Result<String> {
             let json = serde_json::to_string_pretty(fields).unwrap_or_default();
             (Some("multipart".to_string()), Some(json))
         }
-        BodyType::Binary { relative_path } => {
-            (Some("binary".to_string()), Some(relative_path.clone()))
+        BodyType::Binary { file_path, .. } => {
+            (Some("binary".to_string()), Some(file_path.clone()))
         }
     };
 
@@ -170,7 +175,8 @@ pub fn toml_to_request(toml_str: &str, existing_id: Option<&str>) -> Result<Aura
             BodyType::Multipart(items)
         }
         (Some("binary"), Some(rel_path)) => BodyType::Binary {
-            relative_path: rel_path,
+            file_path: rel_path,
+            content_type: None,
         },
         _ => BodyType::None,
     };

@@ -74,6 +74,7 @@ impl WorkspaceService {
 
         self.sync_meta_file(root).await?;
 
+        tracing::info!(target: "aura_ui::workspace", path = %file_path.display(), "Created new request file");
         Ok(file_path)
     }
 
@@ -90,6 +91,7 @@ impl WorkspaceService {
 
         self.sync_meta_file(root).await?;
 
+        tracing::info!(target: "aura_ui::workspace", path = %folder_path.display(), "Created workspace folder");
         Ok(folder_path)
     }
 
@@ -115,6 +117,12 @@ impl WorkspaceService {
 
         self.sync_meta_file(root).await?;
 
+        tracing::info!(
+            target: "aura_ui::workspace",
+            from = %old_path.display(),
+            to = %new_path.display(),
+            "Renamed workspace item"
+        );
         Ok(new_path)
     }
 
@@ -130,6 +138,7 @@ impl WorkspaceService {
 
         self.sync_meta_file(root).await?;
 
+        tracing::info!(target: "aura_ui::workspace", path = %target_path.display(), "Deleted workspace item");
         Ok(())
     }
 

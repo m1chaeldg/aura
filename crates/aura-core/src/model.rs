@@ -44,6 +44,12 @@ impl HttpMethod {
     }
 }
 
+impl std::fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Query parameter item with enabled flag.
 /// In dual-mode TOML, disabled parameters serialize with trailing tilde: `key~ = "value"`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +71,8 @@ pub struct HeaderItem {
     pub description: Option<String>,
 }
 
+use indexmap::IndexMap;
+
 /// Request body representation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", content = "content")]
@@ -74,25 +82,37 @@ pub enum BodyType {
     Json(String),
     Xml(String),
     Text(String),
+    Raw {
+        content: String,
+        #[serde(default)]
+        content_type: Option<String>,
+    },
+    Form(IndexMap<String, String>),
     FormUrlEncoded(Vec<ParamItem>),
-    Multipart(Vec<MultipartField>),
+    Multipart(Vec<MultipartPart>),
     /// Anchored relative file path for binary uploads
     Binary {
-        relative_path: String,
+        file_path: String,
+        #[serde(default)]
+        content_type: Option<String>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MultipartField {
+pub struct MultipartPart {
     pub name: String,
     pub value: Option<String>,
+    /// Relative path to workspace file
     pub file_path: Option<String>,
-    pub enabled: bool,
+    #[serde(default)]
+    pub content_type: Option<String>,
 }
+
+pub type MultipartField = MultipartPart;
 
 /// Authentication type with cascading inheritance
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AuthConfig {
     #[default]
     Inherit,
@@ -109,18 +129,23 @@ pub enum AuthConfig {
         value: String,
         in_header: bool, // true: header, false: query
     },
-    AwsV4 {
+    #[serde(alias = "aws_v4")]
+    AwsSigV4 {
         access_key: String,
         secret_key: String,
         region: String,
         service: String,
-        profile: Option<String>,
+        #[serde(default)]
+        session_token: Option<String>,
     },
     OAuth2 {
         grant_type: String,
         access_token: String,
+        #[serde(default)]
         token_url: Option<String>,
+        #[serde(default)]
         client_id: Option<String>,
+        #[serde(default)]
         client_secret: Option<String>,
     },
 }
@@ -322,4 +347,404 @@ impl Workspace {
             active_environment_id: None,
         }
     }
+}
+
+impl Default for AuraRequest {
+    fn default() -> Self {
+        Self::new("New Request", HttpMethod::GET, "")
+    }
+}
+
+// =============================================================================
+// File / Manifest Models (Compatible with .aura lossless disk format)
+// =============================================================================
+
+fn default_max_redirects_u32() -> u32 {
+    5
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settings {
+    pub inherit_auth: bool,
+    pub verify_ssl: bool,
+    pub follow_redirects: bool,
+    #[serde(default = "default_max_redirects_u32")]
+    pub max_redirects: u32,
+    pub timeout_ms: u64,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            inherit_auth: true,
+            verify_ssl: true,
+            follow_redirects: true,
+            max_redirects: 5,
+            timeout_ms: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowControl {
+    pub once_per_run: bool,
+    pub retry_until: Option<String>,
+    pub retry_interval_ms: u64,
+    pub max_retries: u32,
+    pub delay_ms: Option<u64>,
+    pub jitter_min_ms: Option<u64>,
+    pub jitter_max_ms: Option<u64>,
+}
+
+impl Default for FlowControl {
+    fn default() -> Self {
+        Self {
+            once_per_run: false,
+            retry_until: None,
+            retry_interval_ms: 1000,
+            max_retries: 3,
+            delay_ms: None,
+            jitter_min_ms: None,
+            jitter_max_ms: None,
+        }
+    }
+}
+
+impl FlowControl {
+    pub fn calculate_pacing_delay(&self) -> Option<std::time::Duration> {
+        let mut total_ms = self.delay_ms.unwrap_or(0);
+        if let (Some(min), Some(max)) = (self.jitter_min_ms, self.jitter_max_ms) {
+            if max >= min {
+                let jitter = if max == min {
+                    min
+                } else {
+                    use rand::Rng;
+                    rand::thread_rng().gen_range(min..=max)
+                };
+                total_ms += jitter;
+            }
+        }
+        if total_ms > 0 {
+            Some(std::time::Duration::from_millis(total_ms))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ScriptHooks {
+    pub pre_request: Option<String>,
+    pub post_response: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuraFileRequest {
+    pub version: String,
+    pub name: String,
+    pub method: String,
+    pub url: String,
+    pub settings: Settings,
+    pub headers: IndexMap<String, String>,
+    pub auth: Option<AuthConfig>,
+    pub query_params: IndexMap<String, String>,
+    #[serde(default)]
+    pub variables: IndexMap<String, String>,
+    pub flow: Option<FlowControl>,
+    pub body: BodyType,
+    pub scripts: ScriptHooks,
+    #[serde(default)]
+    pub assert: Option<String>,
+    #[serde(default)]
+    pub tests: Option<String>,
+}
+
+impl Default for AuraFileRequest {
+    fn default() -> Self {
+        Self {
+            version: "1.0".to_string(),
+            name: "New Request".to_string(),
+            method: "GET".to_string(),
+            url: "".to_string(),
+            settings: Settings::default(),
+            headers: IndexMap::new(),
+            auth: None,
+            query_params: IndexMap::new(),
+            variables: IndexMap::new(),
+            flow: None,
+            body: BodyType::None,
+            scripts: ScriptHooks::default(),
+            assert: None,
+            tests: None,
+        }
+    }
+}
+
+impl From<AuraFileRequest> for AuraRequest {
+    fn from(r: AuraFileRequest) -> Self {
+        let method = match r.method.to_uppercase().as_str() {
+            "GET" => HttpMethod::GET,
+            "POST" => HttpMethod::POST,
+            "PUT" => HttpMethod::PUT,
+            "PATCH" => HttpMethod::PATCH,
+            "DELETE" => HttpMethod::DELETE,
+            "HEAD" => HttpMethod::HEAD,
+            "OPTIONS" => HttpMethod::OPTIONS,
+            _ => HttpMethod::GET,
+        };
+
+        let mut headers = Vec::new();
+        for (k, v) in r.headers {
+            let (key, enabled) = if k.ends_with('~') || k.starts_with('~') {
+                (k.trim_matches('~').to_string(), false)
+            } else {
+                (k, true)
+            };
+            headers.push(HeaderItem {
+                key,
+                value: v,
+                enabled,
+                description: None,
+            });
+        }
+
+        let mut params = Vec::new();
+        for (k, v) in r.query_params {
+            let (key, enabled) = if k.ends_with('~') || k.starts_with('~') {
+                (k.trim_matches('~').to_string(), false)
+            } else {
+                (k, true)
+            };
+            params.push(ParamItem {
+                key,
+                value: v,
+                enabled,
+                description: None,
+            });
+        }
+
+        let mut variables = HashMap::new();
+        for (k, v) in r.variables {
+            variables.insert(k, v);
+        }
+
+        let auth = r.auth.unwrap_or(AuthConfig::Inherit);
+
+        let scripts = ScriptConfig {
+            pre_request: r.scripts.pre_request.unwrap_or_default(),
+            post_response: r.scripts.post_response.unwrap_or_default(),
+            tests: r.tests.or(r.assert).unwrap_or_default(),
+        };
+
+        let settings = RequestSettings {
+            inherit_auth: r.settings.inherit_auth,
+            verify_ssl: r.settings.verify_ssl,
+            follow_redirects: r.settings.follow_redirects,
+            max_redirects: r.settings.max_redirects as usize,
+            timeout_ms: r.settings.timeout_ms,
+        };
+
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: r.name,
+            method,
+            url: r.url,
+            params,
+            headers,
+            variables,
+            body: r.body,
+            auth,
+            scripts,
+            settings,
+            description: None,
+        }
+    }
+}
+
+impl From<&AuraFileRequest> for AuraRequest {
+    fn from(r: &AuraFileRequest) -> Self {
+        r.clone().into()
+    }
+}
+
+impl From<AuraRequest> for AuraFileRequest {
+    fn from(req: AuraRequest) -> Self {
+        let mut headers = IndexMap::new();
+        for h in req.headers {
+            let key = if h.enabled {
+                h.key
+            } else {
+                format!("{}~", h.key)
+            };
+            headers.insert(key, h.value);
+        }
+
+        let mut query_params = IndexMap::new();
+        for p in req.params {
+            let key = if p.enabled {
+                p.key
+            } else {
+                format!("{}~", p.key)
+            };
+            query_params.insert(key, p.value);
+        }
+
+        let mut variables = IndexMap::new();
+        for (k, v) in req.variables {
+            variables.insert(k, v);
+        }
+
+        let auth = match req.auth {
+            AuthConfig::Inherit => None,
+            AuthConfig::None => Some(AuthConfig::None),
+            other => Some(other),
+        };
+
+        AuraFileRequest {
+            version: "1.0".to_string(),
+            name: req.name,
+            method: req.method.as_str().to_string(),
+            url: req.url,
+            settings: Settings {
+                inherit_auth: req.settings.inherit_auth,
+                verify_ssl: req.settings.verify_ssl,
+                follow_redirects: req.settings.follow_redirects,
+                max_redirects: req.settings.max_redirects as u32,
+                timeout_ms: req.settings.timeout_ms,
+            },
+            headers,
+            auth,
+            query_params,
+            variables,
+            flow: None,
+            body: req.body,
+            scripts: ScriptHooks {
+                pre_request: if req.scripts.pre_request.is_empty() {
+                    None
+                } else {
+                    Some(req.scripts.pre_request)
+                },
+                post_response: if req.scripts.post_response.is_empty() {
+                    None
+                } else {
+                    Some(req.scripts.post_response)
+                },
+            },
+            assert: None,
+            tests: if req.scripts.tests.is_empty() {
+                None
+            } else {
+                Some(req.scripts.tests)
+            },
+        }
+    }
+}
+
+impl From<&AuraRequest> for AuraFileRequest {
+    fn from(req: &AuraRequest) -> Self {
+        req.clone().into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Environment {
+    pub name: String,
+    pub variables: IndexMap<String, VariableValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VariableValue {
+    pub value: String,
+    pub is_secret: bool,
+    pub keyring_ref: Option<String>,
+}
+
+impl VariableValue {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            is_secret: false,
+            keyring_ref: None,
+        }
+    }
+
+    pub fn secret(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            is_secret: true,
+            keyring_ref: None,
+        }
+    }
+
+    pub fn from_keyring(keyring_ref: impl Into<String>) -> Self {
+        Self {
+            value: String::new(),
+            is_secret: true,
+            keyring_ref: Some(keyring_ref.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssertionResult {
+    pub name: String,
+    pub passed: bool,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionReport {
+    pub request_name: String,
+    pub method: String,
+    pub url: String,
+    pub status_code: u16,
+    pub duration_ms: u64,
+    pub response_headers: IndexMap<String, String>,
+    pub response_body: String,
+    pub assertions: Vec<AssertionResult>,
+    pub logs: Vec<String>,
+    pub error: Option<String>,
+}
+
+impl ExecutionReport {
+    pub fn all_passed(&self) -> bool {
+        self.error.is_none() && self.assertions.iter().all(|a| a.passed)
+    }
+
+    pub fn exit_code(&self) -> i32 {
+        if self.error.is_some() {
+            return 3;
+        }
+        if self.assertions.iter().any(|a| !a.passed) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionMeta {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub request_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceManifest {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub collections: Vec<CollectionMeta>,
+    #[serde(default)]
+    pub active_environment_id: Option<String>,
+    #[serde(default)]
+    pub open_tabs: Vec<String>,
+    #[serde(default)]
+    pub active_tab: Option<String>,
 }

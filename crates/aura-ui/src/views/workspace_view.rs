@@ -3,8 +3,8 @@
 use crate::app_state::AuraAppState;
 use crate::stores::LayoutOrientation;
 use crate::views::{
-    CommandPaletteView, RequestEditorView, RequestHeaderView, ResponsePaneView, SidebarView,
-    SplitResizerView, TabBarView,
+    CommandPaletteView, LogViewerView, RequestEditorView, RequestHeaderView, ResponsePaneView,
+    SidebarView, SplitResizerView, TabBarView,
 };
 use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
@@ -182,6 +182,27 @@ impl Render for AuraWorkspaceView {
                             )
                             .child(
                                 div()
+                                    .id("toggle-logs-btn")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_md()
+                                    .bg(if self.state.is_log_viewer_open { accent_blue } else { surface_tile_2 })
+                                    .border_1()
+                                    .border_color(border_color)
+                                    .hover(|s| s.bg(rgb(0x333333)))
+                                    .text_xs()
+                                    .text_color(text_color)
+                                    .child("🪵 Logs")
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_log_viewer();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
                                     .px_2()
                                     .py_1()
                                     .rounded_md()
@@ -324,6 +345,9 @@ impl Render for AuraWorkspaceView {
             )
             .when(self.state.is_command_palette_open, |el| {
                 el.child(CommandPaletteView::render(&self.state))
+            })
+            .when(self.state.is_log_viewer_open, |el| {
+                el.child(LogViewerView::render(&self.state, cx))
             })
     }
 }

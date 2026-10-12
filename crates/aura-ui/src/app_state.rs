@@ -41,6 +41,9 @@ pub struct AuraAppState {
     pub is_code_mode: bool, // Dual-mode: Visual vs Code Editor (TOML)
     pub is_command_palette_open: bool,
     pub is_log_viewer_open: bool,
+    pub log_filter_level: Option<aura_engine::LogLevel>,
+    pub log_filter_subsystem: Option<String>,
+    pub log_search: String,
     pub command_palette_search: String,
     pub selected_palette_index: usize,
     pub collections: Vec<Collection>,
@@ -64,6 +67,9 @@ impl Default for AuraAppState {
             is_code_mode: false,
             is_command_palette_open: false,
             is_log_viewer_open: false,
+            log_filter_level: None,
+            log_filter_subsystem: None,
+            log_search: String::new(),
             command_palette_search: String::new(),
             selected_palette_index: 0,
             collections: Vec::new(),
@@ -127,6 +133,8 @@ impl AuraAppState {
             .unwrap_or("Untitled");
         let req = if content.trim().is_empty() {
             AuraRequest::new(file_stem, HttpMethod::GET, "https://postman-echo.com/get")
+        } else if let Ok(r) = aura_parser::parse_request(&content) {
+            r
         } else {
             match aura_sync::toml_to_request(&content, None) {
                 Ok(r) => r,
@@ -426,6 +434,43 @@ impl AuraAppState {
     /// Toggle log viewer modal/view
     pub fn toggle_log_viewer(&mut self) {
         self.is_log_viewer_open = !self.is_log_viewer_open;
+        if self.is_log_viewer_open {
+            tracing::info!(target: "aura_ui", "System log viewer opened");
+        }
+    }
+
+    /// Set the minimum log level filter for the log viewer
+    pub fn set_log_filter_level(&mut self, level: Option<aura_engine::LogLevel>) {
+        self.log_filter_level = level;
+    }
+
+    /// Set the subsystem filter for the log viewer
+    pub fn set_log_filter_subsystem(&mut self, subsystem: Option<String>) {
+        self.log_filter_subsystem = subsystem;
+    }
+
+    /// Set the search query for the log viewer
+    pub fn set_log_search(&mut self, query: impl Into<String>) {
+        self.log_search = query.into();
+    }
+
+    /// Retrieve filtered log entries from the global broadcaster
+    pub fn get_filtered_logs(&self) -> Vec<aura_engine::LogEntry> {
+        aura_engine::LogBroadcaster::global().filter_entries(
+            self.log_filter_level,
+            self.log_filter_subsystem.as_deref(),
+            if self.log_search.is_empty() {
+                None
+            } else {
+                Some(&self.log_search)
+            },
+        )
+    }
+
+    /// Clear all logs in the ring buffer
+    pub fn clear_logs(&mut self) {
+        aura_engine::LogBroadcaster::global().clear();
+        tracing::info!(target: "aura_ui", "System logs cleared from ring buffer");
     }
 
     /// Set active keybinding preset
@@ -565,7 +610,9 @@ fn build_tree_from_metadata(
             WorkspaceOrderItem::Request { name } => {
                 let req_path = dir.join(name);
                 let method = if let Ok(content) = std::fs::read_to_string(&req_path) {
-                    if let Ok(req) = aura_sync::toml_to_request(&content, None) {
+                    if let Ok(r) = aura_parser::parse_request(&content) {
+                        r.method
+                    } else if let Ok(req) = aura_sync::toml_to_request(&content, None) {
                         req.method
                     } else {
                         HttpMethod::GET

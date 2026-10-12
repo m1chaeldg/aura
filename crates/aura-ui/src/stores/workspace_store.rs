@@ -151,11 +151,14 @@ impl WorkspaceStore {
                 for sub in fs::read_dir(&path)? {
                     let sub = sub?;
                     let sub_path = sub.path();
-                    if sub_path.is_file()
-                        && sub_path.extension().and_then(|s| s.to_str()) == Some("toml")
-                    {
+                    let is_req_file = sub_path.is_file()
+                        && (sub_path.extension().and_then(|s| s.to_str()) == Some("aura")
+                            || sub_path.extension().and_then(|s| s.to_str()) == Some("toml"));
+                    if is_req_file {
                         if let Ok(content) = fs::read_to_string(&sub_path) {
-                            if let Ok(req) = toml_to_request(&content, None) {
+                            if let Ok(req) = aura_parser::parse_request(&content) {
+                                req_files.push(req);
+                            } else if let Ok(req) = toml_to_request(&content, None) {
                                 req_files.push(req);
                             }
                         }

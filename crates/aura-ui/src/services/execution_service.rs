@@ -49,15 +49,25 @@ impl ExecutionService {
             guard.clone()
         };
 
+        tracing::info!(
+            target: "aura_ui::execution",
+            method = %request.method,
+            url = %request.url,
+            "Dispatching async request in execution service"
+        );
         self.is_in_flight.store(true, Ordering::SeqCst);
 
         tokio::select! {
             res = execute_request(&request, &context) => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
+                if let Err(ref e) = res {
+                    tracing::error!(target: "aura_ui::execution", error = %e, "Request execution failed");
+                }
                 res
             }
             _ = cancel_token.cancelled() => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
+                tracing::warn!(target: "aura_ui::execution", "Request execution cancelled cooperatively");
                 Err(anyhow::anyhow!("Request execution cancelled"))
             }
         }
@@ -65,6 +75,7 @@ impl ExecutionService {
 
     /// Cooperative abort via CancellationToken
     pub fn cancel(&self) {
+        tracing::info!(target: "aura_ui::execution", "Request cancellation requested");
         self.token.read().cancel();
         self.is_in_flight.store(false, Ordering::SeqCst);
     }

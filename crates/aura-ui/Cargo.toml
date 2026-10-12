@@ -8,6 +8,7 @@ aura-core = { path = "../aura-core" }
 aura-engine = { path = "../aura-engine" }
 aura-scripting = { path = "../aura-scripting" }
 aura-sync = { path = "../aura-sync" }
+aura-parser = { path = "../aura-parser" }
 gpui = "0.2.2"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -21,3 +22,4 @@ tokio-util = "0.7"
 dirs = "5"
 notify = "6.1"
 rfd = "0.15"
+tracing = "0.1"

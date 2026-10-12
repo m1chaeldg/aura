@@ -46,3 +46,54 @@ fn test_workspace_store_tree_expansion_and_mutations() {
         assert!(children.is_empty());
     }
 }
+
+#[test]
+fn test_load_workspace_aura_files_with_parser() {
+    let temp_dir = std::env::temp_dir().join(format!("aura_test_{}", uuid::Uuid::new_v4()));
+    let collection_dir = temp_dir.join("Users");
+    std::fs::create_dir_all(&collection_dir).unwrap();
+
+    let aura_content = r#"version = "1.0"
+name = "Create User Account"
+method = "POST"
+url = "https://api.example.com/users"
+
+[settings]
+inherit_auth = true
+verify_ssl = true
+follow_redirects = true
+timeout_ms = 15000
+
+[headers]
+Content-Type = "application/json"
+Accept = "application/json"
+
+[body.json]
+```json
+{
+  "username": "aura_user"
+}
+```
+"#;
+
+    let req_file = collection_dir.join("create_user.aura");
+    std::fs::write(&req_file, aura_content).unwrap();
+
+    let mut store = WorkspaceStore::new();
+    let loaded = store.load_workspace_collections(&temp_dir).unwrap();
+    assert_eq!(loaded, 1);
+    assert_eq!(store.collections.len(), 1);
+
+    let req = &store.collections[0].requests[0];
+    assert_eq!(req.name, "Create User Account");
+    assert_eq!(req.method, HttpMethod::POST);
+    assert_eq!(req.url, "https://api.example.com/users");
+    assert!(req.headers.iter().any(|h| h.key == "Content-Type" && h.value == "application/json"));
+    if let aura_core::model::BodyType::Json(body_str) = &req.body {
+        assert!(body_str.contains("aura_user"));
+    } else {
+        panic!("Expected Json body parsed from fenced block, got {:?}", req.body);
+    }
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
