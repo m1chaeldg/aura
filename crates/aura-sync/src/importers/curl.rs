@@ -1,7 +1,7 @@
 //! cURL command parser into AuraRequest
 
-use aura_core::model::{AuraRequest, BodyType, HeaderItem, HttpMethod, ParamItem};
 use anyhow::{anyhow, Result};
+use aura_core::model::{AuraRequest, BodyType, HeaderItem, HttpMethod, ParamItem};
 use url::Url;
 
 /// Parse a raw cURL command into an AuraRequest

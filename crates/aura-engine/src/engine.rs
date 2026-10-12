@@ -1,10 +1,10 @@
 //! Core HTTP Request Dispatcher and Execution Engine.
 
+use anyhow::{anyhow, Result};
 use aura_core::model::{AuraRequest, AuraResponse, BodyType, HttpMethod};
-use aura_scripting::AuraScriptRuntime;
 use aura_core::security::apply_auth;
 use aura_core::templating::TemplateContext;
-use anyhow::{anyhow, Result};
+use aura_scripting::AuraScriptRuntime;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
 use std::str::FromStr;

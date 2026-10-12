@@ -2,8 +2,8 @@
 //! Eradicates any telemetry or tracking. Scripts run completely offline.
 //! Provides BDD `aura.test()` framework and console log capture.
 
-use aura_core::model::TestAssertion;
 use anyhow::{Context, Result};
+use aura_core::model::TestAssertion;
 use deno_core::{JsRuntime, RuntimeOptions};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

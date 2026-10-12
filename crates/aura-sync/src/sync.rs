@@ -2,8 +2,8 @@
 //! the Visual Editor model and the Code Editor TOML representation.
 //! Disabled parameters and headers serialize with trailing tilde (`key~ = "value"`).
 
-use aura_core::model::{AuraRequest, BodyType, HeaderItem, HttpMethod, ParamItem, ScriptConfig};
 use anyhow::{Context, Result};
+use aura_core::model::{AuraRequest, BodyType, HeaderItem, HttpMethod, ParamItem, ScriptConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

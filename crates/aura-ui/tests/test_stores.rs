@@ -1,6 +1,6 @@
 use aura_core::model::{AuraRequest, HttpMethod};
-use aura_ui::stores::{LayoutOrientation, LayoutStore, SessionStore};
 use aura_ui::services::FormatService;
+use aura_ui::stores::{LayoutOrientation, LayoutStore, SessionStore};
 
 #[test]
 fn test_session_store_lifecycle() {

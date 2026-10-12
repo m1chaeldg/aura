@@ -1,7 +1,9 @@
 //! Postman Collection (v2.1) importer
 
-use aura_core::model::{AuraRequest, BodyType, Collection, Folder, HeaderItem, HttpMethod, ParamItem};
 use anyhow::{Context, Result};
+use aura_core::model::{
+    AuraRequest, BodyType, Collection, Folder, HeaderItem, HttpMethod, ParamItem,
+};
 use serde_json::Value;
 
 pub fn import_postman_collection(json_str: &str) -> Result<Collection> {

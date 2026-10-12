@@ -14,9 +14,15 @@ impl WorkspaceService {
     }
 
     /// Save a request asynchronously to disk
-    pub async fn persist_request(&self, request: &AuraRequest, target_dir: &Path) -> Result<PathBuf> {
+    pub async fn persist_request(
+        &self,
+        request: &AuraRequest,
+        target_dir: &Path,
+    ) -> Result<PathBuf> {
         let toml_str = request_to_toml(request)?;
-        let sanitized_name = request.name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let sanitized_name = request
+            .name
+            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
         let file_path = target_dir.join(format!("{}.toml", sanitized_name));
         tokio::fs::write(&file_path, toml_str).await?;
         Ok(file_path)

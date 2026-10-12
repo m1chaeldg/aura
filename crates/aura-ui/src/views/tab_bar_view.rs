@@ -75,17 +75,15 @@ impl TabBarView {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(if is_active { rgb(0xffffff) } else { rgb(0xaaaaaa) })
+                            .text_color(if is_active {
+                                rgb(0xffffff)
+                            } else {
+                                rgb(0xaaaaaa)
+                            })
                             .child(tab.title.clone()),
                     )
                     .when(tab.is_dirty, |el| {
-                        el.child(
-                            div()
-                                .w_2()
-                                .h_2()
-                                .rounded_full()
-                                .bg(amber_color),
-                        )
+                        el.child(div().w_2().h_2().rounded_full().bg(amber_color))
                     })
                     .child(
                         div()

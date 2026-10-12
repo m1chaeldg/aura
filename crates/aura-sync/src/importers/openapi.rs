@@ -1,7 +1,7 @@
 //! OpenAPI (Swagger v2 / OpenAPI v3) importer
 
-use aura_core::model::{AuraRequest, BodyType, Collection, HeaderItem, HttpMethod, ParamItem};
 use anyhow::{Context, Result};
+use aura_core::model::{AuraRequest, BodyType, Collection, HeaderItem, HttpMethod, ParamItem};
 use serde_json::Value;
 
 pub fn import_openapi(json_or_yaml_str: &str) -> Result<Collection> {

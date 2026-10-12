@@ -1,7 +1,7 @@
 //! Insomnia export importer
 
-use aura_core::model::{AuraRequest, BodyType, Collection, HeaderItem, HttpMethod, ParamItem};
 use anyhow::{Context, Result};
+use aura_core::model::{AuraRequest, BodyType, Collection, HeaderItem, HttpMethod, ParamItem};
 use serde_json::Value;
 
 pub fn import_insomnia(json_str: &str) -> Result<Collection> {

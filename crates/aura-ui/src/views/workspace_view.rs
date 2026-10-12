@@ -94,7 +94,12 @@ impl Render for AuraWorkspaceView {
                                     .child(div().text_xs().text_color(rgb(0xffffff)).child("A")),
                             )
                             .child(div().text_sm().child("Aura REST API Client v0.1.0"))
-                            .child(div().text_xs().text_color(text_muted).child("(GPUI + deno_core)")),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(text_muted)
+                                    .child("(GPUI + deno_core)"),
+                            ),
                     )
                     .child(
                         div()
@@ -130,7 +135,11 @@ impl Render for AuraWorkspaceView {
                                     .border_color(border_color)
                                     .text_xs()
                                     .text_color(text_color)
-                                    .child(if is_horizontal { "◫ Side-by-Side" } else { "⬒ Stacked" })
+                                    .child(if is_horizontal {
+                                        "◫ Side-by-Side"
+                                    } else {
+                                        "⬒ Stacked"
+                                    })
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.state.toggle_orientation();
                                         cx.notify();
@@ -192,7 +201,8 @@ impl Render for AuraWorkspaceView {
                                 &active_url,
                                 cx,
                                 |this, _window, cx| {
-                                    this.state.status_message = Some("Dispatching request...".to_string());
+                                    this.state.status_message =
+                                        Some("Dispatching request...".to_string());
                                     cx.notify();
                                 },
                             ))
@@ -208,11 +218,18 @@ impl Render for AuraWorkspaceView {
                                         &active_title,
                                         active_method,
                                     ))
-                                    .child(SplitResizerView::render(is_horizontal, cx, |this, _window, cx| {
-                                        this.state.reset_divider();
-                                        cx.notify();
-                                    }))
-                                    .child(ResponsePaneView::render(self.state.split_ratio, is_horizontal)),
+                                    .child(SplitResizerView::render(
+                                        is_horizontal,
+                                        cx,
+                                        |this, _window, cx| {
+                                            this.state.reset_divider();
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .child(ResponsePaneView::render(
+                                        self.state.split_ratio,
+                                        is_horizontal,
+                                    )),
                             ),
                     ),
             )
@@ -234,7 +251,12 @@ impl Render for AuraWorkspaceView {
                             .flex()
                             .items_center()
                             .gap_3()
-                            .child(self.state.status_message.clone().unwrap_or_else(|| "Ready".to_string()))
+                            .child(
+                                self.state
+                                    .status_message
+                                    .clone()
+                                    .unwrap_or_else(|| "Ready".to_string()),
+                            )
                             .child("•")
                             .child("Workspace: Local Disk Synced")
                             .child("•")
@@ -247,7 +269,11 @@ impl Render for AuraWorkspaceView {
                             .gap_2()
                             .child(format!(
                                 "Layout: {} ({}%) [Reset: Ctrl+R]",
-                                if is_horizontal { "Side-by-Side" } else { "Stacked" },
+                                if is_horizontal {
+                                    "Side-by-Side"
+                                } else {
+                                    "Stacked"
+                                },
                                 split_pct
                             ))
                             .child("•")

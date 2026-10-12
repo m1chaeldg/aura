@@ -287,7 +287,11 @@ fn test_workspace_collections_loading_and_activation() {
     let tmp = std::env::temp_dir().join(format!("aura_test_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let col_path = tmp.join("sample.collection.json");
-    let mut req = AuraRequest::new("Live GET Echo", HttpMethod::GET, "https://postman-echo.com/get");
+    let mut req = AuraRequest::new(
+        "Live GET Echo",
+        HttpMethod::GET,
+        "https://postman-echo.com/get",
+    );
     req.id = "req-echo-1".to_string();
     let col = aura::model::Collection {
         id: "col-1".to_string(),
