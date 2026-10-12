@@ -77,7 +77,9 @@ pub enum BodyType {
     FormUrlEncoded(Vec<ParamItem>),
     Multipart(Vec<MultipartField>),
     /// Anchored relative file path for binary uploads
-    Binary { relative_path: String },
+    Binary {
+        relative_path: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

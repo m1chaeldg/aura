@@ -4,12 +4,32 @@ A high-performance REST API client engineered in Rust, featuring local workspace
 
 ## Key Features
 
-- **Apple Design Language (`DESIGN.md`)**:
-  - Action Blue (`#0066cc`) interactive accents.
-  - Multi-tab document workspace with dirty state tracking and quick `+` request creation.
-  - Standardized HTTP Method badges (GET: Blue, POST: Green, PUT: Amber, PATCH: Purple, DELETE: Rose).
-  - Responsive split pane with double-click 50/50 reset and horizontal/vertical orientation toggle.
-  - Command Palette for quick search and navigation.
+- **Multi-Tab Document Workspace**:
+  - Open multiple simultaneous request tabs with dedicated close buttons (`×`).
+  - Dirty state tracking with visual dot indicator (`•`) on tabs with unsaved edits.
+  - Persistent `+` button in the tab bar to quickly append new, untitled requests.
+  - Globally accessible Command Palette modal (`Cmd/Ctrl + P`) for cross-collection request search without touching the mouse.
+- **Responsive Pane Layout & Ergonomics**:
+  - Flexible split view with percentage divider adjustment (10% to 90%).
+  - Layout orientation toggling between Horizontal (Side-by-Side) and Vertical (Stacked).
+  - Smooth drag-to-resize divider with double-click reset to instantly restore 50/50 split (`Cmd/Ctrl + R`).
+- **Standardized HTTP Method Badges**:
+  - Color-coded badges for visual distinction: GET (Blue: `#0066cc`), POST (Green: `#28a745`), PUT (Amber: `#f5a623`), PATCH (Purple: `#8e44ad`), DELETE (Rose: `#e74c3c`).
+- **Power User Keyboard Shortcuts & IDE Presets**:
+  - Native keybinding presets: **VS Code**, **IntelliJ IDEA**, and **Sublime Text**.
+  - Shortcuts:
+    | Action | VS Code | IntelliJ IDEA | Sublime Text |
+    |---|---|---|---|
+    | **Send Request** | `Ctrl+Enter` | `Ctrl+Enter` | `Ctrl+Enter` |
+    | **Command Palette** | `Ctrl+P` | `Shift+Shift` / `Ctrl+Shift+A` | `Ctrl+Shift+P` |
+    | **Log Viewer** | `Ctrl+Shift+L` | `Ctrl+Shift+L` | `Ctrl+Shift+L` |
+    | **New Request Tab** | `Ctrl+N` / `Ctrl+T` | `Ctrl+Alt+Insert` / `Ctrl+N` | `Ctrl+N` |
+    | **Close Tab** | `Ctrl+W` | `Ctrl+F4` / `Ctrl+W` | `Ctrl+W` |
+    | **Toggle Layout** | `Ctrl+\` | `Ctrl+\` | `Alt+Shift+2` / `Ctrl+\` |
+    | **Reset Divider** | `Ctrl+R` | `Ctrl+R` | `Ctrl+R` |
+    | **Save Request** | `Ctrl+S` | `Ctrl+S` | `Ctrl+S` |
+    | **Next Tab** | `Ctrl+Tab` | `Alt+Right` | `Ctrl+PageDown` |
+    | **Previous Tab** | `Ctrl+Shift+Tab` | `Alt+Left` | `Ctrl+PageUp` |
 - **Dual-Mode Request Editor**:
   - Visual form editor seamlessly and losslessly synchronized with Code Editor (TOML format).
   - Disabled parameters and headers serialize as `key~ = "value"`.

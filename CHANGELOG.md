@@ -12,13 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - High-performance asynchronous HTTP engine dispatching GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS via `reqwest`.
   - Built-in sandboxed V8 scripting runtime powered by `deno_core` for offline pre-request, post-response, and BDD test suites (`aura.test(...)`, `expect(...)`).
   - Eradicated all telemetry and network tracking.
-- **UI Design System (`DESIGN.md`)**:
+- **UI Design System (`DESIGN.md`) & Workspace Ergonomics**:
   - Full adherence to Apple design language: Action Blue (`#0066cc`), pure white canvas (`#ffffff`), parchment canvas (`#f5f5f7`), and dark tile surfaces (`#272729`).
-  - Standardized HTTP Method badges: GET (Blue), POST (Green), PUT (Amber), PATCH (Purple), DELETE (Rose).
+  - Standardized HTTP Method badges: GET (Blue: `#0066cc`), POST (Green: `#28a745`), PUT (Amber: `#f5a623`), PATCH (Purple: `#8e44ad`), DELETE (Rose: `#e74c3c`).
   - Color-coded HTTP status pills: 2xx Green, 3xx Blue, 4xx Amber, 5xx Red.
-  - Multi-tab document workspace with dirty state tracking and persistent `+` action.
-  - Adjustable split pane layout with 50/50 double-click reset and orientation toggles.
-  - Globally accessible Command Palette.
+  - Multi-tab document workspace with simultaneous tab management, dedicated close buttons (`×`), dirty state tracking with visual dot indicators (`•`), and persistent `+` action.
+  - Responsive split pane layout with adjustable percentage dividers (0.10 to 0.90), smooth resizer handle, 50/50 double-click reset, and Horizontal (Side-by-Side) vs Vertical (Stacked) orientation toggling.
+  - Globally accessible Command Palette modal overlay with instant request fuzzy search and keyboard execution (`↑`/`↓`/`↵`/`Esc`).
+  - Native Keybinding Presets supporting popular IDE profiles: Visual Studio Code, IntelliJ IDEA, and Sublime Text.
+  - Comprehensive keyboard shortcuts for primary workflows: Send Request (`Cmd/Ctrl + Enter`), Command Palette (`Cmd/Ctrl + P`), Log Viewer (`Cmd/Ctrl + Shift + L`), New Tab (`Cmd/Ctrl + N`/`T`), Close Tab (`Cmd/Ctrl + W`), Toggle Layout (`Cmd/Ctrl + \`), Reset Divider (`Cmd/Ctrl + R`), and Save (`Cmd/Ctrl + S`).
 - **Dual-Mode Request Editor**:
   - Lossless bidirectional synchronization between Visual Editor and Code Editor (TOML).
   - Query parameters and headers serialization with trailing tilde (`key~ = "value"`) for disabled items.
