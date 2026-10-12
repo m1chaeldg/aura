@@ -7,7 +7,7 @@ pub mod services;
 pub mod stores;
 pub mod views;
 
-pub use app_state::{AuraAppState, CommandPaletteItem};
+pub use app_state::{AuraAppState, CommandPaletteItem, DragItemPayload, InlineRenameState};
 pub use preferences::AuraPreferences;
 pub use aura_core::design;
 pub use keybindings::{Action, KeybindingPreset};

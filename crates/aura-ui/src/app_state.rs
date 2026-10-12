@@ -1,10 +1,24 @@
 //! Main application state for UI coordinating Domain Stores and Services.
 
 use crate::keybindings::{Action, KeybindingPreset};
-use crate::stores::{EditorTab, LayoutOrientation, ResponseTab, WorkspaceTab};
+use crate::stores::{EditorTab, LayoutOrientation, ResponseTab, WorkspaceStore, WorkspaceTab};
 use aura_core::model::{AuraRequest, Collection, Folder, HttpMethod};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Drag and drop payload for sidebar items
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DragItemPayload {
+    pub path: PathBuf,
+    pub is_folder: bool,
+}
+
+/// State for active inline renaming in the sidebar
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InlineRenameState {
+    pub path: PathBuf,
+    pub current_value: String,
+}
 
 /// Command palette entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +47,9 @@ pub struct AuraAppState {
     pub is_dragging_divider: bool,
     pub keybinding_preset: KeybindingPreset,
     pub status_message: Option<String>,
+    pub workspace_store: WorkspaceStore,
+    pub inline_rename: Option<InlineRenameState>,
+    pub drag_target: Option<PathBuf>,
 }
 
 impl Default for AuraAppState {
@@ -53,6 +70,9 @@ impl Default for AuraAppState {
             is_dragging_divider: false,
             keybinding_preset: KeybindingPreset::VsCode,
             status_message: None,
+            workspace_store: WorkspaceStore::new(),
+            inline_rename: None,
+            drag_target: None,
         }
     }
 }
@@ -60,6 +80,17 @@ impl Default for AuraAppState {
 impl AuraAppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn start_inline_rename(&mut self, path: PathBuf, initial_name: impl Into<String>) {
+        self.inline_rename = Some(InlineRenameState {
+            path,
+            current_value: initial_name.into(),
+        });
+    }
+
+    pub fn cancel_inline_rename(&mut self) {
+        self.inline_rename = None;
     }
 
     /// Discover and load collections from workspace directory
