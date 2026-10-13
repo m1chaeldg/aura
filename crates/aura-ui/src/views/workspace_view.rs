@@ -13,6 +13,7 @@ use gpui::*;
 
 pub struct AuraWorkspaceView {
     pub state: AuraAppState,
+    pub focus_handle: Option<FocusHandle>,
     #[allow(dead_code)]
     watcher_cancel: Option<tokio_util::sync::CancellationToken>,
 }
@@ -21,6 +22,7 @@ impl AuraWorkspaceView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let mut view = Self {
             state: AuraAppState::new(),
+            focus_handle: Some(cx.focus_handle()),
             watcher_cancel: None,
         };
         let prefs = crate::preferences::AuraPreferences::load();
@@ -98,6 +100,35 @@ impl AuraWorkspaceView {
                     }
                     cx.notify();
                 });
+            }
+        })
+        .detach();
+    }
+
+    /// Confirms pending item renaming off the main thread and syncs workspace.
+    pub fn confirm_rename_action(&mut self, cx: &mut Context<Self>) {
+        let mut state_clone = self.state.clone();
+        self.state.rename_dialog = None;
+        cx.notify();
+
+        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                match state_clone.confirm_rename().await {
+                    Ok(Some(new_path)) => {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            if let Err(e) = this.state.reconcile_workspace_sync() {
+                                tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
+                            }
+                            this.state.workspace_store.select_node(new_path);
+                            cx.notify();
+                        });
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        tracing::error!(target: "aura_ui::workspace", "Failed to confirm rename: {e}");
+                    }
+                }
             }
         })
         .detach();
@@ -215,6 +246,7 @@ impl AuraWorkspaceView {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
+                self.state.request_rename(target.clone(), is_folder);
                 self.state.start_inline_rename(target, name);
                 cx.notify();
             }
@@ -262,6 +294,7 @@ impl Default for AuraWorkspaceView {
     fn default() -> Self {
         Self {
             state: AuraAppState::new(),
+            focus_handle: None,
             watcher_cancel: None,
         }
     }
@@ -288,6 +321,8 @@ impl Render for AuraWorkspaceView {
         let is_horizontal = self.state.orientation == LayoutOrientation::Horizontal;
         let split_pct = (self.state.split_ratio * 100.0).round() as u32;
 
+        let focus = self.focus_handle.get_or_insert_with(|| cx.focus_handle()).clone();
+
         div()
             .relative()
             .flex()
@@ -295,6 +330,53 @@ impl Render for AuraWorkspaceView {
             .size_full()
             .bg(bg_color)
             .text_color(text_color)
+            .track_focus(&focus)
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+                if this.state.rename_dialog.is_some() {
+                    let key = event.keystroke.key.as_str();
+                    match key {
+                        "escape" => {
+                            this.state.cancel_rename();
+                            cx.notify();
+                        }
+                        "enter" => {
+                            this.confirm_rename_action(cx);
+                        }
+                        "backspace" => {
+                            this.state.backspace_rename();
+                            cx.notify();
+                        }
+                        "space" => {
+                            this.state.append_rename_char(' ');
+                            cx.notify();
+                        }
+                        _ => {
+                            if key.len() == 1
+                                && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.alt
+                            {
+                                let c = key.chars().next().unwrap();
+                                let final_c = if event.keystroke.modifiers.shift {
+                                    c.to_ascii_uppercase()
+                                } else {
+                                    c
+                                };
+                                this.state.append_rename_char(final_c);
+                                cx.notify();
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                if event.keystroke.key == "f2" {
+                    if let Some(selected) = this.state.workspace_store.selected_path.clone() {
+                        let is_folder = selected.is_dir();
+                        this.state.request_rename(selected, is_folder);
+                        cx.notify();
+                    }
+                }
+            }))
             // Title Bar
             .child(
                 div()
@@ -709,6 +791,140 @@ impl Render for AuraWorkspaceView {
                                                     this.confirm_delete_action(cx);
                                                 }))
                                                 .child("Delete"),
+                                        ),
+                                ),
+                        ),
+                )
+            })
+            .when_some(self.state.rename_dialog.clone(), |el, rename_state| {
+                let item_type = if rename_state.is_folder { "Folder" } else { "Request" };
+                let current_val = rename_state.current_name.clone();
+
+                el.child(
+                    div()
+                        .id("rename-dialog-overlay")
+                        .absolute()
+                        .inset_0()
+                        .bg(rgba(0x000000bb))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("rename-dialog-card")
+                                .w(px(420.0))
+                                .bg(rgb(0x272729))
+                                .border_1()
+                                .border_color(rgb(0x333333))
+                                .rounded_md()
+                                .p_5()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(0xffffff))
+                                                .child(format!("Rename {}", item_type)),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(rgb(0x888888))
+                                                .child("Esc to cancel"),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(rgb(0xaaaaaa))
+                                        .child(format!(
+                                            "Enter new name for '{}':",
+                                            rename_state.original_name
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .id("rename-dialog-input-box")
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .px_3()
+                                        .py_2()
+                                        .bg(rgb(0x1d1d1f))
+                                        .border_1()
+                                        .border_color(rgb(0x0066cc))
+                                        .rounded_sm()
+                                        .text_sm()
+                                        .text_color(rgb(0xffffff))
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_1()
+                                                .child(
+                                                    if current_val.is_empty() {
+                                                        div().text_color(rgb(0x777777)).child("Enter name...")
+                                                    } else {
+                                                        div().child(current_val.clone())
+                                                    }
+                                                )
+                                                .child(
+                                                    div()
+                                                        .w(px(2.0))
+                                                        .h(px(14.0))
+                                                        .bg(rgb(0x0066cc))
+                                                ),
+                                        )
+                                        .when(!rename_state.is_folder, |el| {
+                                            el.child(div().text_xs().text_color(rgb(0x777777)).child(".aura"))
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_end()
+                                        .gap_2()
+                                        .mt_2()
+                                        .child(
+                                            div()
+                                                .id("cancel-rename-btn")
+                                                .px_3()
+                                                .py_1()
+                                                .bg(rgb(0x333333))
+                                                .hover(|s| s.bg(rgb(0x444444)))
+                                                .text_xs()
+                                                .text_color(rgb(0xffffff))
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.state.cancel_rename();
+                                                    cx.notify();
+                                                }))
+                                                .child("Cancel"),
+                                        )
+                                        .child(
+                                            div()
+                                                .id("confirm-rename-btn")
+                                                .px_3()
+                                                .py_1()
+                                                .bg(rgb(0x0066cc))
+                                                .hover(|s| s.bg(rgb(0x0071e3)))
+                                                .text_xs()
+                                                .text_color(rgb(0xffffff))
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.confirm_rename_action(cx);
+                                                }))
+                                                .child("Rename"),
                                         ),
                                 ),
                         ),

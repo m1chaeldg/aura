@@ -20,6 +20,15 @@ pub struct InlineRenameState {
     pub current_value: String,
 }
 
+/// State for active rename modal dialog
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenameDialogState {
+    pub path: PathBuf,
+    pub original_name: String,
+    pub current_name: String,
+    pub is_folder: bool,
+}
+
 /// Command palette entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandPaletteItem {
@@ -52,6 +61,7 @@ pub struct AuraAppState {
     pub status_message: Option<String>,
     pub workspace_store: WorkspaceStore,
     pub inline_rename: Option<InlineRenameState>,
+    pub rename_dialog: Option<RenameDialogState>,
     pub drag_target: Option<PathBuf>,
     pub pending_delete_path: Option<PathBuf>,
     #[serde(skip, default = "default_workspace_service")]
@@ -85,6 +95,7 @@ impl Default for AuraAppState {
             status_message: None,
             workspace_store: WorkspaceStore::new(),
             inline_rename: None,
+            rename_dialog: None,
             drag_target: None,
             pending_delete_path: None,
             workspace_service: default_workspace_service(),
@@ -137,14 +148,114 @@ impl AuraAppState {
 
 
     pub fn start_inline_rename(&mut self, path: PathBuf, initial_name: impl Into<String>) {
+        let name = initial_name.into();
         self.inline_rename = Some(InlineRenameState {
-            path,
-            current_value: initial_name.into(),
+            path: path.clone(),
+            current_value: name,
         });
     }
 
     pub fn cancel_inline_rename(&mut self) {
         self.inline_rename = None;
+    }
+
+    /// Requests opening the rename modal dialog for a file or folder.
+    pub fn request_rename(&mut self, path: PathBuf, is_folder: bool) {
+        let original_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let current_name = if !is_folder && original_name.ends_with(".aura") {
+            original_name.trim_end_matches(".aura").to_string()
+        } else {
+            original_name.clone()
+        };
+        self.rename_dialog = Some(RenameDialogState {
+            path,
+            original_name,
+            current_name,
+            is_folder,
+        });
+    }
+
+    /// Cancels active rename modal dialog.
+    pub fn cancel_rename(&mut self) {
+        self.rename_dialog = None;
+    }
+
+    /// Updates the text value in active rename dialog.
+    pub fn update_rename_text(&mut self, text: String) {
+        if let Some(ref mut d) = self.rename_dialog {
+            d.current_name = text;
+        }
+    }
+
+    /// Appends a character to the text in active rename dialog.
+    pub fn append_rename_char(&mut self, c: char) {
+        if let Some(ref mut d) = self.rename_dialog {
+            d.current_name.push(c);
+        }
+    }
+
+    /// Removes the last character from the text in active rename dialog.
+    pub fn backspace_rename(&mut self) {
+        if let Some(ref mut d) = self.rename_dialog {
+            d.current_name.pop();
+        }
+    }
+
+    /// Updates tab titles and paths when a file or directory is renamed.
+    pub fn handle_item_renamed(&mut self, old_path: &Path, new_path: &Path, new_name: &str) {
+        for tab in &mut self.tabs {
+            if let Some(ref fp) = tab.file_path {
+                if fp == old_path {
+                    tab.file_path = Some(new_path.to_path_buf());
+                    tab.title = new_name.to_string();
+                } else if fp.starts_with(old_path) {
+                    if let Ok(rel) = fp.strip_prefix(old_path) {
+                        tab.file_path = Some(new_path.join(rel));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Confirms and commits the rename operation asynchronously to disk and stores.
+    pub async fn confirm_rename(&mut self) -> anyhow::Result<Option<PathBuf>> {
+        if let Some(rename_state) = self.rename_dialog.take() {
+            let trimmed = rename_state.current_name.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            let old_path = rename_state.path;
+            if let Some(root) = self.workspace_store.workspace_root.clone() {
+                let new_path = self
+                    .workspace_service
+                    .rename_item(&root, &old_path, trimmed)
+                    .await?;
+                let final_name = new_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(trimmed);
+                self.workspace_store.apply_rename(&old_path, &new_path, final_name);
+                self.handle_item_renamed(&old_path, &new_path, final_name);
+                return Ok(Some(new_path));
+            } else if old_path.exists() {
+                let parent = old_path.parent().unwrap_or(&old_path);
+                let final_name = if old_path.is_file() && !trimmed.ends_with(".aura") {
+                    format!("{}.aura", trimmed)
+                } else {
+                    trimmed.to_string()
+                };
+                let new_path = parent.join(&final_name);
+                tokio::fs::rename(&old_path, &new_path).await?;
+                self.workspace_store.apply_rename(&old_path, &new_path, &final_name);
+                self.handle_item_renamed(&old_path, &new_path, &final_name);
+                return Ok(Some(new_path));
+            }
+        }
+        Ok(None)
     }
 
     /// Toggles folder expanded/collapsed state in the workspace store.
@@ -717,6 +828,8 @@ impl AuraAppState {
                         .and_then(|s| s.to_str())
                         .unwrap_or("")
                         .to_string();
+                    let is_folder = selected.is_dir();
+                    self.request_rename(selected.clone(), is_folder);
                     self.start_inline_rename(selected, name);
                     true
                 } else {

@@ -148,4 +148,60 @@ async fn test_sidebar_reorder_item_integration() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+#[tokio::test]
+async fn test_app_state_rename_dialog_workflow() {
+    use aura_core::model::HttpMethod;
+    use std::path::PathBuf;
 
+    let mut state = AuraAppState::new();
+    assert!(state.rename_dialog.is_none());
+
+    let req_path = PathBuf::from("/workspace/Auth/Login.aura");
+    state.request_rename(req_path.clone(), false);
+    assert!(state.rename_dialog.is_some());
+    let dialog = state.rename_dialog.as_ref().unwrap();
+    assert_eq!(dialog.original_name, "Login.aura");
+    assert_eq!(dialog.current_name, "Login");
+    assert!(!dialog.is_folder);
+
+    state.append_rename_char('2');
+    assert_eq!(state.rename_dialog.as_ref().unwrap().current_name, "Login2");
+
+    state.backspace_rename();
+    assert_eq!(state.rename_dialog.as_ref().unwrap().current_name, "Login");
+
+    state.update_rename_text("SignIn".to_string());
+    assert_eq!(state.rename_dialog.as_ref().unwrap().current_name, "SignIn");
+
+    state.cancel_rename();
+    assert!(state.rename_dialog.is_none());
+
+    // Integration test with disk and tabs
+    let tmp = std::env::temp_dir().join(format!("aura_rename_test_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let root = tmp.as_path();
+
+    let srv = state.workspace_service.clone();
+    let created = srv.create_request(root, root, "Login", HttpMethod::GET).await.unwrap();
+    state.open_workspace_sync(root).unwrap();
+    state.open_file_in_tab(&created).unwrap();
+
+    assert_eq!(state.tabs.len(), 1);
+    assert_eq!(state.tabs[0].title, "Login.aura");
+
+    state.request_rename(created.clone(), false);
+    state.update_rename_text("SignIn".to_string());
+
+    let renamed = state.confirm_rename().await.unwrap();
+    assert!(renamed.is_some());
+    let renamed_path = renamed.unwrap();
+    assert!(renamed_path.exists());
+    assert!(!created.exists());
+    assert!(renamed_path.ends_with("SignIn.aura"));
+
+    // Verify tab was updated
+    assert_eq!(state.tabs[0].title, "SignIn.aura");
+    assert_eq!(state.tabs[0].file_path, Some(renamed_path));
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
