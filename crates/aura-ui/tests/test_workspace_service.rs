@@ -120,3 +120,65 @@ async fn test_watcher_external_disk_sync_flow() {
     cancel_token.cancel();
 }
 
+#[tokio::test]
+async fn test_workspace_service_duplicate_collision_naming() {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path();
+    let service = WorkspaceService::new();
+
+    // 1. Initial request: Login.aura
+    let login_path = service
+        .create_request(root, root, "Login", HttpMethod::POST)
+        .await
+        .expect("create request");
+    assert!(login_path.exists());
+
+    // 2. First duplicate: Login (Copy).aura
+    let dup1 = service.duplicate_item(root, &login_path).await.expect("dup1");
+    assert_eq!(dup1.file_name().unwrap(), "Login (Copy).aura");
+    assert!(dup1.exists());
+
+    // 3. Second duplicate of original: Login (Copy 2).aura (Review Focus #1)
+    let dup2 = service.duplicate_item(root, &login_path).await.expect("dup2");
+    assert_eq!(dup2.file_name().unwrap(), "Login (Copy 2).aura");
+    assert!(dup2.exists());
+
+    // 4. Duplicate of a folder recursively (Review Focus #2)
+    let folder = service.create_folder(root, root, "Auth").await.expect("folder");
+    let _ = service
+        .create_request(root, &folder, "Token", HttpMethod::GET)
+        .await
+        .expect("token");
+    let dup_folder = service.duplicate_item(root, &folder).await.expect("dup folder");
+    assert_eq!(dup_folder.file_name().unwrap(), "Auth (Copy)");
+    assert!(dup_folder.join("Token.aura").exists());
+}
+
+#[tokio::test]
+async fn test_workspace_service_paste_item_and_missing_source() {
+    use aura_ui::stores::workspace_store::ClipboardPayload;
+
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path();
+    let service = WorkspaceService::new();
+
+    let folder_a = service.create_folder(root, root, "FolderA").await.unwrap();
+    let folder_b = service.create_folder(root, root, "FolderB").await.unwrap();
+    let file_a = service
+        .create_request(root, &folder_a, "Endpoint", HttpMethod::GET)
+        .await
+        .unwrap();
+
+    // Paste file from FolderA into FolderB
+    let payload = ClipboardPayload::Request(file_a.clone());
+    let pasted = service.paste_item(root, &payload, &folder_b).await.unwrap();
+    assert_eq!(pasted, folder_b.join("Endpoint.aura"));
+    assert!(pasted.exists());
+
+    // Paste with missing source error (Review Focus #3)
+    let fake_payload = ClipboardPayload::Request(root.join("NonExistent.aura"));
+    let err = service.paste_item(root, &fake_payload, &folder_b).await;
+    assert!(err.is_err(), "Expected error when pasting missing source");
+}
+
+

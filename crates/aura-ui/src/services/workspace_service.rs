@@ -142,6 +142,143 @@ impl WorkspaceService {
         Ok(())
     }
 
+    /// Computes a non-colliding duplicate name following `<stem> (Copy).ext` and `<stem> (Copy N).ext`.
+    pub fn resolve_duplicate_name(parent_dir: &Path, file_name: &str) -> String {
+        let (base_stem, ext) = if let Some(stripped) = file_name.strip_suffix(".aura") {
+            (stripped, Some(".aura"))
+        } else if let Some(idx) = file_name.rfind('.') {
+            (&file_name[..idx], Some(&file_name[idx..]))
+        } else {
+            (file_name, None)
+        };
+
+        let clean_stem = if let Some(prefix) = base_stem.strip_suffix(" (Copy)") {
+            prefix
+        } else if let Some(idx) = base_stem.rfind(" (Copy ") {
+            if base_stem.ends_with(')')
+                && base_stem[idx + 7..base_stem.len() - 1]
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+            {
+                &base_stem[..idx]
+            } else {
+                base_stem
+            }
+        } else {
+            base_stem
+        };
+
+        let make_candidate = |n: usize| -> String {
+            let copy_suffix = if n == 1 {
+                " (Copy)".to_string()
+            } else {
+                format!(" (Copy {})", n)
+            };
+            match ext {
+                Some(e) => format!("{}{}{}", clean_stem, copy_suffix, e),
+                None => format!("{}{}", clean_stem, copy_suffix),
+            }
+        };
+
+        let mut n = 1;
+        loop {
+            let candidate = make_candidate(n);
+            if !parent_dir.join(&candidate).exists() {
+                return candidate;
+            }
+            n += 1;
+        }
+    }
+
+    /// Asynchronously duplicates a file or folder with auto-incrementing naming and updates `workspace.json`.
+    pub async fn duplicate_item(&self, root: &Path, source_path: &Path) -> Result<PathBuf> {
+        if !source_path.exists() {
+            return Err(anyhow!("Source path does not exist: {}", source_path.display()));
+        }
+
+        let parent = source_path.parent().unwrap_or(root);
+        let file_name = source_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("Invalid source filename"))?;
+
+        let new_name = Self::resolve_duplicate_name(parent, file_name);
+        let new_path = parent.join(&new_name);
+
+        if source_path.is_dir() {
+            copy_dir_all(self, source_path, &new_path).await?;
+        } else {
+            self.suppress_path(&new_path);
+            tokio::fs::copy(source_path, &new_path).await?;
+        }
+
+        self.sync_meta_file(root).await?;
+
+        tracing::info!(
+            target: "aura_ui::workspace",
+            source = %source_path.display(),
+            destination = %new_path.display(),
+            "Duplicated workspace item"
+        );
+        Ok(new_path)
+    }
+
+    /// Asynchronously pastes a clipboard item into target_parent with collision resolution.
+    pub async fn paste_item(
+        &self,
+        root: &Path,
+        payload: &crate::stores::workspace_store::ClipboardPayload,
+        target_parent: &Path,
+    ) -> Result<PathBuf> {
+        let source_path = payload.path();
+        if !source_path.exists() {
+            return Err(anyhow!(
+                "Clipboard source path does not exist: {}",
+                source_path.display()
+            ));
+        }
+
+        let dest_dir = if target_parent.is_dir() {
+            target_parent.to_path_buf()
+        } else if target_parent.is_file() {
+            target_parent.parent().unwrap_or(root).to_path_buf()
+        } else {
+            tokio::fs::create_dir_all(target_parent).await?;
+            target_parent.to_path_buf()
+        };
+
+        let file_name = source_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("Invalid source filename"))?;
+
+        let dest_name = if dest_dir.join(file_name).exists() {
+            Self::resolve_duplicate_name(&dest_dir, file_name)
+        } else {
+            file_name.to_string()
+        };
+
+        let dest_path = dest_dir.join(&dest_name);
+
+        if source_path.is_dir() {
+            copy_dir_all(self, source_path, &dest_path).await?;
+        } else {
+            self.suppress_path(&dest_path);
+            tokio::fs::copy(source_path, &dest_path).await?;
+        }
+
+        self.sync_meta_file(root).await?;
+
+        tracing::info!(
+            target: "aura_ui::workspace",
+            source = %source_path.display(),
+            destination = %dest_path.display(),
+            "Pasted workspace item"
+        );
+        Ok(dest_path)
+    }
+
+
     /// Asynchronously moves/reorders an item.
     pub async fn reorder_item(
         &self,
@@ -273,3 +410,30 @@ impl WorkspaceService {
         Ok(file_path)
     }
 }
+
+async fn copy_dir_all(service: &WorkspaceService, src: &Path, dst: &Path) -> Result<()> {
+    tokio::fs::create_dir_all(dst).await?;
+    service.suppress_path(dst);
+
+    let mut stack = vec![(src.to_path_buf(), dst.to_path_buf())];
+    while let Some((curr_src, curr_dst)) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&curr_src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_path = entry.path();
+            let file_name = entry.file_name();
+            let dest_child = curr_dst.join(&file_name);
+            let file_type = entry.file_type().await?;
+
+            if file_type.is_dir() {
+                tokio::fs::create_dir_all(&dest_child).await?;
+                service.suppress_path(&dest_child);
+                stack.push((entry_path, dest_child));
+            } else if file_type.is_file() {
+                service.suppress_path(&dest_child);
+                tokio::fs::copy(&entry_path, &dest_child).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
