@@ -53,6 +53,7 @@ pub struct AuraAppState {
     pub workspace_store: WorkspaceStore,
     pub inline_rename: Option<InlineRenameState>,
     pub drag_target: Option<PathBuf>,
+    pub pending_delete_path: Option<PathBuf>,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
 }
@@ -85,6 +86,7 @@ impl Default for AuraAppState {
             workspace_store: WorkspaceStore::new(),
             inline_rename: None,
             drag_target: None,
+            pending_delete_path: None,
             workspace_service: default_workspace_service(),
         }
     }
@@ -94,6 +96,45 @@ impl AuraAppState {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn request_delete(&mut self, path: PathBuf) {
+        self.pending_delete_path = Some(path);
+    }
+
+    pub fn cancel_delete(&mut self) {
+        self.pending_delete_path = None;
+    }
+
+    pub async fn confirm_delete(&mut self) -> anyhow::Result<()> {
+        if let Some(target_path) = self.pending_delete_path.take() {
+            if let Some(root) = self.workspace_store.workspace_root.clone() {
+                self.workspace_service.delete_item(&root, &target_path).await?;
+                self.workspace_store.apply_delete(&target_path);
+            } else if target_path.exists() {
+                if target_path.is_dir() {
+                    tokio::fs::remove_dir_all(&target_path).await?;
+                } else {
+                    tokio::fs::remove_file(&target_path).await?;
+                }
+                self.workspace_store.apply_delete(&target_path);
+            }
+
+            // Close matching or descendant open tabs
+            let mut ids_to_close = Vec::new();
+            for tab in &self.tabs {
+                if let Some(ref fp) = tab.file_path {
+                    if fp == &target_path || fp.starts_with(&target_path) {
+                        ids_to_close.push(tab.id.clone());
+                    }
+                }
+            }
+            for id in ids_to_close {
+                self.close_tab(&id);
+            }
+        }
+        Ok(())
+    }
+
 
     pub fn start_inline_rename(&mut self, path: PathBuf, initial_name: impl Into<String>) {
         self.inline_rename = Some(InlineRenameState {

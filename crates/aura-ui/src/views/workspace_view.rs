@@ -78,7 +78,31 @@ impl AuraWorkspaceView {
             .detach();
         }
     }
+
+    /// Confirms pending item deletion off the main thread and syncs workspace.
+    pub fn confirm_delete_action(&mut self, cx: &mut Context<Self>) {
+        let mut state_clone = self.state.clone();
+        self.state.pending_delete_path = None;
+        cx.notify();
+
+        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                if let Err(e) = state_clone.confirm_delete().await {
+                    tracing::error!(target: "aura_ui::workspace", "Failed to confirm delete: {e}");
+                }
+                let _ = this.update(&mut cx, |this, cx| {
+                    if let Err(e) = this.state.reconcile_workspace_sync() {
+                        tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
 }
+
 
 impl Default for AuraWorkspaceView {
     fn default() -> Self {
@@ -400,6 +424,92 @@ impl Render for AuraWorkspaceView {
             })
             .when(self.state.is_log_viewer_open, |el| {
                 el.child(LogViewerView::render(&self.state, cx))
+            })
+            .when_some(self.state.pending_delete_path.clone(), |el, delete_path| {
+                let item_name = delete_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("item")
+                    .to_string();
+
+                el.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .bg(rgba(0x000000bb))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .w(px(380.0))
+                                .bg(rgb(0x272729))
+                                .border_1()
+                                .border_color(rgb(0x333333))
+                                .rounded_md()
+                                .p_5()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(rgb(0xffffff))
+                                        .child("Delete Item"),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(rgb(0xaaaaaa))
+                                        .child(format!(
+                                            "Are you sure you want to delete '{}' from disk? This action cannot be undone.",
+                                            item_name
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_end()
+                                        .gap_2()
+                                        .mt_2()
+                                        .child(
+                                            div()
+                                                .id("cancel-delete-btn")
+                                                .px_3()
+                                                .py_1()
+                                                .bg(rgb(0x333333))
+                                                .hover(|s| s.bg(rgb(0x444444)))
+                                                .text_xs()
+                                                .text_color(rgb(0xffffff))
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.state.cancel_delete();
+                                                    cx.notify();
+                                                }))
+                                                .child("Cancel"),
+                                        )
+                                        .child(
+                                            div()
+                                                .id("confirm-delete-btn")
+                                                .px_3()
+                                                .py_1()
+                                                .bg(rgb(0xe74c3c))
+                                                .hover(|s| s.bg(rgb(0xc0392b)))
+                                                .text_xs()
+                                                .text_color(rgb(0xffffff))
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.confirm_delete_action(cx);
+                                                }))
+                                                .child("Delete"),
+                                        ),
+                                ),
+                        ),
+                )
             })
     }
 }

@@ -68,3 +68,42 @@ fn test_handle_item_deleted_closes_tab_and_spawns_fallback_if_empty() {
     assert_eq!(store.tabs[0].title, "Untitled Request");
     assert_eq!(store.tabs[0].file_path, None);
 }
+
+#[tokio::test]
+async fn test_app_state_delete_confirmation_and_tab_cleanup() {
+    use aura_ui::app_state::AuraAppState;
+
+    let temp_root = std::env::temp_dir().join(format!("aura_test_del_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&temp_root).unwrap();
+    let root = temp_root.as_path();
+
+    let mut state = AuraAppState::new();
+    state.open_workspace_sync(root).unwrap();
+
+    // Create folder with two requests
+    let folder = state.workspace_service.create_folder(root, root, "Nested").await.unwrap();
+    let r1 = state.workspace_service.create_request(root, &folder, "Req1", HttpMethod::GET).await.unwrap();
+    let r2 = state.workspace_service.create_request(root, &folder, "Req2", HttpMethod::POST).await.unwrap();
+
+    // Open both requests in tabs
+    let _ = state.open_file_in_tab(&r1);
+    let _ = state.open_file_in_tab(&r2);
+    assert_eq!(state.tabs.len(), 2);
+
+    // Request deletion of folder
+    state.request_delete(folder.clone());
+    assert_eq!(state.pending_delete_path.as_ref(), Some(&folder));
+
+    // Confirm deletion: disk deleted + both descendant tabs closed (Review Focus #5)
+    state.confirm_delete().await.unwrap();
+    assert!(!folder.exists());
+    assert!(state.pending_delete_path.is_none());
+
+    // Tabs closed and automatically replaced with fallback Untitled Request
+    assert_eq!(state.tabs.len(), 1);
+    assert_eq!(state.tabs[0].title, "Untitled Request");
+
+    let _ = std::fs::remove_dir_all(&temp_root);
+}
+
+
