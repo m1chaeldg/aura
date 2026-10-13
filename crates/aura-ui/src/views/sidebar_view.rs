@@ -14,6 +14,9 @@ impl SidebarView {
         on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
         on_new: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>) + 'static + Copy,
+        on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
         let border_color = rgb(0x333333);
         let text_muted = rgb(0x7a7a7a);
@@ -32,6 +35,9 @@ impl SidebarView {
                     cx,
                     on_select,
                     on_toggle_folder,
+                    on_context_menu,
+                    on_new_in_folder,
+                    on_duplicate,
                     &mut element_counter,
                     &mut item_elements,
                 );
@@ -213,11 +219,19 @@ fn render_tree_node<V: 'static>(
     cx: &mut Context<V>,
     on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
     on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+    on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>) + 'static + Copy,
+    on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+    on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     counter: &mut u64,
     out: &mut Vec<AnyElement>,
 ) {
     let padding_left = px(8.0 + (depth as f32 * 12.0));
     let node_path = node.path();
+    let is_selected = state
+        .workspace_store
+        .selected_path
+        .as_deref()
+        == Some(node_path);
     let is_rename = state
         .inline_rename
         .as_ref()
@@ -245,48 +259,122 @@ fn render_tree_node<V: 'static>(
             let chevron = if *is_expanded { "▾" } else { "▸" };
             let el_id = ElementId::NamedInteger("sidebar-folder".into(), *counter);
             *counter += 1;
-            let folder_path = path.clone();
+            let folder_path_click = path.clone();
+            let folder_path_ctx = path.clone();
+            let folder_path_add = path.clone();
+            let folder_path_more = path.clone();
 
-            out.push(
-                div()
-                    .id(el_id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .pl(padding_left)
-                    .pr_2()
-                    .py_1()
-                    .rounded_sm()
+            let add_btn_id = ElementId::NamedInteger("sidebar-folder-add".into(), *counter);
+            *counter += 1;
+            let more_btn_id = ElementId::NamedInteger("sidebar-folder-more".into(), *counter);
+            *counter += 1;
+
+            let mut row = div()
+                .id(el_id)
+                .group("tree-row")
+                .flex()
+                .items_center()
+                .justify_between()
+                .pl(padding_left)
+                .pr_2()
+                .py_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .text_xs()
+                .text_color(rgb(0xffffff));
+
+            if is_selected {
+                row = row.bg(rgb(0x27374d)).border_1().border_color(rgb(0x0066cc));
+            } else {
+                row = row
                     .hover(|s| s.bg(rgb(0x2a2a2c)))
-                    .cursor_pointer()
                     .border_b_1()
-                    .border_color(border_indicator)
-                    .text_xs()
-                    .text_color(rgb(0xffffff))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        if !is_rename {
-                            on_toggle_folder(this, &folder_path, window, cx);
-                        }
-                    }))
-                    .child(div().text_color(rgb(0x7a7a7a)).child(chevron))
-                    .child("📁")
-                    .child(if is_rename {
-                        div()
-                            .px_1()
-                            .bg(rgb(0x1d1d1f))
-                            .border_1()
-                            .border_color(rgb(0x0066cc))
-                            .rounded_sm()
-                            .child(name.clone())
-                    } else {
-                        div().child(name.clone())
-                    })
-                    .into_any_element(),
-            );
+                    .border_color(border_indicator);
+            }
+
+            row = row
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if !is_rename {
+                        on_toggle_folder(this, &folder_path_click, window, cx);
+                    }
+                }))
+                .on_mouse_down(
+                    gpui::MouseButton::Right,
+                    cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                        let pos = (event.position.x.into(), event.position.y.into());
+                        on_context_menu(this, &folder_path_ctx, true, pos, window, cx);
+                    }),
+                );
+
+            let left_content = div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .overflow_hidden()
+                .child(div().text_color(rgb(0x7a7a7a)).child(chevron))
+                .child("📁")
+                .child(if is_rename {
+                    div()
+                        .px_1()
+                        .bg(rgb(0x1d1d1f))
+                        .border_1()
+                        .border_color(rgb(0x0066cc))
+                        .rounded_sm()
+                        .child(name.clone())
+                } else {
+                    div().child(name.clone())
+                });
+
+            let right_actions = div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .opacity(0.0)
+                .group_hover("tree-row", |s| s.opacity(1.0))
+                .child(
+                    div()
+                        .id(add_btn_id)
+                        .px_1()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x888888))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_new_in_folder(this, &folder_path_add, window, cx);
+                        }))
+                        .child("+"),
+                )
+                .child(
+                    div()
+                        .id(more_btn_id)
+                        .px_1()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x888888))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_context_menu(this, &folder_path_more, true, (180.0, 150.0), window, cx);
+                        }))
+                        .child("⋯"),
+                );
+
+            out.push(row.child(left_content).child(right_actions).into_any_element());
 
             if *is_expanded {
                 for child in children {
-                    render_tree_node(child, depth + 1, state, cx, on_select, on_toggle_folder, counter, out);
+                    render_tree_node(
+                        child,
+                        depth + 1,
+                        state,
+                        cx,
+                        on_select,
+                        on_toggle_folder,
+                        on_context_menu,
+                        on_new_in_folder,
+                        on_duplicate,
+                        counter,
+                        out,
+                    );
                 }
             }
         }
@@ -299,47 +387,110 @@ fn render_tree_node<V: 'static>(
             let el_id = ElementId::NamedInteger("sidebar-node-req".into(), *counter);
             *counter += 1;
             let path_str = path.to_string_lossy().to_string();
+            let req_path_ctx = path.clone();
+            let req_path_dup = path.clone();
+            let req_path_more = path.clone();
 
-            out.push(
-                div()
-                    .id(el_id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .pl(padding_left)
-                    .pr_2()
-                    .py_1()
-                    .rounded_sm()
+            let dup_btn_id = ElementId::NamedInteger("sidebar-req-dup".into(), *counter);
+            *counter += 1;
+            let more_btn_id = ElementId::NamedInteger("sidebar-req-more".into(), *counter);
+            *counter += 1;
+
+            let mut row = div()
+                .id(el_id)
+                .group("tree-row")
+                .flex()
+                .items_center()
+                .justify_between()
+                .pl(padding_left)
+                .pr_2()
+                .py_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .text_xs()
+                .text_color(rgb(0xcccccc));
+
+            if is_selected {
+                row = row.bg(rgb(0x27374d)).border_1().border_color(rgb(0x0066cc));
+            } else {
+                row = row
                     .hover(|s| s.bg(rgb(0x2a2a2c)))
                     .border_b_1()
-                    .border_color(border_indicator)
-                    .text_xs()
-                    .text_color(rgb(0xcccccc))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_select(this, "", &path_str, window, cx);
-                    }))
-                    .child(
-                        div()
-                            .px_1()
-                            .rounded_sm()
-                            .bg(rgb(0x1b1b1d))
-                            .text_xs()
-                            .text_color(badge_col)
-                            .child(method.as_str()),
-                    )
-                    .child(if is_rename {
-                        div()
-                            .px_1()
-                            .bg(rgb(0x1d1d1f))
-                            .border_1()
-                            .border_color(rgb(0x0066cc))
-                            .rounded_sm()
-                            .child(name.clone())
-                    } else {
-                        div().child(name.clone())
-                    })
-                    .into_any_element(),
-            );
+                    .border_color(border_indicator);
+            }
+
+            row = row
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    on_select(this, "", &path_str, window, cx);
+                }))
+                .on_mouse_down(
+                    gpui::MouseButton::Right,
+                    cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                        let pos = (event.position.x.into(), event.position.y.into());
+                        on_context_menu(this, &req_path_ctx, false, pos, window, cx);
+                    }),
+                );
+
+            let left_content = div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .px_1()
+                        .rounded_sm()
+                        .bg(rgb(0x1b1b1d))
+                        .text_xs()
+                        .text_color(badge_col)
+                        .child(method.as_str()),
+                )
+                .child(if is_rename {
+                    div()
+                        .px_1()
+                        .bg(rgb(0x1d1d1f))
+                        .border_1()
+                        .border_color(rgb(0x0066cc))
+                        .rounded_sm()
+                        .child(name.clone())
+                } else {
+                    div().child(name.clone())
+                });
+
+            let right_actions = div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .opacity(0.0)
+                .group_hover("tree-row", |s| s.opacity(1.0))
+                .child(
+                    div()
+                        .id(dup_btn_id)
+                        .px_1()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x888888))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_duplicate(this, &req_path_dup, window, cx);
+                        }))
+                        .child("📋"),
+                )
+                .child(
+                    div()
+                        .id(more_btn_id)
+                        .px_1()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x888888))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_context_menu(this, &req_path_more, false, (180.0, 150.0), window, cx);
+                        }))
+                        .child("⋯"),
+                );
+
+            out.push(row.child(left_content).child(right_actions).into_any_element());
         }
     }
 }

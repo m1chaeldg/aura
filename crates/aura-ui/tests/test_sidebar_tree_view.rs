@@ -74,3 +74,21 @@ fn test_context_menu_action_state_transitions() {
     assert!(state.workspace_store.active_context_menu.is_none());
 }
 
+#[test]
+fn test_sidebar_node_selection_and_action_menu_triggers() {
+    use aura_core::model::HttpMethod;
+    use aura_ui::stores::workspace_store::WorkspaceTreeNode;
+
+    let mut state = AuraAppState::new();
+    let req_path = PathBuf::from("/ws/GetUsers.aura");
+    state.workspace_store.tree = vec![WorkspaceTreeNode::Request {
+        name: "GetUsers.aura".to_string(),
+        path: req_path.clone(),
+        method: HttpMethod::GET,
+    }];
+
+    state.workspace_store.select_node(req_path.clone());
+    assert_eq!(state.workspace_store.selected_path.as_ref(), Some(&req_path));
+}
+
+

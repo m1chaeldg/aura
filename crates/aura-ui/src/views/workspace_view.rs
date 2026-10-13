@@ -422,6 +422,7 @@ impl Render for AuraWorkspaceView {
                         |this, col_id, req_id_or_path, _window, cx| {
                             if col_id.is_empty() {
                                 let path = std::path::PathBuf::from(req_id_or_path);
+                                this.state.workspace_store.select_node(path.clone());
                                 let _ = this.state.open_file_in_tab(&path);
                             } else {
                                 this.state.open_collection_request(col_id, req_id_or_path);
@@ -433,8 +434,56 @@ impl Render for AuraWorkspaceView {
                             cx.notify();
                         },
                         |this, folder_path, _window, cx| {
+                            this.state.workspace_store.select_node(folder_path.to_path_buf());
                             this.state.toggle_folder(folder_path);
                             cx.notify();
+                        },
+                        |this, target_path, is_folder, pos, _window, cx| {
+                            this.state.workspace_store.select_node(target_path.to_path_buf());
+                            this.state.workspace_store.open_context_menu(target_path.to_path_buf(), is_folder, pos);
+                            cx.notify();
+                        },
+                        |this, folder_path, _window, cx| {
+                            let root = this.state.workspace_store.workspace_root.clone();
+                            let srv = this.state.workspace_service.clone();
+                            let folder = folder_path.to_path_buf();
+                            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                let mut cx = cx.clone();
+                                async move {
+                                    if let Some(r) = root {
+                                        if let Ok(p) = srv.create_request(&r, &folder, "Untitled Request", HttpMethod::GET).await {
+                                            let _ = this.update(&mut cx, |this, cx| {
+                                                let _ = this.state.open_file_in_tab(&p);
+                                                let _ = this.state.reconcile_workspace_sync();
+                                                cx.notify();
+                                            });
+                                        }
+                                    }
+                                }
+                            })
+                            .detach();
+                        },
+                        |this, item_path, _window, cx| {
+                            let root = this.state.workspace_store.workspace_root.clone();
+                            let srv = this.state.workspace_service.clone();
+                            let item = item_path.to_path_buf();
+                            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                let mut cx = cx.clone();
+                                async move {
+                                    if let Some(r) = root {
+                                        if let Ok(p) = srv.duplicate_item(&r, &item).await {
+                                            let _ = this.update(&mut cx, |this, cx| {
+                                                if p.is_file() {
+                                                    let _ = this.state.open_file_in_tab(&p);
+                                                }
+                                                let _ = this.state.reconcile_workspace_sync();
+                                                cx.notify();
+                                            });
+                                        }
+                                    }
+                                }
+                            })
+                            .detach();
                         },
                     ))
                     .child(
