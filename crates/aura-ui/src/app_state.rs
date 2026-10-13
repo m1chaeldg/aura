@@ -641,6 +641,96 @@ impl AuraAppState {
                 self.prev_tab();
                 true
             }
+            Action::TreeUp => {
+                self.workspace_store.select_prev_node();
+                true
+            }
+            Action::TreeDown => {
+                self.workspace_store.select_next_node();
+                true
+            }
+            Action::TreeExpand => {
+                self.workspace_store.expand_selected();
+                true
+            }
+            Action::TreeCollapse => {
+                self.workspace_store.collapse_selected();
+                true
+            }
+            Action::TreeOpen => {
+                if let Some(selected) = self.workspace_store.selected_path.clone() {
+                    if selected.is_file() {
+                        let _ = self.open_file_in_tab(&selected);
+                        return true;
+                    }
+                }
+                false
+            }
+            Action::DuplicateItem => {
+                if let Some(selected) = self.workspace_store.selected_path.clone() {
+                    if let Some(root) = self.workspace_store.workspace_root.clone() {
+                        let srv = self.workspace_service.clone();
+                        let rt_handle = tokio::runtime::Handle::try_current();
+                        if let Ok(handle) = rt_handle {
+                            handle.spawn(async move {
+                                let _ = srv.duplicate_item(&root, &selected).await;
+                            });
+                        }
+                    }
+                    return true;
+                }
+                false
+            }
+            Action::CopyItem => {
+                self.workspace_store.copy_selected();
+                true
+            }
+            Action::PasteItem => {
+                if let Some(payload) = self.workspace_store.clipboard_item.clone() {
+                    if let Some(root) = self.workspace_store.workspace_root.clone() {
+                        let target = self
+                            .workspace_store
+                            .selected_path
+                            .clone()
+                            .unwrap_or_else(|| root.clone());
+                        let target_dir = if target.is_dir() {
+                            target
+                        } else {
+                            target.parent().unwrap_or(&target).to_path_buf()
+                        };
+                        let srv = self.workspace_service.clone();
+                        let rt_handle = tokio::runtime::Handle::try_current();
+                        if let Ok(handle) = rt_handle {
+                            handle.spawn(async move {
+                                let _ = srv.paste_item(&root, &payload, &target_dir).await;
+                            });
+                        }
+                    }
+                    return true;
+                }
+                false
+            }
+            Action::RenameItem => {
+                if let Some(selected) = self.workspace_store.selected_path.clone() {
+                    let name = selected
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    self.start_inline_rename(selected, name);
+                    true
+                } else {
+                    false
+                }
+            }
+            Action::DeleteItem => {
+                if let Some(selected) = self.workspace_store.selected_path.clone() {
+                    self.request_delete(selected);
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 }

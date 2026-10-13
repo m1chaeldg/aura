@@ -91,4 +91,21 @@ fn test_sidebar_node_selection_and_action_menu_triggers() {
     assert_eq!(state.workspace_store.selected_path.as_ref(), Some(&req_path));
 }
 
+#[test]
+fn test_sidebar_keyboard_shortcuts_resolution() {
+    use aura_ui::keybindings::{Action, KeybindingPreset};
+
+    let preset = KeybindingPreset::VsCode;
+
+    assert_eq!(preset.resolve("up", false, false, false), Some(Action::TreeUp));
+    assert_eq!(preset.resolve("down", false, false, false), Some(Action::TreeDown));
+    assert_eq!(preset.resolve("right", false, false, false), Some(Action::TreeExpand));
+    assert_eq!(preset.resolve("left", false, false, false), Some(Action::TreeCollapse));
+    assert_eq!(preset.resolve("d", true, false, false), Some(Action::DuplicateItem));
+    assert_eq!(preset.resolve("c", true, false, false), Some(Action::CopyItem));
+    assert_eq!(preset.resolve("v", true, false, false), Some(Action::PasteItem));
+    assert_eq!(preset.resolve("f2", false, false, false), Some(Action::RenameItem));
+    assert_eq!(preset.resolve("delete", false, false, false), Some(Action::DeleteItem));
+}
+
 

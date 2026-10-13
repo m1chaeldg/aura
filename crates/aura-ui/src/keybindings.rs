@@ -30,6 +30,26 @@ pub enum Action {
     NextTab,
     /// Switch to the previous tab (default: `Ctrl + Shift + Tab`)
     PrevTab,
+    /// Move sidebar tree selection down (default: `Down`)
+    TreeDown,
+    /// Move sidebar tree selection up (default: `Up`)
+    TreeUp,
+    /// Expand selected sidebar folder (default: `Right`)
+    TreeExpand,
+    /// Collapse selected sidebar folder (default: `Left`)
+    TreeCollapse,
+    /// Open selected sidebar request (default: `Enter`)
+    TreeOpen,
+    /// Duplicate selected item (default: `Ctrl + D`)
+    DuplicateItem,
+    /// Copy selected item to clipboard (default: `Ctrl + C`)
+    CopyItem,
+    /// Paste clipboard item into selected target (default: `Ctrl + V`)
+    PasteItem,
+    /// Delete selected item from disk (default: `Delete`)
+    DeleteItem,
+    /// Rename selected item inline (default: `F2`)
+    RenameItem,
 }
 
 impl Action {
@@ -47,6 +67,16 @@ impl Action {
             Self::SaveRequest => "Save Request",
             Self::NextTab => "Next Tab",
             Self::PrevTab => "Previous Tab",
+            Self::TreeUp => "Navigate Tree Up",
+            Self::TreeDown => "Navigate Tree Down",
+            Self::TreeExpand => "Expand Selected Folder",
+            Self::TreeCollapse => "Collapse Selected Folder",
+            Self::TreeOpen => "Open Selected Request",
+            Self::DuplicateItem => "Duplicate Item",
+            Self::CopyItem => "Copy Item",
+            Self::PasteItem => "Paste Item",
+            Self::DeleteItem => "Delete Item",
+            Self::RenameItem => "Rename Item",
         }
     }
 }
@@ -111,6 +141,18 @@ impl KeybindingPreset {
             (Self::SublimeText, Action::SaveRequest) => "Ctrl+S",
             (Self::SublimeText, Action::NextTab) => "Ctrl+PageDown",
             (Self::SublimeText, Action::PrevTab) => "Ctrl+PageUp",
+
+            // Universal sidebar actions across all presets
+            (_, Action::TreeUp) => "Up",
+            (_, Action::TreeDown) => "Down",
+            (_, Action::TreeExpand) => "Right",
+            (_, Action::TreeCollapse) => "Left",
+            (_, Action::TreeOpen) => "Enter",
+            (_, Action::DuplicateItem) => "Ctrl+D",
+            (_, Action::CopyItem) => "Ctrl+C",
+            (_, Action::PasteItem) => "Ctrl+V",
+            (_, Action::DeleteItem) => "Del",
+            (_, Action::RenameItem) => "F2",
         }
     }
 
@@ -123,13 +165,30 @@ impl KeybindingPreset {
             return Some(Action::CloseCommandPalette);
         }
 
-        // Shared universal shortcuts: Send Request (Ctrl+Enter), Save Request (Ctrl+S)
+        // Navigation and tree shortcuts without Ctrl/Cmd
+        if !ctrl_or_cmd && !shift && !alt {
+            match k.as_str() {
+                "up" => return Some(Action::TreeUp),
+                "down" => return Some(Action::TreeDown),
+                "right" => return Some(Action::TreeExpand),
+                "left" => return Some(Action::TreeCollapse),
+                "enter" => return Some(Action::TreeOpen),
+                "f2" => return Some(Action::RenameItem),
+                "delete" | "del" => return Some(Action::DeleteItem),
+                _ => {}
+            }
+        }
+
+        // Shared universal shortcuts: Send Request (Ctrl+Enter), Save Request (Ctrl+S), Duplication & Clipboard
         if ctrl_or_cmd && !shift && !alt {
             match k.as_str() {
                 "enter" => return Some(Action::SendRequest),
                 "s" => return Some(Action::SaveRequest),
                 "r" => return Some(Action::ResetDivider),
                 "\\" => return Some(Action::ToggleLayout),
+                "d" => return Some(Action::DuplicateItem),
+                "c" => return Some(Action::CopyItem),
+                "v" => return Some(Action::PasteItem),
                 _ => {}
             }
         }
@@ -243,6 +302,16 @@ impl KeybindingPreset {
             ),
             (Action::NextTab, self.primary_shortcut(Action::NextTab)),
             (Action::PrevTab, self.primary_shortcut(Action::PrevTab)),
+            (Action::TreeUp, self.primary_shortcut(Action::TreeUp)),
+            (Action::TreeDown, self.primary_shortcut(Action::TreeDown)),
+            (Action::TreeExpand, self.primary_shortcut(Action::TreeExpand)),
+            (Action::TreeCollapse, self.primary_shortcut(Action::TreeCollapse)),
+            (Action::TreeOpen, self.primary_shortcut(Action::TreeOpen)),
+            (Action::DuplicateItem, self.primary_shortcut(Action::DuplicateItem)),
+            (Action::CopyItem, self.primary_shortcut(Action::CopyItem)),
+            (Action::PasteItem, self.primary_shortcut(Action::PasteItem)),
+            (Action::DeleteItem, self.primary_shortcut(Action::DeleteItem)),
+            (Action::RenameItem, self.primary_shortcut(Action::RenameItem)),
         ]
     }
 }
