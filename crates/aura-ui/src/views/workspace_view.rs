@@ -225,6 +225,35 @@ impl AuraWorkspaceView {
             }
         }
     }
+
+    pub fn handle_drop_item(
+        &mut self,
+        dragging: std::path::PathBuf,
+        target: std::path::PathBuf,
+        placement: crate::stores::workspace_store::DragPlacement,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(root) = self.state.workspace_store.workspace_root.clone() {
+            let srv = self.state.workspace_service.clone();
+            let target_parent = match placement {
+                crate::stores::workspace_store::DragPlacement::Inside => target,
+                _ => target.parent().unwrap_or(&root).to_path_buf(),
+            };
+            self.state.workspace_store.set_drag_state(None);
+            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                let mut cx = cx.clone();
+                async move {
+                    if let Ok(()) = srv.reorder_item(&root, &dragging, &target_parent, 0).await {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            let _ = this.state.reconcile_workspace_sync();
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        }
+    }
 }
 
 

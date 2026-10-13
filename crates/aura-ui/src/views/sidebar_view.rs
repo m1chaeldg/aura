@@ -243,7 +243,16 @@ fn render_tree_node<V: 'static>(
         .map(|d| d == node_path)
         .unwrap_or(false);
 
-    let border_indicator = if is_drag_target {
+    let drag_info = state.workspace_store.drag_state.as_ref();
+    let is_hover_target = drag_info
+        .map(|d| &d.hover_target_path == node_path)
+        .unwrap_or(false);
+    let placement = drag_info.map(|d| d.placement);
+    let show_above_line = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Above);
+    let show_below_line = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Below);
+    let is_inside_drop = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Inside);
+
+    let border_indicator = if is_drag_target || is_inside_drop {
         rgb(0x0066cc)
     } else {
         rgb(0x222224)
@@ -269,6 +278,17 @@ fn render_tree_node<V: 'static>(
             let more_btn_id = ElementId::NamedInteger("sidebar-folder-more".into(), *counter);
             *counter += 1;
 
+            if show_above_line {
+                out.push(
+                    div()
+                        .h(px(2.0))
+                        .bg(rgb(0x0066cc))
+                        .rounded_sm()
+                        .my_0p5()
+                        .into_any_element(),
+                );
+            }
+
             let mut row = div()
                 .id(el_id)
                 .group("tree-row")
@@ -283,7 +303,7 @@ fn render_tree_node<V: 'static>(
                 .text_xs()
                 .text_color(rgb(0xffffff));
 
-            if is_selected {
+            if is_selected || is_inside_drop {
                 row = row.bg(rgb(0x27374d)).border_1().border_color(rgb(0x0066cc));
             } else {
                 row = row
@@ -360,6 +380,17 @@ fn render_tree_node<V: 'static>(
 
             out.push(row.child(left_content).child(right_actions).into_any_element());
 
+            if show_below_line {
+                out.push(
+                    div()
+                        .h(px(2.0))
+                        .bg(rgb(0x0066cc))
+                        .rounded_sm()
+                        .my_0p5()
+                        .into_any_element(),
+                );
+            }
+
             if *is_expanded {
                 for child in children {
                     render_tree_node(
@@ -395,6 +426,17 @@ fn render_tree_node<V: 'static>(
             *counter += 1;
             let more_btn_id = ElementId::NamedInteger("sidebar-req-more".into(), *counter);
             *counter += 1;
+
+            if show_above_line {
+                out.push(
+                    div()
+                        .h(px(2.0))
+                        .bg(rgb(0x0066cc))
+                        .rounded_sm()
+                        .my_0p5()
+                        .into_any_element(),
+                );
+            }
 
             let mut row = div()
                 .id(el_id)
@@ -491,6 +533,17 @@ fn render_tree_node<V: 'static>(
                 );
 
             out.push(row.child(left_content).child(right_actions).into_any_element());
+
+            if show_below_line {
+                out.push(
+                    div()
+                        .h(px(2.0))
+                        .bg(rgb(0x0066cc))
+                        .rounded_sm()
+                        .my_0p5()
+                        .into_any_element(),
+                );
+            }
         }
     }
 }

@@ -108,4 +108,44 @@ fn test_sidebar_keyboard_shortcuts_resolution() {
     assert_eq!(preset.resolve("delete", false, false, false), Some(Action::DeleteItem));
 }
 
+#[test]
+fn test_sidebar_drag_placement_calculation() {
+    use aura_ui::stores::workspace_store::{DragPlacement, SidebarDragState};
+    use std::path::PathBuf;
+
+    let drag = SidebarDragState {
+        dragging_path: PathBuf::from("/ws/Auth/Login.aura"),
+        hover_target_path: PathBuf::from("/ws/Auth/Register.aura"),
+        placement: DragPlacement::Below,
+    };
+    assert_eq!(drag.placement, DragPlacement::Below);
+}
+
+#[tokio::test]
+async fn test_sidebar_reorder_item_integration() {
+    use aura_core::model::HttpMethod;
+    use aura_ui::services::workspace_service::WorkspaceService;
+
+    let tmp = std::env::temp_dir().join(format!("aura_test_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let root = tmp.as_path();
+
+    let service = WorkspaceService::new();
+    let r1 = service
+        .create_request(root, root, "Req1", HttpMethod::GET)
+        .await
+        .unwrap();
+    let folder = service.create_folder(root, root, "FolderA").await.unwrap();
+
+    // Reorder r1 into folder
+    service
+        .reorder_item(root, &r1, &folder, 0)
+        .await
+        .unwrap();
+    assert!(folder.join("Req1.aura").exists());
+    assert!(!r1.exists());
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 
