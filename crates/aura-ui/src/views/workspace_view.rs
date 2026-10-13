@@ -3,9 +3,10 @@
 use crate::app_state::AuraAppState;
 use crate::stores::LayoutOrientation;
 use crate::views::{
-    CommandPaletteView, LogViewerView, RequestEditorView, RequestHeaderView, ResponsePaneView,
-    SidebarView, SplitResizerView, TabBarView,
+    CommandPaletteView, ContextMenuView, LogViewerView, RequestEditorView, RequestHeaderView,
+    ResponsePaneView, SidebarMenuAction, SidebarView, SplitResizerView, TabBarView,
 };
+
 use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -101,7 +102,131 @@ impl AuraWorkspaceView {
         })
         .detach();
     }
+
+    /// Handles actions dispatched from the sidebar context menu.
+    pub fn handle_sidebar_menu_action(&mut self, action: SidebarMenuAction, cx: &mut Context<Self>) {
+        let menu = match self.state.workspace_store.active_context_menu.take() {
+            Some(m) => m,
+            None => return,
+        };
+        let target = menu.target_path;
+        let is_folder = menu.is_folder;
+
+        match action {
+            SidebarMenuAction::NewRequest => {
+                let parent = if is_folder {
+                    target
+                } else {
+                    target.parent().unwrap_or(&target).to_path_buf()
+                };
+                let root = self.state.workspace_store.workspace_root.clone();
+                let srv = self.state.workspace_service.clone();
+                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                    let mut cx = cx.clone();
+                    async move {
+                        if let Some(r) = root {
+                            if let Ok(p) = srv.create_request(&r, &parent, "New Request", HttpMethod::GET).await {
+                                let _ = this.update(&mut cx, |this, cx| {
+                                    let _ = this.state.open_file_in_tab(&p);
+                                    let _ = this.state.reconcile_workspace_sync();
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    }
+                })
+                .detach();
+            }
+            SidebarMenuAction::NewFolder => {
+                let parent = if is_folder {
+                    target
+                } else {
+                    target.parent().unwrap_or(&target).to_path_buf()
+                };
+                let root = self.state.workspace_store.workspace_root.clone();
+                let srv = self.state.workspace_service.clone();
+                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                    let mut cx = cx.clone();
+                    async move {
+                        if let Some(r) = root {
+                            let _ = srv.create_folder(&r, &parent, "New Folder").await;
+                            let _ = this.update(&mut cx, |this, cx| {
+                                let _ = this.state.reconcile_workspace_sync();
+                                cx.notify();
+                            });
+                        }
+                    }
+                })
+                .detach();
+            }
+            SidebarMenuAction::Duplicate => {
+                let root = self.state.workspace_store.workspace_root.clone();
+                let srv = self.state.workspace_service.clone();
+                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                    let mut cx = cx.clone();
+                    async move {
+                        if let Some(r) = root {
+                            if let Ok(p) = srv.duplicate_item(&r, &target).await {
+                                let _ = this.update(&mut cx, |this, cx| {
+                                    if p.is_file() {
+                                        let _ = this.state.open_file_in_tab(&p);
+                                    }
+                                    let _ = this.state.reconcile_workspace_sync();
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    }
+                })
+                .detach();
+            }
+            SidebarMenuAction::Copy => {
+                self.state.workspace_store.select_node(target);
+                self.state.workspace_store.copy_selected();
+                cx.notify();
+            }
+            SidebarMenuAction::Paste => {
+                if let Some(payload) = self.state.workspace_store.clipboard_item.clone() {
+                    let root = self.state.workspace_store.workspace_root.clone();
+                    let srv = self.state.workspace_service.clone();
+                    let target_parent = if is_folder {
+                        target
+                    } else {
+                        target.parent().unwrap_or(&target).to_path_buf()
+                    };
+                    cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                        let mut cx = cx.clone();
+                        async move {
+                            if let Some(r) = root {
+                                let _ = srv.paste_item(&r, &payload, &target_parent).await;
+                                let _ = this.update(&mut cx, |this, cx| {
+                                    let _ = this.state.reconcile_workspace_sync();
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    })
+                    .detach();
+                }
+            }
+            SidebarMenuAction::Rename => {
+                let name = target
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.state.start_inline_rename(target, name);
+                cx.notify();
+            }
+
+            SidebarMenuAction::Delete => {
+                self.state.request_delete(target);
+                cx.notify();
+            }
+        }
+    }
 }
+
 
 
 impl Default for AuraWorkspaceView {
@@ -510,6 +635,19 @@ impl Render for AuraWorkspaceView {
                                 ),
                         ),
                 )
+            })
+            .when(self.state.workspace_store.active_context_menu.is_some(), |el| {
+                el.child(ContextMenuView::render(
+                    &self.state,
+                    cx,
+                    |this, action, _window, cx| {
+                        this.handle_sidebar_menu_action(action, cx);
+                    },
+                    |this, _window, cx| {
+                        this.state.workspace_store.close_context_menu();
+                        cx.notify();
+                    },
+                ))
             })
     }
 }

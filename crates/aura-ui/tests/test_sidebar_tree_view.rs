@@ -57,3 +57,20 @@ fn test_open_space1_reconciles_and_builds_tree() {
         }
     }
 }
+
+#[test]
+fn test_context_menu_action_state_transitions() {
+    let mut state = AuraAppState::new();
+    let target = PathBuf::from("/ws/Auth/Login.aura");
+
+    state.workspace_store.open_context_menu(target.clone(), false, (100.0, 150.0));
+    assert!(state.workspace_store.active_context_menu.is_some());
+
+    let menu = state.workspace_store.active_context_menu.as_ref().unwrap();
+    assert_eq!(menu.target_path, target);
+    assert_eq!(menu.position, (100.0, 150.0));
+
+    state.workspace_store.close_context_menu();
+    assert!(state.workspace_store.active_context_menu.is_none());
+}
+
