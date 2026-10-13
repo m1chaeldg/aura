@@ -25,6 +25,46 @@ pub enum WorkspaceTreeNode {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClipboardPayload {
+    Request(PathBuf),
+    Folder(PathBuf),
+}
+
+impl ClipboardPayload {
+    pub fn path(&self) -> &Path {
+        match self {
+            ClipboardPayload::Request(p) => p.as_path(),
+            ClipboardPayload::Folder(p) => p.as_path(),
+        }
+    }
+
+    pub fn is_folder(&self) -> bool {
+        matches!(self, ClipboardPayload::Folder(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DragPlacement {
+    Above,
+    Inside,
+    Below,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SidebarDragState {
+    pub dragging_path: PathBuf,
+    pub hover_target_path: PathBuf,
+    pub placement: DragPlacement,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextMenuState {
+    pub target_path: PathBuf,
+    pub is_folder: bool,
+    pub position: (f32, f32),
+}
+
 impl WorkspaceTreeNode {
     pub fn name(&self) -> &str {
         match self {
@@ -51,12 +91,118 @@ pub struct WorkspaceStore {
     pub workspace_root: Option<PathBuf>,
     pub metadata: Option<WorkspaceMetadata>,
     pub tree: Vec<WorkspaceTreeNode>,
+    pub selected_path: Option<PathBuf>,
+    pub clipboard_item: Option<ClipboardPayload>,
+    pub active_context_menu: Option<ContextMenuState>,
+    pub drag_state: Option<SidebarDragState>,
 }
 
 impl WorkspaceStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn visible_nodes(&self) -> Vec<&WorkspaceTreeNode> {
+        let mut result = Vec::new();
+        collect_visible_nodes(&self.tree, &mut result);
+        result
+    }
+
+    pub fn select_node(&mut self, path: PathBuf) {
+        self.selected_path = Some(path);
+    }
+
+    pub fn select_next_node(&mut self) {
+        let visible = self.visible_nodes();
+        if visible.is_empty() {
+            return;
+        }
+        match &self.selected_path {
+            None => {
+                self.selected_path = Some(visible[0].path().to_path_buf());
+            }
+            Some(current) => {
+                if let Some(pos) = visible.iter().position(|n| n.path() == current) {
+                    let next_idx = (pos + 1).min(visible.len() - 1);
+                    self.selected_path = Some(visible[next_idx].path().to_path_buf());
+                } else {
+                    self.selected_path = Some(visible[0].path().to_path_buf());
+                }
+            }
+        }
+    }
+
+    pub fn select_prev_node(&mut self) {
+        let visible = self.visible_nodes();
+        if visible.is_empty() {
+            return;
+        }
+        match &self.selected_path {
+            None => {
+                self.selected_path = Some(visible[0].path().to_path_buf());
+            }
+            Some(current) => {
+                if let Some(pos) = visible.iter().position(|n| n.path() == current) {
+                    let prev_idx = pos.saturating_sub(1);
+                    self.selected_path = Some(visible[prev_idx].path().to_path_buf());
+                } else {
+                    self.selected_path = Some(visible[0].path().to_path_buf());
+                }
+            }
+        }
+    }
+
+    pub fn expand_selected(&mut self) {
+        if let Some(path) = self.selected_path.clone() {
+            set_folder_expanded_recursive(&mut self.tree, &path, true);
+        }
+    }
+
+    pub fn collapse_selected(&mut self) {
+        if let Some(path) = self.selected_path.clone() {
+            set_folder_expanded_recursive(&mut self.tree, &path, false);
+        }
+    }
+
+    pub fn copy_selected(&mut self) {
+        if let Some(selected) = &self.selected_path {
+            if let Some(node) = find_node_recursive(&self.tree, selected) {
+                match node {
+                    WorkspaceTreeNode::Folder { path, .. } => {
+                        self.clipboard_item = Some(ClipboardPayload::Folder(path.clone()));
+                    }
+                    WorkspaceTreeNode::Request { path, .. } => {
+                        self.clipboard_item = Some(ClipboardPayload::Request(path.clone()));
+                    }
+                }
+            } else if selected.extension().is_some() {
+                self.clipboard_item = Some(ClipboardPayload::Request(selected.clone()));
+            } else {
+                self.clipboard_item = Some(ClipboardPayload::Folder(selected.clone()));
+            }
+        }
+    }
+
+    pub fn clear_clipboard(&mut self) {
+        self.clipboard_item = None;
+    }
+
+    pub fn open_context_menu(&mut self, target_path: PathBuf, is_folder: bool, pos: (f32, f32)) {
+        self.active_context_menu = Some(ContextMenuState {
+            target_path,
+            is_folder,
+            position: pos,
+        });
+    }
+
+    pub fn close_context_menu(&mut self) {
+        self.active_context_menu = None;
+    }
+
+    pub fn set_drag_state(&mut self, state: Option<SidebarDragState>) {
+        self.drag_state = state;
+    }
+
 
     /// Sets the active workspace with root, metadata, and tree.
     pub fn set_workspace(
@@ -340,3 +486,44 @@ fn insert_node_recursive(
 
     false
 }
+
+fn collect_visible_nodes<'a>(nodes: &'a [WorkspaceTreeNode], out: &mut Vec<&'a WorkspaceTreeNode>) {
+    for node in nodes {
+        out.push(node);
+        if let WorkspaceTreeNode::Folder { is_expanded, children, .. } = node {
+            if *is_expanded {
+                collect_visible_nodes(children, out);
+            }
+        }
+    }
+}
+
+fn find_node_recursive<'a>(nodes: &'a [WorkspaceTreeNode], target: &Path) -> Option<&'a WorkspaceTreeNode> {
+    for node in nodes {
+        if node.path() == target {
+            return Some(node);
+        }
+        if let WorkspaceTreeNode::Folder { children, .. } = node {
+            if let Some(found) = find_node_recursive(children, target) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn set_folder_expanded_recursive(nodes: &mut [WorkspaceTreeNode], target: &Path, expanded: bool) -> bool {
+    for node in nodes {
+        if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
+            if path == target {
+                *is_expanded = expanded;
+                return true;
+            }
+            if set_folder_expanded_recursive(children, target, expanded) {
+                return true;
+            }
+        }
+    }
+    false
+}
+

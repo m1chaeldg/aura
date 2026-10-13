@@ -97,3 +97,85 @@ Accept = "application/json"
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_workspace_store_visible_nodes_and_keyboard_traversal() {
+    use aura_ui::stores::workspace_store::WorkspaceTreeNode;
+
+    let mut store = WorkspaceStore::new();
+    let folder1 = WorkspaceTreeNode::Folder {
+        name: "Auth".to_string(),
+        path: PathBuf::from("/ws/Auth"),
+        is_expanded: false,
+        children: vec![WorkspaceTreeNode::Request {
+            name: "Login.aura".to_string(),
+            path: PathBuf::from("/ws/Auth/Login.aura"),
+            method: HttpMethod::POST,
+        }],
+    };
+    let req2 = WorkspaceTreeNode::Request {
+        name: "Health.aura".to_string(),
+        path: PathBuf::from("/ws/Health.aura"),
+        method: HttpMethod::GET,
+    };
+    store.tree = vec![folder1, req2];
+
+    // Collapsed folder: only 2 visible nodes (Auth, Health.aura)
+    let visible = store.visible_nodes();
+    assert_eq!(visible.len(), 2);
+    assert_eq!(visible[0].path(), PathBuf::from("/ws/Auth").as_path());
+    assert_eq!(visible[1].path(), PathBuf::from("/ws/Health.aura").as_path());
+
+    // Traversal: start at top
+    store.select_node(PathBuf::from("/ws/Auth"));
+    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Auth").as_path()));
+
+    store.select_next_node();
+    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Health.aura").as_path()));
+
+    // Next at end stays clamped
+    store.select_next_node();
+    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Health.aura").as_path()));
+
+    // Expand Auth folder
+    store.select_node(PathBuf::from("/ws/Auth"));
+    store.expand_selected();
+    let visible_after_expand = store.visible_nodes();
+    assert_eq!(visible_after_expand.len(), 3);
+    assert_eq!(visible_after_expand[1].path(), PathBuf::from("/ws/Auth/Login.aura").as_path());
+
+    // Navigate into expanded child
+    store.select_next_node();
+    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Auth/Login.aura").as_path()));
+
+    // Collapse
+    store.select_node(PathBuf::from("/ws/Auth"));
+    store.collapse_selected();
+    assert_eq!(store.visible_nodes().len(), 2);
+}
+
+#[test]
+fn test_workspace_store_clipboard_and_context_menu_state() {
+    use aura_ui::stores::workspace_store::ClipboardPayload;
+
+    let mut store = WorkspaceStore::new();
+    let req_path = PathBuf::from("/ws/Auth/Login.aura");
+    store.select_node(req_path.clone());
+    store.copy_selected();
+
+    match &store.clipboard_item {
+        Some(ClipboardPayload::Request(p)) => assert_eq!(p, &req_path),
+        _ => panic!("Expected ClipboardPayload::Request"),
+    }
+
+    store.open_context_menu(req_path.clone(), false, (120.0, 240.0));
+    assert!(store.active_context_menu.is_some());
+    let menu = store.active_context_menu.as_ref().unwrap();
+    assert_eq!(menu.target_path, req_path);
+    assert!(!menu.is_folder);
+    assert_eq!(menu.position, (120.0, 240.0));
+
+    store.close_context_menu();
+    assert!(store.active_context_menu.is_none());
+}
+
