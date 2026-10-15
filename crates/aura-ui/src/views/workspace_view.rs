@@ -639,6 +639,13 @@ impl Render for AuraWorkspaceView {
                                         is_horizontal,
                                         &active_title,
                                         active_method,
+                                        self.state.active_editor_tab,
+                                        active_tab.map(|t| &t.request),
+                                        cx,
+                                        |this, tab, _window, cx| {
+                                            this.state.set_editor_tab(tab);
+                                            cx.notify();
+                                        },
                                     ))
                                     .child(SplitResizerView::render(
                                         is_horizontal,
