@@ -17,12 +17,7 @@ use std::time::Instant;
 /// 4. HTTP dispatch & timing
 /// 5. Post-response scripting & test assertion evaluation (deno_core)
 pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Result<AuraResponse> {
-    tracing::info!(
-        target: "aura_engine",
-        method = %req.method,
-        url = %req.url,
-        "Dispatching HTTP request"
-    );
+    let mut all_console_logs = Vec::new();
     let mut working_vars = context.request_vars.clone();
     for (k, v) in &context.environment_vars {
         working_vars.entry(k.clone()).or_insert_with(|| v.clone());
@@ -36,6 +31,7 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         let mut script_rt = AuraScriptRuntime::new(working_vars.clone())?;
         let res = script_rt.run(&req.scripts.pre_request)?;
         working_vars = res.variables;
+        all_console_logs.extend(res.console_logs);
     }
 
     // Update context with potentially mutated variables
@@ -66,6 +62,15 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
 
     // 4. Inject Auth
     apply_auth(&req.auth, &mut header_pairs, &mut url_params);
+
+    tracing::info!(
+        target: "aura_engine::request",
+        method = %req.method,
+        url = %rendered_url,
+        headers_count = header_pairs.len(),
+        body_type = %req.body.type_name(),
+        "Dispatching HTTP request"
+    );
 
     // Build Reqwest Client
     let client_builder = reqwest::Client::builder()
@@ -204,14 +209,6 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     let size_bytes = body_bytes.len();
     let body_str = String::from_utf8_lossy(&body_bytes).to_string();
 
-    tracing::info!(
-        target: "aura_engine",
-        status = status,
-        duration_ms = duration_ms,
-        size_bytes = size_bytes,
-        "HTTP response received successfully"
-    );
-
     // 5. Post-response & Test assertions execution
     let mut assertions = Vec::new();
 
@@ -220,15 +217,28 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         script_rt.inject_response_context(status, &body_str, &resp_headers)?;
 
         if !req.scripts.post_response.is_empty() {
-            let _ = script_rt.run(&req.scripts.post_response);
+            if let Ok(res) = script_rt.run(&req.scripts.post_response) {
+                all_console_logs.extend(res.console_logs);
+            }
         }
 
         if !req.scripts.tests.is_empty() {
             if let Ok(test_res) = script_rt.run(&req.scripts.tests) {
+                all_console_logs.extend(test_res.console_logs);
                 assertions = test_res.test_assertions;
             }
         }
     }
+
+    tracing::info!(
+        target: "aura_engine::response",
+        status = status,
+        duration_ms = duration_ms,
+        size_bytes = size_bytes,
+        assertions_count = assertions.len(),
+        assertions_failed = assertions.iter().filter(|a| !a.passed).count(),
+        "Received HTTP response"
+    );
 
     Ok(AuraResponse {
         status,
@@ -239,5 +249,6 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         body: body_str,
         timestamp: chrono::Utc::now(),
         assertions,
+        console_logs: all_console_logs,
     })
 }
