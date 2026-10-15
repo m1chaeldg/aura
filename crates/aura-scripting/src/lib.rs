@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use aura_core::model::TestAssertion;
 use deno_core::{JsRuntime, RuntimeOptions};
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -26,6 +26,8 @@ pub struct AuraScriptRuntime {
     variables: Arc<Mutex<HashMap<String, String>>>,
     assertions: Arc<Mutex<Vec<TestAssertion>>>,
 }
+
+const PRELUDE_JS: &str = include_str!("prelude.js");
 
 impl AuraScriptRuntime {
     pub fn new(initial_vars: HashMap<String, String>) -> Result<Self> {
@@ -61,7 +63,7 @@ impl AuraScriptRuntime {
     fn bootstrap_sandbox(&mut self) -> Result<()> {
         let init_vars_json = serde_json::to_string(&*self.variables.lock())?;
 
-        // Injected JS environment with console, aura, and BDD test suite
+        // Injected JS environment with internal storage and console interceptor
         let init_script = format!(
             r#"
             (function() {{
@@ -69,9 +71,11 @@ impl AuraScriptRuntime {
                 const _logs = [];
                 const _assertions = [];
 
-                globalThis.__AURA_VARS = _vars;
-                globalThis.__AURA_LOGS = _logs;
-                globalThis.__AURA_ASSERTIONS = _assertions;
+                globalThis.__aura_internal = {{
+                    vars: _vars,
+                    logs: _logs,
+                    assertions: _assertions
+                }};
 
                 // Console interceptor
                 globalThis.console = {{
@@ -93,48 +97,11 @@ impl AuraScriptRuntime {
                         set: function(key, val) {{ _vars[key] = String(val); }}
                     }},
                     test: function(name, fn) {{
-                        const start = Date.now();
-                        try {{
-                            fn();
-                            _assertions.push({{
-                                name: name,
-                                passed: true,
-                                message: null,
-                                duration_ms: Date.now() - start
-                            }});
-                        }} catch (err) {{
-                            _assertions.push({{
-                                name: name,
-                                passed: false,
-                                message: err && err.message ? err.message : String(err),
-                                duration_ms: Date.now() - start
-                            }});
+                        if (typeof globalThis.it === 'function') {{
+                            return globalThis.it(name, fn);
                         }}
-                    }},
-                    expect: function(actual) {{
-                        return {{
-                            toBe: function(expected) {{
-                                if (actual !== expected) {{
-                                    throw new Error(`Expected ${{expected}}, got ${{actual}}`);
-                                }}
-                            }},
-                            toEqual: function(expected) {{
-                                if (JSON.stringify(actual) !== JSON.stringify(expected)) {{
-                                    throw new Error(`Expected ${{JSON.stringify(expected)}}, got ${{JSON.stringify(actual)}}`);
-                                }}
-                            }},
-                            toBeTruthy: function() {{
-                                if (!actual) throw new Error(`Expected truthy value, got ${{actual}}`);
-                            }},
-                            toBeGreaterThan: function(n) {{
-                                if (!(actual > n)) throw new Error(`Expected ${{actual}} > ${{n}}`);
-                            }}
-                        }};
                     }}
                 }};
-
-                // Global expect helper alias
-                globalThis.expect = globalThis.aura.expect;
             }})();
             "#
         );
@@ -142,6 +109,19 @@ impl AuraScriptRuntime {
         self.runtime
             .execute_script("aura_sandbox_bootstrap.js", init_script)
             .context("Failed to bootstrap deno_core sandbox")?;
+
+        self.runtime
+            .execute_script("aura_prelude.js", PRELUDE_JS.to_string())
+            .context("Failed to load prelude.js")?;
+
+        // Link aura.expect to global expect
+        let alias_script = r#"
+            if (typeof globalThis.expect === 'function' && globalThis.aura) {
+                globalThis.aura.expect = globalThis.expect;
+            }
+        "#;
+        self.runtime
+            .execute_script("aura_alias.js", alias_script.to_string())?;
 
         Ok(())
     }
@@ -159,12 +139,13 @@ impl AuraScriptRuntime {
         let script = format!(
             r#"
             (function() {{
+                const _rawBody = {escaped_body};
                 globalThis.response = {{
                     status: {status},
-                    body: {escaped_body},
+                    body: _rawBody,
                     headers: {headers_json},
                     json: function() {{
-                        return JSON.parse({escaped_body});
+                        return JSON.parse(_rawBody);
                     }}
                 }};
                 globalThis.aura.response = globalThis.response;
@@ -193,12 +174,23 @@ impl AuraScriptRuntime {
             .execute_script("user_script.js", script.to_string())
             .context("JavaScript execution error")?;
 
+        // Drain async tests
+        let drain_script = r#"
+            (async function() {
+                if (typeof globalThis.__aura_drain_tests === 'function') {
+                    await globalThis.__aura_drain_tests();
+                }
+            })();
+        "#;
+        let _ = self.runtime.execute_script("aura_drain.js", drain_script.to_string());
+        let _ = futures::executor::block_on(self.runtime.run_event_loop(Default::default()));
+
         // Extract mutated variables, console logs, and test assertions
         let extract_script = r#"
             JSON.stringify({
-                vars: globalThis.__AURA_VARS,
-                logs: globalThis.__AURA_LOGS,
-                assertions: globalThis.__AURA_ASSERTIONS
+                vars: globalThis.__aura_internal.vars,
+                logs: globalThis.__aura_internal.logs,
+                assertions: globalThis.__aura_internal.assertions
             })
         "#;
 
@@ -227,7 +219,9 @@ impl AuraScriptRuntime {
         struct AssertionDto {
             name: String,
             passed: bool,
+            #[serde(alias = "error_message")]
             message: Option<String>,
+            #[serde(default)]
             duration_ms: u64,
         }
 
