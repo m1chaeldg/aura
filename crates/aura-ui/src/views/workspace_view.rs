@@ -658,6 +658,18 @@ impl Render for AuraWorkspaceView {
                                     .child(ResponsePaneView::render(
                                         self.state.split_ratio,
                                         is_horizontal,
+                                        active_tab.and_then(|t| t.response.as_ref()),
+                                        self.state.active_response_tab,
+                                        self.state.active_body_mode,
+                                        cx,
+                                        |this, tab, _window, cx| {
+                                            this.state.set_response_tab(tab);
+                                            cx.notify();
+                                        },
+                                        |this, _window, cx| {
+                                            this.state.toggle_response_body_mode();
+                                            cx.notify();
+                                        },
                                     )),
                             ),
                     ),
