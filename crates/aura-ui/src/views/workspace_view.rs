@@ -320,6 +320,7 @@ impl Render for AuraWorkspaceView {
         let accent_blue = rgb(0x0066cc);
         let is_horizontal = self.state.orientation == LayoutOrientation::Horizontal;
         let split_pct = (self.state.split_ratio * 100.0).round() as u32;
+        let is_in_flight = self.state.execution_service.is_in_flight();
 
         let focus = self.focus_handle.get_or_insert_with(|| cx.focus_handle()).clone();
 
@@ -621,10 +622,51 @@ impl Render for AuraWorkspaceView {
                             .child(RequestHeaderView::render(
                                 active_method,
                                 &active_url,
+                                is_in_flight,
                                 cx,
                                 |this, _window, cx| {
-                                    this.state.status_message =
-                                        Some("Dispatching request...".to_string());
+                                    let active_tab = match this.state.tabs.get(this.state.active_tab_index) {
+                                        Some(t) => t.clone(),
+                                        None => return,
+                                    };
+                                    let execution_service = this.state.execution_service.clone();
+                                    let tab_id = active_tab.id.clone();
+                                    let request = active_tab.request.clone();
+                                    let context = aura_core::templating::TemplateContext::default();
+
+                                    this.state.status_message = Some(format!("Sending {} {}...", request.method, request.url));
+                                    cx.notify();
+
+                                    cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                        let mut cx = cx.clone();
+                                        async move {
+                                            let result = execution_service.dispatch(request, context).await;
+                                            let _ = this.update(&mut cx, |this, cx| {
+                                                match result {
+                                                    Ok(resp) => {
+                                                        this.state.status_message = Some(format!(
+                                                            "Response: {} {} ({} ms, {})",
+                                                            resp.status,
+                                                            resp.status_text,
+                                                            resp.duration_ms,
+                                                            resp.formatted_size()
+                                                        ));
+                                                        if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                                            tab.response = Some(resp);
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        this.state.status_message = Some(format!("Request failed: {e}"));
+                                                    }
+                                                }
+                                                cx.notify();
+                                            });
+                                        }
+                                    }).detach();
+                                },
+                                |this, _window, cx| {
+                                    this.state.execution_service.cancel();
+                                    this.state.status_message = Some("Request cancelled by user".to_string());
                                     cx.notify();
                                 },
                             ))
