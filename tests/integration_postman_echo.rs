@@ -143,3 +143,48 @@ async fn test_live_delete_request() {
     assert_eq!(resp.status, 200);
     assert!(resp.body.contains("https://postman-echo.com/delete"));
 }
+
+#[tokio::test]
+async fn test_e2e_request_execution_full_lifecycle_with_postman_echo() {
+    let mut req = AuraRequest::new(
+        "Postman Echo POST",
+        HttpMethod::POST,
+        "https://postman-echo.com/post",
+    );
+    req.body = BodyType::Json(r#"{"msg": "Hello {{echo_user}}"}"#.to_string());
+    req.scripts = aura::model::ScriptConfig {
+        pre_request: r#"
+            const name = faker.person.firstName();
+            console.log("Setting echo_user to", name);
+            aura.variables.set("echo_user", name);
+        "#
+        .to_string(),
+        post_response: r#"
+            console.log("Echo responded with status", response.status);
+        "#
+        .to_string(),
+        tests: r#"
+            describe("Echo Response Validation", () => {
+                it("returns 200 OK", () => {
+                    expect(response.status).toBe(200);
+                });
+                it("echoed user message", () => {
+                    const data = response.json();
+                    expect(data.json.msg).toContain("Hello ");
+                });
+            });
+        "#
+        .to_string(),
+    };
+
+    let context = TemplateContext::new();
+    let resp = execute_request(&req, &context)
+        .await
+        .expect("execute request to postman echo");
+
+    assert_eq!(resp.status, 200);
+    assert!(!resp.console_logs.is_empty());
+    assert!(resp.console_logs.iter().any(|l| l.message.contains("Setting echo_user to")));
+    assert_eq!(resp.assertions.len(), 2);
+    assert!(resp.assertions.iter().all(|a| a.passed));
+}
