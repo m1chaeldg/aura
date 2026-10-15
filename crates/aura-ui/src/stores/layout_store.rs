@@ -12,6 +12,7 @@ pub enum LayoutOrientation {
 pub enum EditorTab {
     Params,
     Headers,
+    Auth,
     Variables,
     Body,
     Scripts,
@@ -19,12 +20,22 @@ pub enum EditorTab {
     Settings,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ResponseTab {
-    Json,
-    Table,
+    #[default]
+    Body,
     Headers,
     Tests,
+    Console,
+    Raw,
+    Json,
+    Table,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ResponseBodyMode {
+    #[default]
+    Pretty,
     Raw,
 }
 
@@ -49,7 +60,7 @@ impl Default for LayoutStore {
             split_ratio: 0.5,
             orientation: LayoutOrientation::Horizontal,
             active_editor_tab: EditorTab::Params,
-            active_response_tab: ResponseTab::Json,
+            active_response_tab: ResponseTab::Body,
             is_code_mode: false,
             is_command_palette_open: false,
             is_log_viewer_open: false,

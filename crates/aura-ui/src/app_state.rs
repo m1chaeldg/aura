@@ -1,7 +1,9 @@
 //! Main application state for UI coordinating Domain Stores and Services.
 
 use crate::keybindings::{Action, KeybindingPreset};
-use crate::stores::{EditorTab, LayoutOrientation, ResponseTab, WorkspaceStore, WorkspaceTab};
+use crate::stores::{
+    EditorTab, LayoutOrientation, ResponseBodyMode, ResponseTab, WorkspaceStore, WorkspaceTab,
+};
 use aura_core::model::{AuraRequest, Collection, Folder, HttpMethod};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -47,6 +49,7 @@ pub struct AuraAppState {
     pub orientation: LayoutOrientation,
     pub active_editor_tab: EditorTab,
     pub active_response_tab: ResponseTab,
+    pub active_body_mode: ResponseBodyMode,
     pub is_code_mode: bool, // Dual-mode: Visual vs Code Editor (TOML)
     pub is_command_palette_open: bool,
     pub is_log_viewer_open: bool,
@@ -66,10 +69,16 @@ pub struct AuraAppState {
     pub pending_delete_path: Option<PathBuf>,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
+    #[serde(skip, default = "default_execution_service")]
+    pub execution_service: std::sync::Arc<crate::services::ExecutionService>,
 }
 
 fn default_workspace_service() -> std::sync::Arc<crate::services::WorkspaceService> {
     std::sync::Arc::new(crate::services::WorkspaceService::new())
+}
+
+fn default_execution_service() -> std::sync::Arc<crate::services::ExecutionService> {
+    std::sync::Arc::new(crate::services::ExecutionService::new())
 }
 
 impl Default for AuraAppState {
@@ -80,7 +89,8 @@ impl Default for AuraAppState {
             split_ratio: 0.5,
             orientation: LayoutOrientation::Horizontal,
             active_editor_tab: EditorTab::Params,
-            active_response_tab: ResponseTab::Json,
+            active_response_tab: ResponseTab::Body,
+            active_body_mode: ResponseBodyMode::Pretty,
             is_code_mode: false,
             is_command_palette_open: false,
             is_log_viewer_open: false,
@@ -99,6 +109,7 @@ impl Default for AuraAppState {
             drag_target: None,
             pending_delete_path: None,
             workspace_service: default_workspace_service(),
+            execution_service: default_execution_service(),
         }
     }
 }
@@ -106,6 +117,25 @@ impl Default for AuraAppState {
 impl AuraAppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_editor_tab(&mut self, tab: EditorTab) {
+        self.active_editor_tab = tab;
+    }
+
+    pub fn set_response_tab(&mut self, tab: ResponseTab) {
+        self.active_response_tab = tab;
+    }
+
+    pub fn toggle_response_body_mode(&mut self) {
+        self.active_body_mode = match self.active_body_mode {
+            ResponseBodyMode::Pretty => ResponseBodyMode::Raw,
+            ResponseBodyMode::Raw => ResponseBodyMode::Pretty,
+        };
+    }
+
+    pub fn cancel_active_request(&self) {
+        self.execution_service.cancel();
     }
 
     pub fn request_delete(&mut self, path: PathBuf) {
@@ -502,6 +532,7 @@ impl AuraAppState {
 
     /// Close tab by ID
     pub fn close_tab(&mut self, id: &str) {
+        self.execution_service.cancel();
         if let Some(pos) = self.tabs.iter().position(|t| t.id == id) {
             self.tabs.remove(pos);
             if self.tabs.is_empty() {

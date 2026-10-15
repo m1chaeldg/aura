@@ -514,9 +514,11 @@ dependencies = [
  "aura-core",
  "chrono",
  "deno_core",
+ "futures",
  "parking_lot",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
