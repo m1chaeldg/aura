@@ -98,6 +98,22 @@ pub enum BodyType {
     },
 }
 
+impl BodyType {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Json(_) => "JSON",
+            Self::Xml(_) => "XML",
+            Self::Text(_) => "Text",
+            Self::Raw { .. } => "Raw",
+            Self::Form(_) => "Form",
+            Self::FormUrlEncoded(_) => "FormUrlEncoded",
+            Self::Multipart(_) => "Multipart",
+            Self::Binary { .. } => "Binary",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MultipartPart {
     pub name: String,
@@ -252,6 +268,14 @@ pub struct TestAssertion {
     pub duration_ms: u64,
 }
 
+/// Console log captured during script execution
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsoleMessage {
+    pub level: String,
+    pub message: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 /// HTTP Response from client engine
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuraResponse {
@@ -263,6 +287,8 @@ pub struct AuraResponse {
     pub body: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub assertions: Vec<TestAssertion>,
+    #[serde(default)]
+    pub console_logs: Vec<ConsoleMessage>,
 }
 
 impl AuraResponse {

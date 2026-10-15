@@ -10,12 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConsoleMessage {
-    pub level: String,
-    pub message: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-}
+pub use aura_core::model::ConsoleMessage;
 
 #[derive(Debug, Clone, Default)]
 pub struct ScriptExecutionResult {
