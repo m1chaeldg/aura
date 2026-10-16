@@ -19,6 +19,6 @@ pub use stores::{
 pub use views::AuraWorkspaceView;
 
 /// Initializes GPUI Kit component suite and assets.
-pub fn init_kit(cx: &mut gpui_kit::App) {
+pub fn init_kit(cx: &mut gpui::App) {
     gpui_kit::init(cx);
 }

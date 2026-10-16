@@ -4,6 +4,49 @@ use crate::app_state::AuraAppState;
 use crate::stores::workspace_store::WorkspaceTreeNode;
 use aura_core::model::HttpMethod;
 use gpui::*;
+use gpui_kit::component::sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem};
+use gpui_kit::component::Collapsible;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Clone)]
+pub struct SidebarCustomItem {
+    collapsed: bool,
+    elements: Rc<RefCell<Option<Vec<AnyElement>>>>,
+}
+
+impl SidebarCustomItem {
+    pub fn new(elements: Vec<AnyElement>) -> Self {
+        Self {
+            collapsed: false,
+            elements: Rc::new(RefCell::new(Some(elements))),
+        }
+    }
+}
+
+impl Collapsible for SidebarCustomItem {
+    fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+    fn collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
+        self
+    }
+}
+
+impl SidebarItem for SidebarCustomItem {
+    fn render(self, _id: impl Into<ElementId>, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+        let items = self.elements.borrow_mut().take().unwrap_or_default();
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .p_2()
+            .gap_1()
+            .overflow_hidden()
+            .children(items)
+    }
+}
 
 pub struct SidebarView;
 
@@ -18,7 +61,7 @@ impl SidebarView {
         on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
         on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border_color = rgb(0x333333);
+        let _border_color = rgb(0x333333);
         let text_muted = rgb(0x7a7a7a);
         let accent_blue = rgb(0x0066cc);
         let green_color = rgb(0x28a745);
@@ -134,69 +177,51 @@ impl SidebarView {
                 }
             });
 
-        div()
-            .w(px(240.0))
-            .flex()
-            .flex_col()
-            .bg(rgb(0x222224))
-            .border_r_1()
-            .border_color(border_color)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(border_color)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(text_muted)
-                            .child(workspace_title),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .id("sidebar-new-btn")
-                                    .text_xs()
-                                    .text_color(accent_blue)
-                                    .hover(|s| s.text_color(rgb(0x0071e3)))
-                                    .child("+ Req")
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        on_new(this, window, cx);
-                                    })),
-                            ),
-                    ),
+        Sidebar::new("workspace-sidebar")
+            .header(
+                SidebarHeader::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .w_full()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(text_muted)
+                                .child(workspace_title),
+                        )
+                        .child(
+                            div()
+                                .id("sidebar-new-btn")
+                                .text_xs()
+                                .text_color(accent_blue)
+                                .hover(|s| s.text_color(rgb(0x0071e3)))
+                                .cursor_pointer()
+                                .child("+ Req")
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_new(this, window, cx);
+                                })),
+                        ),
+                ),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .p_2()
-                    .gap_1()
-                    .overflow_hidden()
-                    .children(item_elements),
+                SidebarGroup::new("COLLECTIONS")
+                    .child(SidebarCustomItem::new(item_elements)),
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_2()
-                    .border_t_1()
-                    .border_color(border_color)
-                    .text_xs()
-                    .text_color(text_muted)
-                    .child(div().text_color(green_color).child("✓"))
-                    .child("Workspace Synced"),
+            .footer(
+                SidebarFooter::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_3()
+                        .py_2()
+                        .text_xs()
+                        .text_color(text_muted)
+                        .child(div().text_color(green_color).child("✓"))
+                        .child("Workspace Synced"),
+                ),
             )
     }
 }
