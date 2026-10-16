@@ -17,3 +17,8 @@ pub use stores::{
     WorkspaceTab, WorkspaceTreeNode,
 };
 pub use views::AuraWorkspaceView;
+
+/// Initializes GPUI Kit component suite and assets.
+pub fn init_kit(cx: &mut gpui_kit::App) {
+    gpui_kit::init(cx);
+}

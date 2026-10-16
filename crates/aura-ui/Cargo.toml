@@ -10,6 +10,7 @@ aura-scripting = { path = "../aura-scripting" }
 aura-sync = { path = "../aura-sync" }
 aura-parser = { path = "../aura-parser" }
 gpui = "0.2.2"
+gpui-kit = "0.7.3"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
