@@ -34,6 +34,7 @@ impl RequestEditorView {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
         split_ratio: f32,
         is_horizontal: bool,

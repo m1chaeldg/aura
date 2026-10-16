@@ -4,18 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Application preferences persisted across app launches.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AuraPreferences {
     #[serde(default)]
     pub last_workspace_path: Option<PathBuf>,
-}
-
-impl Default for AuraPreferences {
-    fn default() -> Self {
-        Self {
-            last_workspace_path: None,
-        }
-    }
 }
 
 impl AuraPreferences {

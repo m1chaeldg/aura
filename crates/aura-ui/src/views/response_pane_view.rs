@@ -47,6 +47,7 @@ impl ResponsePaneView {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
         split_ratio: f32,
         is_horizontal: bool,
@@ -96,6 +97,7 @@ impl ResponsePaneView {
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_active_response<V: 'static>(
         resp: &AuraResponse,
         active_tab: ResponseTab,

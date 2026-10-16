@@ -51,6 +51,7 @@ impl SidebarItem for SidebarCustomItem {
 pub struct SidebarView;
 
 impl SidebarView {
+    #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
         state: &AuraAppState,
         cx: &mut Context<V>,
@@ -237,6 +238,7 @@ fn method_badge_color(method: HttpMethod) -> Rgba {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_tree_node<V: 'static>(
     node: &WorkspaceTreeNode,
     depth: usize,
@@ -270,7 +272,7 @@ fn render_tree_node<V: 'static>(
 
     let drag_info = state.workspace_store.drag_state.as_ref();
     let is_hover_target = drag_info
-        .map(|d| &d.hover_target_path == node_path)
+        .map(|d| d.hover_target_path == node_path)
         .unwrap_or(false);
     let placement = drag_info.map(|d| d.placement);
     let show_above_line = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Above);
