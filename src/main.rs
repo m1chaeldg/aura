@@ -4,7 +4,7 @@ use anyhow::Result;
 use aura::design::colors;
 use aura::logging::init_system_logging;
 use aura::ui::AuraWorkspaceView;
-use gpui::{AppContext, Application, WindowOptions};
+use gpui::{AppContext, WindowOptions};
 
 fn main() -> Result<()> {
     // Initialize asynchronous structured system logging & rolling file diagnostics
@@ -20,8 +20,9 @@ fn main() -> Result<()> {
         .build()?;
     let _tokio_guard = tokio_rt.enter();
 
-    let app = Application::new();
+    let app = gpui_kit::application();
     app.run(|cx| {
+        aura_ui::init_kit(cx);
         let window_options = WindowOptions::default();
 
         let _ = cx.open_window(window_options, |_window, cx| {
