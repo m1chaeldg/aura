@@ -64,6 +64,7 @@ impl TabBarView {
                     })),
             );
 
+            let tab_id_right = tab.id.clone();
             let tab_item = Tab::new()
                 .label(tab.title.clone())
                 .selected(is_active)
@@ -71,7 +72,13 @@ impl TabBarView {
                 .suffix(suffix_area)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     on_select_tab(this, idx, window, cx);
-                }));
+                }))
+                .on_mouse_down(
+                    gpui::MouseButton::Right,
+                    cx.listener(move |this, _, window, cx| {
+                        on_close_tab(this, &tab_id_right, window, cx);
+                    }),
+                );
 
             tab_bar = tab_bar.child(tab_item);
         }
