@@ -29,7 +29,8 @@ aura-engine = { path = "crates/aura-engine" }
 aura-sync = { path = "crates/aura-sync" }
 aura-ui = { path = "crates/aura-ui" }
 anyhow = "1"
-gpui = "0.2.2"
+gpui = { package = "gpui-pre", version = "0.3.9" }
+gpui-kit = "0.7.3"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 

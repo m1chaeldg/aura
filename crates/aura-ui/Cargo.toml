@@ -9,7 +9,7 @@ aura-engine = { path = "../aura-engine" }
 aura-scripting = { path = "../aura-scripting" }
 aura-sync = { path = "../aura-sync" }
 aura-parser = { path = "../aura-parser" }
-gpui = "0.2.2"
+gpui = { package = "gpui-pre", version = "0.3.9" }
 gpui-kit = "0.7.3"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
