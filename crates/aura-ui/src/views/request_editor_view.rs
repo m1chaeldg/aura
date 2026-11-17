@@ -6,6 +6,8 @@ use aura_core::model::{AuraRequest, AuthConfig, BodyType, HttpMethod, TestAssert
 use base64::Engine;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::tab::{Tab, TabBar};
+use gpui_kit::component::Selectable;
 
 #[derive(Debug, Clone)]
 pub enum RequestEditorAction {
@@ -101,9 +103,7 @@ impl RequestEditorView {
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
         let border_color = rgb(0x333333);
-        let accent_blue = rgb(0x0066cc);
         let bg_surface = rgb(0x272729);
-        let text_muted = rgb(0x7a7a7a);
 
         let headers_count = request
             .map(|r| r.headers.iter().filter(|h| h.enabled).count())
@@ -127,60 +127,41 @@ impl RequestEditorView {
                 div()
                     .flex()
                     .items_center()
-                    .gap_1()
                     .px_3()
                     .py_1()
                     .bg(bg_surface)
                     .border_b_1()
                     .border_color(border_color)
-                    .children(Self::available_tabs().iter().copied().map(|tab| {
-                        let is_active = tab == active_tab;
-                        let badge = match tab {
-                            EditorTab::Headers if headers_count > 0 => {
-                                Some(format!(" ({headers_count})"))
-                            }
-                            EditorTab::Params if params_count > 0 => {
-                                Some(format!(" ({params_count})"))
-                            }
-                            EditorTab::Body if body_name != "None" => {
-                                Some(format!(" ({body_name})"))
-                            }
-                            EditorTab::Auth if auth_name != "Inherit" && auth_name != "None" => {
-                                Some(format!(" ({auth_name})"))
-                            }
-                            _ => None,
-                        };
-
-                        div()
-                            .id(ElementId::NamedInteger(
-                                "editor-tab".into(),
-                                tab as u16 as u64,
-                            ))
-                            .flex()
-                            .items_center()
-                            .px_3()
-                            .py_1()
-                            .rounded_md()
-                            .bg(if is_active { rgb(0x1d1d1f) } else { bg_surface })
-                            .border_b_2()
-                            .border_color(if is_active {
-                                accent_blue
-                            } else {
-                                rgba(0x00000000)
-                            })
-                            .hover(|s| s.bg(rgb(0x333333)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(if is_active { rgb(0xffffff) } else { text_muted })
-                            .child(format!(
-                                "{}{}",
-                                Self::tab_title(tab),
-                                badge.unwrap_or_default()
-                            ))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(this, RequestEditorAction::SelectTab(tab), window, cx);
-                            }))
-                    })),
+                    .child({
+                        let mut bar = TabBar::new("request-editor-tabs");
+                        for tab in Self::available_tabs().iter().copied() {
+                            let is_active = tab == active_tab;
+                            let badge = match tab {
+                                EditorTab::Headers if headers_count > 0 => {
+                                    Some(format!(" ({headers_count})"))
+                                }
+                                EditorTab::Params if params_count > 0 => {
+                                    Some(format!(" ({params_count})"))
+                                }
+                                EditorTab::Body if body_name != "None" => {
+                                    Some(format!(" ({body_name})"))
+                                }
+                                EditorTab::Auth if auth_name != "Inherit" && auth_name != "None" => {
+                                    Some(format!(" ({auth_name})"))
+                                }
+                                _ => None,
+                            };
+                            let label = format!("{}{}", Self::tab_title(tab), badge.unwrap_or_default());
+                            let item = Tab::new()
+                                .label(label)
+                                .selected(is_active)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_action(this, RequestEditorAction::SelectTab(tab), window, cx);
+                                }));
+                            bar = bar.child(item);
+                        }
+                        bar
+                    }),
             )
             // Content Panel
             .child(

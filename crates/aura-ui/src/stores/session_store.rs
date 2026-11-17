@@ -179,11 +179,39 @@ impl SessionStore {
         }
     }
 
+    /// Checks if the active tab is currently dirty
+    pub fn is_active_tab_dirty(&self) -> bool {
+        self.tabs
+            .get(self.active_tab_index)
+            .map(|t| t.is_dirty)
+            .unwrap_or(false)
+    }
+
+    /// Checks if a specific tab by ID is currently dirty
+    pub fn is_tab_dirty(&self, tab_id: &str) -> bool {
+        self.tabs
+            .iter()
+            .find(|t| t.id == tab_id)
+            .map(|t| t.is_dirty)
+            .unwrap_or(false)
+    }
+
     /// Save active tab and clear dirty state
     pub fn save_active_tab(&mut self) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             tab.mark_dirty(false);
         }
+    }
+
+    /// Automatically save active tab if dirty, returning whether it was saved
+    pub fn auto_save_active_tab(&mut self) -> bool {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if tab.is_dirty {
+                tab.mark_dirty(false);
+                return true;
+            }
+        }
+        false
     }
 
     /// Navigate to next tab

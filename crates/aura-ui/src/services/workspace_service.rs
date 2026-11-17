@@ -414,6 +414,15 @@ impl WorkspaceService {
         tokio::fs::write(&file_path, toml_str).await?;
         Ok(file_path)
     }
+
+    /// Asynchronously saves a request `.aura` file to disk and suppresses watcher notification.
+    pub async fn save_request_file(&self, file_path: &Path, request: &AuraRequest) -> Result<()> {
+        let toml_str = request_to_toml(request)?;
+        self.suppress_path(file_path);
+        tokio::fs::write(file_path, toml_str).await?;
+        tracing::info!(target: "aura_ui::workspace", path = %file_path.display(), "Saved request file to disk");
+        Ok(())
+    }
 }
 
 async fn copy_dir_all(service: &WorkspaceService, src: &Path, dst: &Path) -> Result<()> {

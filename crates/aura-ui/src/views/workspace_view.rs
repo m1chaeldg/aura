@@ -17,6 +17,7 @@ pub struct AuraWorkspaceView {
     pub focus_handle: Option<FocusHandle>,
     #[allow(dead_code)]
     watcher_cancel: Option<tokio_util::sync::CancellationToken>,
+    pub auto_save_seq: u64,
 }
 
 impl AuraWorkspaceView {
@@ -25,8 +26,11 @@ impl AuraWorkspaceView {
             state: AuraAppState::new(),
             focus_handle: Some(cx.focus_handle()),
             watcher_cancel: None,
+            auto_save_seq: 0,
         };
         let prefs = crate::preferences::AuraPreferences::load();
+        view.state.auto_save_enabled = prefs.auto_save_enabled;
+        view.state.auto_save_delay_ms = prefs.auto_save_delay_ms;
         if let Some(ref path) = prefs.last_workspace_path {
             if path.exists() && path.is_dir() && view.state.open_workspace_sync(path).is_ok() {
                 view.start_workspace_watcher(path.clone(), cx);
@@ -62,7 +66,7 @@ impl AuraWorkspaceView {
         if let Ok((cancel_token, mut rx)) = watcher_res {
             self.watcher_cancel = Some(cancel_token);
 
-            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                 let mut cx = cx.clone();
                 async move {
                     while let Some(_event) = rx.recv().await {
@@ -83,13 +87,198 @@ impl AuraWorkspaceView {
         }
     }
 
+    /// Dispatches active HTTP request via execution service off the main thread.
+    pub fn dispatch_send_request(&mut self, cx: &mut Context<Self>) {
+        let active_tab = match self.state.tabs.get(self.state.active_tab_index) {
+            Some(t) => t.clone(),
+            None => return,
+        };
+        let execution_service = self.state.execution_service.clone();
+        let tab_id = active_tab.id.clone();
+        let request = active_tab.request.clone();
+        let context = aura_core::templating::TemplateContext::default();
+
+        self.state.status_message = Some(format!("Sending {} {}...", request.method, request.url));
+        cx.notify();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let result = execution_service.dispatch(request, context).await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    match result {
+                        Ok(resp) => {
+                            this.state.status_message = Some(format!(
+                                "Response: {} {} ({} ms, {})",
+                                resp.status,
+                                resp.status_text,
+                                resp.duration_ms,
+                                resp.formatted_size()
+                            ));
+                            if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                tab.response = Some(resp);
+                            }
+                        }
+                        Err(e) => {
+                            this.state.status_message = Some(format!("Request failed: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Schedules a debounced auto-save for the active request tab.
+    pub fn schedule_auto_save(&mut self, cx: &mut Context<Self>) {
+        if !self.state.auto_save_enabled {
+            return;
+        }
+        let active_tab_id = match self.state.tabs.get(self.state.active_tab_index) {
+            Some(t) if t.is_dirty => t.id.clone(),
+            _ => return,
+        };
+
+        self.auto_save_seq += 1;
+        let current_seq = self.auto_save_seq;
+        let delay_ms = self.state.auto_save_delay_ms;
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    if this.auto_save_seq == current_seq {
+                        this.dispatch_auto_save_tab(&active_tab_id, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Dispatches a save for the active tab (manual or keyboard triggered) and persists off the main thread.
+    pub fn dispatch_save_active_tab(&mut self, is_auto_save: bool, cx: &mut Context<Self>) {
+        let active_tab = match self.state.tabs.get(self.state.active_tab_index) {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        if !active_tab.is_dirty {
+            return;
+        }
+
+        // Cancel any pending debounced auto-save timers
+        self.auto_save_seq += 1;
+
+        if is_auto_save {
+            self.state.auto_save_active_tab();
+        } else {
+            self.state.save_active_tab();
+        }
+        cx.notify();
+
+        let srv = self.state.workspace_service.clone();
+        let request = active_tab.request.clone();
+        let file_path = active_tab.file_path.clone();
+        let root = self.state.workspace_store.workspace_root.clone();
+        let tab_id = active_tab.id.clone();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                if let Some(path) = file_path {
+                    let _ = srv.save_request_file(&path, &request).await;
+                } else if let Some(r) = root {
+                    let sanitized = request
+                        .name
+                        .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                    let file_name = if sanitized.ends_with(".aura") {
+                        sanitized
+                    } else {
+                        format!("{sanitized}.aura")
+                    };
+                    let path = r.join(file_name);
+                    if srv.save_request_file(&path, &request).await.is_ok() {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            if let Some(tab) =
+                                this.state.tabs.iter_mut().find(|t| t.id == tab_id)
+                            {
+                                if tab.file_path.is_none() {
+                                    tab.file_path = Some(path);
+                                }
+                            }
+                            let _ = this.state.reconcile_workspace_sync();
+                            cx.notify();
+                        });
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Dispatches auto-save for a specific tab ID off the main thread.
+    pub fn dispatch_auto_save_tab(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let tab = match self.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+            Some(t) if t.is_dirty => {
+                t.mark_dirty(false);
+                self.state.status_message = Some(format!("Auto-saved: {}", t.title));
+                t.clone()
+            }
+            _ => return,
+        };
+
+        cx.notify();
+
+        let srv = self.state.workspace_service.clone();
+        let request = tab.request.clone();
+        let file_path = tab.file_path.clone();
+        let root = self.state.workspace_store.workspace_root.clone();
+        let tab_id_clone = tab_id.to_string();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                if let Some(path) = file_path {
+                    let _ = srv.save_request_file(&path, &request).await;
+                } else if let Some(r) = root {
+                    let sanitized = request
+                        .name
+                        .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                    let file_name = if sanitized.ends_with(".aura") {
+                        sanitized
+                    } else {
+                        format!("{sanitized}.aura")
+                    };
+                    let path = r.join(file_name);
+                    if srv.save_request_file(&path, &request).await.is_ok() {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            if let Some(tab) =
+                                this.state.tabs.iter_mut().find(|t| t.id == tab_id_clone)
+                            {
+                                if tab.file_path.is_none() {
+                                    tab.file_path = Some(path);
+                                }
+                            }
+                            let _ = this.state.reconcile_workspace_sync();
+                            cx.notify();
+                        });
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Confirms pending item deletion off the main thread and syncs workspace.
     pub fn confirm_delete_action(&mut self, cx: &mut Context<Self>) {
         let mut state_clone = self.state.clone();
         self.state.pending_delete_path = None;
         cx.notify();
 
-        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
                 if let Err(e) = state_clone.confirm_delete().await {
@@ -112,7 +301,7 @@ impl AuraWorkspaceView {
         self.state.rename_dialog = None;
         cx.notify();
 
-        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
                 match state_clone.confirm_rename().await {
@@ -173,7 +362,7 @@ impl AuraWorkspaceView {
                 };
                 let root = self.state.workspace_store.workspace_root.clone();
                 let srv = self.state.workspace_service.clone();
-                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                     let mut cx = cx.clone();
                     async move {
                         if let Some(r) = root {
@@ -200,7 +389,7 @@ impl AuraWorkspaceView {
                 };
                 let root = self.state.workspace_store.workspace_root.clone();
                 let srv = self.state.workspace_service.clone();
-                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                     let mut cx = cx.clone();
                     async move {
                         if let Some(r) = root {
@@ -217,7 +406,7 @@ impl AuraWorkspaceView {
             SidebarMenuAction::Duplicate => {
                 let root = self.state.workspace_store.workspace_root.clone();
                 let srv = self.state.workspace_service.clone();
-                cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                     let mut cx = cx.clone();
                     async move {
                         if let Some(r) = root {
@@ -249,7 +438,7 @@ impl AuraWorkspaceView {
                     } else {
                         target.parent().unwrap_or(&target).to_path_buf()
                     };
-                    cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                    cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                         let mut cx = cx.clone();
                         async move {
                             if let Some(r) = root {
@@ -301,7 +490,7 @@ impl AuraWorkspaceView {
                 _ => target.parent().unwrap_or(&root).to_path_buf(),
             };
             self.state.workspace_store.set_drag_state(None);
-            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                 let mut cx = cx.clone();
                 async move {
                     if let Ok(()) = srv.reorder_item(&root, &dragging, &target_parent, 0).await {
@@ -490,6 +679,9 @@ impl AuraWorkspaceView {
                     }
                 }
             }
+        }
+        if self.state.is_active_tab_dirty() {
+            self.schedule_auto_save(cx);
         }
         cx.notify();
     }
@@ -1047,6 +1239,7 @@ impl Default for AuraWorkspaceView {
             state: AuraAppState::new(),
             focus_handle: None,
             watcher_cancel: None,
+            auto_save_seq: 0,
         }
     }
 }
@@ -1087,6 +1280,13 @@ impl Render for AuraWorkspaceView {
             .text_color(text_color)
             .track_focus(&focus)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+                if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
+                    && (event.keystroke.key == "s" || event.keystroke.key == "S")
+                {
+                    this.dispatch_save_active_tab(false, cx);
+                    return;
+                }
+
                 if this.state.active_input_target.is_some() {
                     let key = event.keystroke.key.as_str();
                     match key {
@@ -1104,10 +1304,12 @@ impl Render for AuraWorkspaceView {
                         }
                         "backspace" => {
                             this.state.backspace_active();
+                            this.schedule_auto_save(cx);
                             cx.notify();
                         }
                         "space" => {
                             this.state.type_char_into_active(' ');
+                            this.schedule_auto_save(cx);
                             cx.notify();
                         }
                         _ => {
@@ -1122,6 +1324,7 @@ impl Render for AuraWorkspaceView {
                                     c
                                 };
                                 this.state.type_char_into_active(final_c);
+                                this.schedule_auto_save(cx);
                                 cx.notify();
                             }
                         }
@@ -1138,6 +1341,7 @@ impl Render for AuraWorkspaceView {
                         }
                         "enter" => {
                             this.state.confirm_editor_dialog();
+                            this.schedule_auto_save(cx);
                             cx.notify();
                         }
                         "tab" => {
@@ -1357,7 +1561,7 @@ impl Render for AuraWorkspaceView {
                                     .text_color(text_color)
                                     .child("📁 Open Workspace")
                                     .on_click(cx.listener(|_this, _, _window, cx| {
-                                        cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                                             let mut cx = cx.clone();
                                             async move {
                                                 if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
@@ -1442,7 +1646,7 @@ impl Render for AuraWorkspaceView {
                             let root = this.state.workspace_store.workspace_root.clone();
                             let srv = this.state.workspace_service.clone();
                             let folder = folder_path.to_path_buf();
-                            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                                 let mut cx = cx.clone();
                                 async move {
                                     if let Some(r) = root {
@@ -1462,7 +1666,7 @@ impl Render for AuraWorkspaceView {
                             let root = this.state.workspace_store.workspace_root.clone();
                             let srv = this.state.workspace_service.clone();
                             let item = item_path.to_path_buf();
-                            cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
                                 let mut cx = cx.clone();
                                 async move {
                                     if let Some(r) = root {
@@ -1514,51 +1718,28 @@ impl Render for AuraWorkspaceView {
                                 active_method,
                                 &active_url,
                                 is_in_flight,
+                                self.state.active_input_target == Some(crate::app_state::ActiveInputTarget::Url),
+                                self.state.is_active_tab_dirty(),
                                 cx,
                                 |this, _window, cx| {
-                                    let active_tab = match this.state.tabs.get(this.state.active_tab_index) {
-                                        Some(t) => t.clone(),
-                                        None => return,
-                                    };
-                                    let execution_service = this.state.execution_service.clone();
-                                    let tab_id = active_tab.id.clone();
-                                    let request = active_tab.request.clone();
-                                    let context = aura_core::templating::TemplateContext::default();
-
-                                    this.state.status_message = Some(format!("Sending {} {}...", request.method, request.url));
+                                    this.state.cycle_method();
+                                    this.schedule_auto_save(cx);
                                     cx.notify();
-
-                                    cx.spawn(|this: WeakEntity<Self>, cx: &mut AsyncApp| {
-                                        let mut cx = cx.clone();
-                                        async move {
-                                            let result = execution_service.dispatch(request, context).await;
-                                            let _ = this.update(&mut cx, |this, cx| {
-                                                match result {
-                                                    Ok(resp) => {
-                                                        this.state.status_message = Some(format!(
-                                                            "Response: {} {} ({} ms, {})",
-                                                            resp.status,
-                                                            resp.status_text,
-                                                            resp.duration_ms,
-                                                            resp.formatted_size()
-                                                        ));
-                                                        if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
-                                                            tab.response = Some(resp);
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        this.state.status_message = Some(format!("Request failed: {e}"));
-                                                    }
-                                                }
-                                                cx.notify();
-                                            });
-                                        }
-                                    }).detach();
+                                },
+                                |this, _window, cx| {
+                                    this.state.set_active_input(Some(crate::app_state::ActiveInputTarget::Url));
+                                    cx.notify();
+                                },
+                                |this, _window, cx| {
+                                    this.dispatch_send_request(cx);
                                 },
                                 |this, _window, cx| {
                                     this.state.execution_service.cancel();
                                     this.state.status_message = Some("Request cancelled by user".to_string());
                                     cx.notify();
+                                },
+                                |this, _window, cx| {
+                                    this.dispatch_save_active_tab(false, cx);
                                 },
                             ))
                             .child(

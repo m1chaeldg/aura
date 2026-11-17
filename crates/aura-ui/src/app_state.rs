@@ -20,6 +20,7 @@ pub enum ScriptSubTab {
 /// Active input focus target for modal-free inline editing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActiveInputTarget {
+    Url,
     ParamKey(usize),
     ParamValue(usize),
     HeaderKey(usize),
@@ -292,10 +293,22 @@ pub struct AuraAppState {
     pub editor_dialog: Option<EditorDialogState>,
     pub active_input_target: Option<ActiveInputTarget>,
     pub active_script_sub_tab: ScriptSubTab,
+    #[serde(default = "default_auto_save_enabled")]
+    pub auto_save_enabled: bool,
+    #[serde(default = "default_auto_save_delay_ms")]
+    pub auto_save_delay_ms: u64,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
     #[serde(skip, default = "default_execution_service")]
     pub execution_service: std::sync::Arc<crate::services::ExecutionService>,
+}
+
+fn default_auto_save_enabled() -> bool {
+    true
+}
+
+fn default_auto_save_delay_ms() -> u64 {
+    1000
 }
 
 fn default_workspace_service() -> std::sync::Arc<crate::services::WorkspaceService> {
@@ -337,6 +350,8 @@ impl Default for AuraAppState {
             editor_dialog: None,
             active_input_target: None,
             active_script_sub_tab: ScriptSubTab::PreRequest,
+            auto_save_enabled: true,
+            auto_save_delay_ms: 1000,
             workspace_service: default_workspace_service(),
             execution_service: default_execution_service(),
         }
@@ -367,6 +382,21 @@ impl AuraAppState {
         self.execution_service.cancel();
     }
 
+    pub fn cycle_method(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.method = match tab.method {
+                HttpMethod::GET => HttpMethod::POST,
+                HttpMethod::POST => HttpMethod::PUT,
+                HttpMethod::PUT => HttpMethod::PATCH,
+                HttpMethod::PATCH => HttpMethod::DELETE,
+                HttpMethod::DELETE => HttpMethod::GET,
+                _ => HttpMethod::GET,
+            };
+            tab.request.method = tab.method;
+            tab.mark_dirty(true);
+        }
+    }
+
     // =========================================================================
     // Active Inline Input & Navigation Operations
     // =========================================================================
@@ -391,16 +421,23 @@ impl AuraAppState {
 
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             match target {
+                ActiveInputTarget::Url => {
+                    tab.request.url.push(c);
+                    tab.mark_dirty(true);
+                    Self::sync_url_to_params(&mut tab.request);
+                }
                 ActiveInputTarget::ParamKey(idx) => {
                     if let Some(p) = tab.request.params.get_mut(idx) {
                         p.key.push(c);
                         tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
                     }
                 }
                 ActiveInputTarget::ParamValue(idx) => {
                     if let Some(p) = tab.request.params.get_mut(idx) {
                         p.value.push(c);
                         tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
                     }
                 }
                 ActiveInputTarget::HeaderKey(idx) => {
@@ -606,16 +643,23 @@ impl AuraAppState {
 
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             match target {
+                ActiveInputTarget::Url => {
+                    tab.request.url.pop();
+                    tab.mark_dirty(true);
+                    Self::sync_url_to_params(&mut tab.request);
+                }
                 ActiveInputTarget::ParamKey(idx) => {
                     if let Some(p) = tab.request.params.get_mut(idx) {
                         p.key.pop();
                         tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
                     }
                 }
                 ActiveInputTarget::ParamValue(idx) => {
                     if let Some(p) = tab.request.params.get_mut(idx) {
                         p.value.pop();
                         tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
                     }
                 }
                 ActiveInputTarget::HeaderKey(idx) => {
@@ -1083,6 +1127,7 @@ impl AuraAppState {
     pub fn add_param(&mut self, key: impl Into<String>, value: impl Into<String>) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             tab.request.add_param(key, value);
+            Self::sync_params_to_url(&mut tab.request);
             tab.mark_dirty(true);
         }
     }
@@ -1090,6 +1135,7 @@ impl AuraAppState {
     pub fn remove_param(&mut self, index: usize) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             tab.request.remove_param(index);
+            Self::sync_params_to_url(&mut tab.request);
             tab.mark_dirty(true);
         }
     }
@@ -1097,6 +1143,7 @@ impl AuraAppState {
     pub fn toggle_param(&mut self, index: usize) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             tab.request.toggle_param(index);
+            Self::sync_params_to_url(&mut tab.request);
             tab.mark_dirty(true);
         }
     }
@@ -1106,8 +1153,54 @@ impl AuraAppState {
             if let Some(p) = tab.request.params.get_mut(index) {
                 p.key = key;
                 p.value = value;
+                Self::sync_params_to_url(&mut tab.request);
                 tab.mark_dirty(true);
             }
+        }
+    }
+
+    pub fn sync_url_to_params(req: &mut aura_core::model::AuraRequest) {
+        let url = &req.url;
+        if let Some(pos) = url.find('?') {
+            let query = &url[pos + 1..];
+            let mut new_params = Vec::new();
+            if !query.is_empty() {
+                for pair in query.split('&') {
+                    if let Some(eq_pos) = pair.find('=') {
+                        let k = &pair[..eq_pos];
+                        let v = &pair[eq_pos + 1..];
+                        new_params.push(aura_core::model::ParamItem::new(k.to_string(), v.to_string()));
+                    } else if !pair.is_empty() {
+                        new_params.push(aura_core::model::ParamItem::new(pair.to_string(), String::new()));
+                    }
+                }
+            }
+            req.params = new_params;
+        } else {
+            req.params.clear();
+        }
+    }
+
+    pub fn sync_params_to_url(req: &mut aura_core::model::AuraRequest) {
+        let base_url = match req.url.find('?') {
+            Some(pos) => req.url[..pos].to_string(),
+            None => req.url.clone(),
+        };
+
+        let enabled_params: Vec<_> = req.params.iter().filter(|p| p.enabled && !p.key.is_empty()).collect();
+        if enabled_params.is_empty() {
+            req.url = base_url;
+        } else {
+            let mut query = String::new();
+            for (idx, p) in enabled_params.iter().enumerate() {
+                if idx > 0 {
+                    query.push('&');
+                }
+                query.push_str(&p.key);
+                query.push('=');
+                query.push_str(&p.value);
+            }
+            req.url = format!("{base_url}?{query}");
         }
     }
 
@@ -2361,12 +2454,63 @@ impl AuraAppState {
         }
     }
 
+    /// Checks if the active tab is currently marked dirty
+    pub fn is_active_tab_dirty(&self) -> bool {
+        self.tabs
+            .get(self.active_tab_index)
+            .map(|t| t.is_dirty)
+            .unwrap_or(false)
+    }
+
+    /// Checks if a specific tab by ID is currently marked dirty
+    pub fn is_tab_dirty(&self, id: &str) -> bool {
+        self.tabs
+            .iter()
+            .find(|t| t.id == id)
+            .map(|t| t.is_dirty)
+            .unwrap_or(false)
+    }
+
     /// Save the active request and clear dirty indicator
     pub fn save_active_tab(&mut self) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             tab.mark_dirty(false);
             self.status_message = Some(format!("Saved: {}", tab.title));
         }
+    }
+
+    /// Automatically saves the active request if dirty, returning whether it was saved
+    pub fn auto_save_active_tab(&mut self) -> bool {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if tab.is_dirty {
+                tab.mark_dirty(false);
+                self.status_message = Some(format!("Auto-saved: {}", tab.title));
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Automatically saves a specific request tab by ID if dirty, returning whether it was saved
+    pub fn auto_save_tab(&mut self, id: &str) -> bool {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+            if tab.is_dirty {
+                tab.mark_dirty(false);
+                self.status_message = Some(format!("Auto-saved: {}", tab.title));
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Configures whether delayed auto-save is enabled
+    pub fn set_auto_save_enabled(&mut self, enabled: bool) {
+        self.auto_save_enabled = enabled;
+    }
+
+    /// Configures the auto-save debounce delay in milliseconds
+    pub fn set_auto_save_delay_ms(&mut self, delay_ms: u64) {
+        self.auto_save_delay_ms = delay_ms;
     }
 
     /// Adjust pane divider percentage (clamped between 0.1 and 0.9)

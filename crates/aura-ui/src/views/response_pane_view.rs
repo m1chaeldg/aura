@@ -4,6 +4,8 @@ use crate::stores::{ResponseBodyMode, ResponseTab};
 use aura_core::model::{AuraResponse, TestAssertion};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::tab::{Tab, TabBar};
+use gpui_kit::component::Selectable;
 
 pub struct ResponsePaneView;
 
@@ -233,44 +235,25 @@ impl ResponsePaneView {
                 div()
                     .flex()
                     .items_center()
-                    .gap_1()
                     .px_3()
                     .py_1()
                     .bg(rgb(0x222224))
                     .border_b_1()
                     .border_color(border)
-                    .children(tabs.into_iter().map(|(tab, label)| {
-                        let is_active = tab == active_tab;
-                        div()
-                            .id(ElementId::NamedInteger(
-                                "resp-tab".into(),
-                                tab as u16 as u64,
-                            ))
-                            .flex()
-                            .items_center()
-                            .px_3()
-                            .py_1()
-                            .rounded_md()
-                            .bg(if is_active {
-                                rgb(0x1b1b1d)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_b_2()
-                            .border_color(if is_active {
-                                rgb(0x0066cc)
-                            } else {
-                                rgba(0x00000000)
-                            })
-                            .hover(|s| s.bg(rgb(0x333333)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(if is_active { rgb(0xffffff) } else { muted })
-                            .child(label)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_select_tab(this, tab, window, cx);
-                            }))
-                    })),
+                    .child({
+                        let mut bar = TabBar::new("response-tabs");
+                        for (tab, label) in tabs {
+                            let is_active = tab == active_tab;
+                            let item = Tab::new()
+                                .label(label)
+                                .selected(is_active)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_select_tab(this, tab, window, cx);
+                                }));
+                            bar = bar.child(item);
+                        }
+                        bar
+                    }),
             )
             // Panel Body
             .child(

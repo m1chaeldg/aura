@@ -21,7 +21,8 @@ pub use stores::{
 };
 pub use views::AuraWorkspaceView;
 
-/// Initializes GPUI Kit component suite and assets.
+/// Initializes GPUI Kit component suite, assets, and dark theme per DESIGN.md.
 pub fn init_kit(cx: &mut gpui::App) {
     gpui_kit::init(cx);
+    gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
 }
