@@ -7,6 +7,19 @@ use aura::ui::AuraWorkspaceView;
 use gpui::{AppContext, WindowOptions};
 
 fn main() -> Result<()> {
+    // Increase main-thread stack to 8 MB for deeply nested GPUI render trees in debug builds.
+    // The default Windows stack (1 MB) overflows with the workspace view's builder chain depth.
+    const STACK_SIZE: usize = 8 * 1024 * 1024;
+    let builder = std::thread::Builder::new()
+        .name("aura-main".into())
+        .stack_size(STACK_SIZE);
+    let handler = builder.spawn(move || -> Result<()> {
+        aura_main()
+    })?;
+    handler.join().unwrap()
+}
+
+fn aura_main() -> Result<()> {
     // Initialize asynchronous structured system logging & rolling file diagnostics
     let _logging_guard = init_system_logging(None)?;
 

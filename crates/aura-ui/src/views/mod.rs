@@ -14,7 +14,7 @@ pub mod workspace_view;
 pub use command_palette_view::CommandPaletteView;
 pub use context_menu_view::{ContextMenuView, SidebarMenuAction};
 pub use log_viewer_view::LogViewerView;
-pub use request_editor_view::RequestEditorView;
+pub use request_editor_view::{RequestEditorAction, RequestEditorView};
 pub use request_header_view::RequestHeaderView;
 pub use response_pane_view::ResponsePaneView;
 pub use sidebar_view::SidebarView;

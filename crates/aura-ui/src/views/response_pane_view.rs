@@ -82,16 +82,20 @@ impl ResponsePaneView {
                             .border_b_1()
                             .border_color(border)
                             .py_1()
-                            .child(div().text_xs().text_color(rgb(0x28a745)).child("RESPONSE PANE"))
+                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0x28a745)).child("RESPONSE PANE"))
                             .child(div().text_xs().text_color(text_muted).child("Status: -- • Time: --ms • Size: --B")),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .py_6()
-                            .text_xs()
-                            .text_color(text_muted)
-                            .child("Ready to dispatch request to live Postman Echo endpoints."),
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .justify_center()
+                            .py_12()
+                            .gap_2()
+                            .child(div().text_sm().text_color(text_muted).child("Ready to dispatch request"))
+                            .child(div().text_xs().text_color(rgb(0x555555)).child("Send a request with 'Send ↵' or Ctrl+Enter to inspect headers, raw body, and formatting.")),
                     ),
                 Some(resp) => Self::render_active_response(resp, active_tab, body_mode, border, surface, text_muted, cx, on_select_tab, on_toggle_body_mode),
             })
@@ -113,9 +117,10 @@ impl ResponsePaneView {
         let tabs = [
             (ResponseTab::Body, "Body".to_string()),
             (ResponseTab::Headers, format!("Headers ({})", resp.headers.len())),
+            (ResponseTab::Raw, "Raw".to_string()),
+            (ResponseTab::Json, "JSON".to_string()),
             (ResponseTab::Tests, format!("Tests ({}/{})", passed_tests, total_tests)),
             (ResponseTab::Console, format!("Console ({})", resp.console_logs.len())),
-            (ResponseTab::Raw, "Raw".to_string()),
         ];
 
         div()
@@ -138,6 +143,7 @@ impl ResponsePaneView {
                             .flex()
                             .items_center()
                             .gap_2()
+                            // Status Pill
                             .child(
                                 div()
                                     .px_2()
@@ -145,11 +151,16 @@ impl ResponsePaneView {
                                     .rounded_md()
                                     .bg(Self::status_color(resp.status))
                                     .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(rgb(0xffffff))
                                     .child(format!("{} {}", resp.status, resp.status_text)),
                             )
+                            // Duration Metric
                             .child(
                                 div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
                                     .px_2()
                                     .py_0p5()
                                     .rounded_md()
@@ -158,10 +169,14 @@ impl ResponsePaneView {
                                     .border_color(border)
                                     .text_xs()
                                     .text_color(muted)
-                                    .child(format!("{} ms", resp.duration_ms)),
+                                    .child(format!("⏱ {} ms", resp.duration_ms)),
                             )
+                            // Size Metric
                             .child(
                                 div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
                                     .px_2()
                                     .py_0p5()
                                     .rounded_md()
@@ -170,30 +185,38 @@ impl ResponsePaneView {
                                     .border_color(border)
                                     .text_xs()
                                     .text_color(muted)
-                                    .child(Self::format_size(resp.size_bytes)),
+                                    .child(format!("📦 {}", Self::format_size(resp.size_bytes))),
                             ),
                     )
                     .child(
                         div()
-                            .id("body-mode-toggle-btn")
                             .flex()
                             .items_center()
-                            .px_2()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x1d1d1f))
-                            .border_1()
-                            .border_color(border)
-                            .hover(|s| s.bg(rgb(0x333333)))
-                            .text_xs()
-                            .text_color(rgb(0x2997ff))
-                            .child(match body_mode {
-                                ResponseBodyMode::Pretty => "Format: Pretty ▾",
-                                ResponseBodyMode::Raw => "Format: Raw ▾",
-                            })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_toggle_body_mode(this, window, cx);
-                            })),
+                            .gap_2()
+                            // Body Format Mode Toggle
+                            .child(
+                                div()
+                                    .id("body-mode-toggle-btn")
+                                    .flex()
+                                    .items_center()
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x1d1d1f))
+                                    .border_1()
+                                    .border_color(border)
+                                    .hover(|s| s.bg(rgb(0x333333)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(rgb(0x2997ff))
+                                    .child(match body_mode {
+                                        ResponseBodyMode::Pretty => "Format: Pretty ▾",
+                                        ResponseBodyMode::Raw => "Format: Raw ▾",
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_toggle_body_mode(this, window, cx);
+                                    })),
+                            ),
                     ),
             )
             // Tabs Bar
@@ -220,6 +243,7 @@ impl ResponsePaneView {
                             .border_b_2()
                             .border_color(if is_active { rgb(0x0066cc) } else { rgba(0x00000000) })
                             .hover(|s| s.bg(rgb(0x333333)))
+                            .cursor_pointer()
                             .text_xs()
                             .text_color(if is_active { rgb(0xffffff) } else { muted })
                             .child(label)
@@ -244,47 +268,138 @@ impl ResponsePaneView {
             ResponseTab::Body => {
                 let formatted = Self::format_body(&resp.body, body_mode);
                 div()
-                    .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x141416))
-                    .border_1()
-                    .border_color(border)
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(rgb(0xcccccc))
-                    .child(formatted)
-            }
-            ResponseTab::Raw => div()
-                .p_3()
-                .rounded_md()
-                .bg(rgb(0x141416))
-                .border_1()
-                .border_color(border)
-                .font_family("monospace")
-                .text_xs()
-                .text_color(rgb(0xcccccc))
-                .child(resp.body.clone()),
-            ResponseTab::Headers => {
-                let mut header_entries: Vec<_> = resp.headers.iter().collect();
-                header_entries.sort_by_key(|(k, _)| (*k).clone());
-                div()
                     .flex()
                     .flex_col()
-                    .gap_1()
-                    .children(header_entries.into_iter().map(|(k, v)| {
+                    .gap_2()
+                    .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap_2()
-                            .p_2()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(muted)
+                                    .child(match body_mode {
+                                        ResponseBodyMode::Pretty => "PRETTY FORMATTED BODY",
+                                        ResponseBodyMode::Raw => "RAW BODY CONTENT",
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(format!("{} characters", resp.body.len())),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .p_3()
                             .rounded_md()
-                            .bg(rgb(0x272729))
+                            .bg(rgb(0x141416))
                             .border_1()
                             .border_color(border)
+                            .font_family("monospace")
                             .text_xs()
-                            .child(div().text_color(muted).child(format!("{}:", k)))
-                            .child(div().text_color(rgb(0xffffff)).child(v.clone()))
-                    }))
+                            .text_color(rgb(0xcccccc))
+                            .child(if formatted.is_empty() { "// Response body is empty".to_string() } else { formatted }),
+                    )
+            }
+            ResponseTab::Raw => {
+                // Postman & Bruno style Raw HTTP Response (Status line + Headers + Blank line + Body)
+                let mut raw_http = format!("HTTP/1.1 {} {}\n", resp.status, resp.status_text);
+                let mut header_entries: Vec<_> = resp.headers.iter().collect();
+                header_entries.sort_by_key(|(k, _)| (*k).clone());
+                for (k, v) in header_entries {
+                    raw_http.push_str(&format!("{}: {}\n", k, v));
+                }
+                raw_http.push('\n');
+                raw_http.push_str(&resp.body);
+
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("FULL RAW HTTP PAYLOAD"))
+                    .child(
+                        div()
+                            .p_3()
+                            .rounded_md()
+                            .bg(rgb(0x141416))
+                            .border_1()
+                            .border_color(border)
+                            .font_family("monospace")
+                            .text_xs()
+                            .text_color(rgb(0xcccccc))
+                            .child(raw_http),
+                    )
+            }
+            ResponseTab::Json => {
+                let json_pretty = match serde_json::from_str::<serde_json::Value>(&resp.body) {
+                    Ok(val) => serde_json::to_string_pretty(&val).unwrap_or_else(|_| resp.body.clone()),
+                    Err(_) => "/* Response body is not valid JSON */\n\n".to_string() + &resp.body,
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("JSON VIEWER"))
+                    .child(
+                        div()
+                            .p_3()
+                            .rounded_md()
+                            .bg(rgb(0x141416))
+                            .border_1()
+                            .border_color(border)
+                            .font_family("monospace")
+                            .text_xs()
+                            .text_color(rgb(0xcccccc))
+                            .child(json_pretty),
+                    )
+            }
+            ResponseTab::Headers => {
+                let mut header_entries: Vec<_> = resp.headers.iter().collect();
+                header_entries.sort_by_key(|(k, _)| (*k).clone());
+
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child(format!("RESPONSE HEADERS ({})", header_entries.len())))
+                            .child(div().text_xs().text_color(muted).child("Case-insensitive RFC 7230 headers")),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .children(header_entries.into_iter().map(|(k, v)| {
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .p_2()
+                                    .rounded_md()
+                                    .bg(rgb(0x272729))
+                                    .border_1()
+                                    .border_color(border)
+                                    .text_xs()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0x2997ff)).child(format!("{}:", k)))
+                                            .child(div().font_family("monospace").text_color(rgb(0xffffff)).child(v.clone())),
+                                    )
+                            })),
+                    )
             }
             ResponseTab::Tests => div()
                 .flex()

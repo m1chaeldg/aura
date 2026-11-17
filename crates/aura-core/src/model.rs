@@ -61,6 +61,26 @@ pub struct ParamItem {
     pub description: Option<String>,
 }
 
+impl ParamItem {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+            enabled: true,
+            description: None,
+        }
+    }
+
+    pub fn disabled(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+            enabled: false,
+            description: None,
+        }
+    }
+}
+
 /// HTTP Header item
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeaderItem {
@@ -69,6 +89,26 @@ pub struct HeaderItem {
     pub enabled: bool,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+impl HeaderItem {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+            enabled: true,
+            description: None,
+        }
+    }
+
+    pub fn disabled(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+            enabled: false,
+            description: None,
+        }
+    }
 }
 
 use indexmap::IndexMap;
@@ -110,6 +150,29 @@ impl BodyType {
             Self::FormUrlEncoded(_) => "FormUrlEncoded",
             Self::Multipart(_) => "Multipart",
             Self::Binary { .. } => "Binary",
+        }
+    }
+
+    pub fn content_str(&self) -> &str {
+        match self {
+            Self::Json(s) | Self::Xml(s) | Self::Text(s) => s.as_str(),
+            Self::Raw { content, .. } => content.as_str(),
+            _ => "",
+        }
+    }
+
+    pub fn default_for_type(name: &str) -> Self {
+        match name.to_uppercase().as_str() {
+            "NONE" => Self::None,
+            "JSON" => Self::Json("{\n  \"key\": \"value\"\n}".to_string()),
+            "XML" => Self::Xml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>value</item>\n</root>".to_string()),
+            "TEXT" => Self::Text("".to_string()),
+            "RAW" => Self::Raw { content: "".to_string(), content_type: Some("text/plain".to_string()) },
+            "FORM" => Self::Form(indexmap::IndexMap::new()),
+            "FORMURLENCODED" | "FORM_URLENCODED" | "X-WWW-FORM-URLENCODED" => Self::FormUrlEncoded(Vec::new()),
+            "MULTIPART" | "MULTIPART/FORM-DATA" => Self::Multipart(Vec::new()),
+            "BINARY" => Self::Binary { file_path: "".to_string(), content_type: None },
+            _ => Self::None,
         }
     }
 }
@@ -164,6 +227,45 @@ pub enum AuthConfig {
         #[serde(default)]
         client_secret: Option<String>,
     },
+}
+
+impl AuthConfig {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Inherit => "Inherit",
+            Self::None => "None",
+            Self::Bearer { .. } => "Bearer Token",
+            Self::Basic { .. } => "Basic Auth",
+            Self::ApiKey { .. } => "API Key",
+            Self::AwsSigV4 { .. } => "AWS SigV4",
+            Self::OAuth2 { .. } => "OAuth 2.0",
+        }
+    }
+
+    pub fn default_for_type(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            "inherit" => Self::Inherit,
+            "none" => Self::None,
+            "bearer" | "bearer token" => Self::Bearer { token: "".to_string() },
+            "basic" | "basic auth" => Self::Basic { username: "".to_string(), password: "".to_string() },
+            "api_key" | "apikey" | "api key" => Self::ApiKey { key: "X-API-Key".to_string(), value: "".to_string(), in_header: true },
+            "aws" | "aws_sigv4" | "awssigv4" | "aws sigv4" => Self::AwsSigV4 {
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                region: "us-east-1".to_string(),
+                service: "execute-api".to_string(),
+                session_token: None,
+            },
+            "oauth2" | "oauth 2.0" => Self::OAuth2 {
+                grant_type: "authorization_code".to_string(),
+                access_token: "".to_string(),
+                token_url: None,
+                client_id: None,
+                client_secret: None,
+            },
+            _ => Self::None,
+        }
+    }
 }
 
 /// Network and execution settings
@@ -255,6 +357,56 @@ impl AuraRequest {
             settings: RequestSettings::default(),
             description: None,
         }
+    }
+
+    pub fn add_header(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.headers.push(HeaderItem::new(key, value));
+    }
+
+    pub fn remove_header(&mut self, index: usize) -> Option<HeaderItem> {
+        if index < self.headers.len() {
+            Some(self.headers.remove(index))
+        } else {
+            None
+        }
+    }
+
+    pub fn toggle_header(&mut self, index: usize) -> Option<bool> {
+        if let Some(h) = self.headers.get_mut(index) {
+            h.enabled = !h.enabled;
+            Some(h.enabled)
+        } else {
+            None
+        }
+    }
+
+    pub fn add_param(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.params.push(ParamItem::new(key, value));
+    }
+
+    pub fn remove_param(&mut self, index: usize) -> Option<ParamItem> {
+        if index < self.params.len() {
+            Some(self.params.remove(index))
+        } else {
+            None
+        }
+    }
+
+    pub fn toggle_param(&mut self, index: usize) -> Option<bool> {
+        if let Some(p) = self.params.get_mut(index) {
+            p.enabled = !p.enabled;
+            Some(p.enabled)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_body(&mut self, body: BodyType) {
+        self.body = body;
+    }
+
+    pub fn set_auth(&mut self, auth: AuthConfig) {
+        self.auth = auth;
     }
 }
 

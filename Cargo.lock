@@ -607,6 +607,7 @@ dependencies = [
  "aura-parser",
  "aura-scripting",
  "aura-sync",
+ "base64 0.22.1",
  "chrono",
  "dirs",
  "gpui-kit",

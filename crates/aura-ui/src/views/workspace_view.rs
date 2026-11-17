@@ -1,10 +1,11 @@
 //! Modular GPUI Desktop Workspace View coordinating single-responsibility sub-views.
 
-use crate::app_state::AuraAppState;
+use crate::app_state::{AuraAppState, EditorDialogState};
 use crate::stores::LayoutOrientation;
 use crate::views::{
-    CommandPaletteView, ContextMenuView, LogViewerView, RequestEditorView, RequestHeaderView,
-    ResponsePaneView, SidebarMenuAction, SidebarView, SplitResizerView, TabBarView,
+    CommandPaletteView, ContextMenuView, LogViewerView, RequestEditorAction, RequestEditorView,
+    RequestHeaderView, ResponsePaneView, SidebarMenuAction, SidebarView, SplitResizerView,
+    TabBarView,
 };
 
 use aura_core::model::HttpMethod;
@@ -286,6 +287,430 @@ impl AuraWorkspaceView {
             .detach();
         }
     }
+
+    pub fn handle_request_editor_action(&mut self, action: RequestEditorAction, cx: &mut Context<Self>) {
+        match action {
+            RequestEditorAction::SelectTab(tab) => {
+                self.state.set_editor_tab(tab);
+            }
+            RequestEditorAction::ToggleHeader(idx) => {
+                self.state.toggle_header(idx);
+            }
+            RequestEditorAction::RemoveHeader(idx) => {
+                self.state.remove_header(idx);
+            }
+            RequestEditorAction::OpenAddHeader => {
+                self.state.open_add_header_dialog();
+            }
+            RequestEditorAction::OpenEditHeader(idx) => {
+                self.state.open_edit_header_dialog(idx);
+            }
+            RequestEditorAction::AddPresetHeader(k, v) => {
+                self.state.add_header(k, v);
+            }
+            RequestEditorAction::ToggleParam(idx) => {
+                self.state.toggle_param(idx);
+            }
+            RequestEditorAction::RemoveParam(idx) => {
+                self.state.remove_param(idx);
+            }
+            RequestEditorAction::OpenAddParam => {
+                self.state.open_add_param_dialog();
+            }
+            RequestEditorAction::OpenEditParam(idx) => {
+                self.state.open_edit_param_dialog(idx);
+            }
+            RequestEditorAction::SetBodyType(name) => {
+                self.state.set_body_type(name);
+            }
+            RequestEditorAction::OpenEditBody => {
+                self.state.open_edit_body_dialog();
+            }
+            RequestEditorAction::FormatJsonBody => {
+                if let Err(e) = self.state.format_active_json_body() {
+                    self.state.status_message = Some(e);
+                } else {
+                    self.state.status_message = Some("JSON formatted".to_string());
+                }
+            }
+            RequestEditorAction::ClearBody => {
+                self.state.set_body_content(String::new());
+            }
+            RequestEditorAction::OpenAddFormParam => {
+                self.state.open_add_form_param_dialog();
+            }
+            RequestEditorAction::ToggleFormParam(idx) => {
+                self.state.toggle_form_urlencoded_param(idx);
+            }
+            RequestEditorAction::RemoveFormParam(idx) => {
+                self.state.remove_form_urlencoded_param(idx);
+            }
+            RequestEditorAction::OpenAddMultipart => {
+                self.state.open_add_multipart_field_dialog();
+            }
+            RequestEditorAction::RemoveMultipart(idx) => {
+                self.state.remove_multipart_field(idx);
+            }
+            RequestEditorAction::SetAuthType(name) => {
+                self.state.set_auth_type(name);
+            }
+            RequestEditorAction::OpenEditAuth => {
+                self.state.open_edit_auth_dialog();
+            }
+            RequestEditorAction::ToggleApiKeyPlacement(in_header) => {
+                if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
+                    if let aura_core::model::AuthConfig::ApiKey { in_header: ref mut h, .. } = tab.request.auth {
+                        *h = in_header;
+                        tab.mark_dirty(true);
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    fn render_editor_dialog(dialog: &EditorDialogState, cx: &mut Context<Self>) -> impl IntoElement {
+        let (title, subtitle, width, body_el) = match dialog {
+            EditorDialogState::AddHeader { key, value, is_value_focused } => {
+                let is_val = *is_value_focused;
+                (
+                    "Add Request Header",
+                    "Enter header key and value. Press Tab to switch fields, Enter to confirm.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Key / Header Name", key, !is_val, "e.g. Content-Type"))
+                        .child(Self::render_dialog_input_row("Header Value", value, is_val, "e.g. application/json")),
+                )
+            }
+            EditorDialogState::EditHeader { key, value, is_value_focused, .. } => {
+                let is_val = *is_value_focused;
+                (
+                    "Edit Request Header",
+                    "Modify header key and value. Press Tab to switch fields, Enter to confirm.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Key / Header Name", key, !is_val, "Header Name"))
+                        .child(Self::render_dialog_input_row("Header Value", value, is_val, "Header Value")),
+                )
+            }
+            EditorDialogState::AddParam { key, value, is_value_focused } => {
+                let is_val = *is_value_focused;
+                (
+                    "Add Query Parameter",
+                    "Enter parameter key and value to append to URL.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Parameter Key", key, !is_val, "e.g. page"))
+                        .child(Self::render_dialog_input_row("Parameter Value", value, is_val, "e.g. 1")),
+                )
+            }
+            EditorDialogState::EditParam { key, value, is_value_focused, .. } => {
+                let is_val = *is_value_focused;
+                (
+                    "Edit Query Parameter",
+                    "Modify parameter key and value.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Parameter Key", key, !is_val, "Key"))
+                        .child(Self::render_dialog_input_row("Parameter Value", value, is_val, "Value")),
+                )
+            }
+            EditorDialogState::EditBody { content } => {
+                (
+                    "Edit Request Body",
+                    "Type or paste your JSON, XML, or raw body payload. Enter confirms.",
+                    520.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(Self::render_dialog_input_row("Body Content", content, true, "{\n  \"key\": \"value\"\n}")),
+                )
+            }
+            EditorDialogState::EditBearerAuth { token } => {
+                (
+                    "Edit Bearer Token",
+                    "Enter access token or JWT. Format: Bearer <token>",
+                    480.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(Self::render_dialog_input_row("Token", token, true, "eyJhbGciOi...")),
+                )
+            }
+            EditorDialogState::EditBasicAuth { username, password, is_password_focused } => {
+                let is_pw = *is_password_focused;
+                (
+                    "Edit Basic Auth Credentials",
+                    "Enter username and password for HTTP Basic Authentication.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Username", username, !is_pw, "Username"))
+                        .child(Self::render_dialog_input_row("Password", password, is_pw, "Password")),
+                )
+            }
+            EditorDialogState::EditApiKeyAuth { key, value, in_header, is_value_focused } => {
+                let is_val = *is_value_focused;
+                let in_hdr = *in_header;
+                (
+                    "Edit API Key Authentication",
+                    "Enter the API key header/query name and secret value.",
+                    480.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Key Name", key, !is_val, "e.g. X-API-Key"))
+                        .child(Self::render_dialog_input_row("Key Value", value, is_val, "secret_key_123"))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(div().text_xs().text_color(rgb(0xaaaaaa)).child("Placement:"))
+                                .child(
+                                    div()
+                                        .px_2()
+                                        .py_0p5()
+                                        .rounded_sm()
+                                        .bg(if in_hdr { rgb(0x0066cc) } else { rgb(0x333333) })
+                                        .text_xs()
+                                        .text_color(rgb(0xffffff))
+                                        .child("In Header")
+                                )
+                                .child(
+                                    div()
+                                        .px_2()
+                                        .py_0p5()
+                                        .rounded_sm()
+                                        .bg(if !in_hdr { rgb(0x0066cc) } else { rgb(0x333333) })
+                                        .text_xs()
+                                        .text_color(rgb(0xffffff))
+                                        .child("In Query Params")
+                                )
+                        ),
+                )
+            }
+            EditorDialogState::EditAwsSigV4 { access_key, secret_key, region, service, session_token, active_field } => {
+                let af = *active_field;
+                (
+                    "Edit AWS Signature V4 Auth",
+                    "Enter AWS IAM credentials and region. Tab navigates fields.",
+                    500.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(Self::render_dialog_input_row("Access Key", access_key, af == 0, "AKIA..."))
+                        .child(Self::render_dialog_input_row("Secret Key", secret_key, af == 1, "wJalrXUtnFEMI..."))
+                        .child(Self::render_dialog_input_row("Region", region, af == 2, "us-east-1"))
+                        .child(Self::render_dialog_input_row("Service", service, af == 3, "execute-api"))
+                        .child(Self::render_dialog_input_row("Session Token (optional)", session_token, af == 4, "AQoDYXdz...")),
+                )
+            }
+            EditorDialogState::EditOAuth2 { grant_type, access_token, token_url, client_id, client_secret, active_field } => {
+                let af = *active_field;
+                (
+                    "Edit OAuth 2.0 Auth",
+                    "Enter OAuth token and parameters. Tab navigates fields.",
+                    500.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(Self::render_dialog_input_row("Access Token", access_token, af == 0, "ya29..."))
+                        .child(Self::render_dialog_input_row("Grant Type", grant_type, af == 1, "authorization_code"))
+                        .child(Self::render_dialog_input_row("Token URL (optional)", token_url, af == 2, "https://auth.example.com/token"))
+                        .child(Self::render_dialog_input_row("Client ID (optional)", client_id, af == 3, "client_123"))
+                        .child(Self::render_dialog_input_row("Client Secret (optional)", client_secret, af == 4, "secret_456")),
+                )
+            }
+            EditorDialogState::AddFormParam { key, value, is_value_focused } => {
+                let is_val = *is_value_focused;
+                (
+                    "Add Form Parameter",
+                    "Enter key and value for URL-encoded form data.",
+                    460.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Form Field Key", key, !is_val, "key"))
+                        .child(Self::render_dialog_input_row("Form Field Value", value, is_val, "value")),
+                )
+            }
+            EditorDialogState::AddMultipartField { name, value, file_path, is_file, active_field } => {
+                let af = *active_field;
+                let is_f = *is_file;
+                (
+                    "Add Multipart Part",
+                    "Enter multipart field name and text value or file path.",
+                    480.0,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(Self::render_dialog_input_row("Field Name", name, af == 0, "name"))
+                        .when(!is_f, |el| el.child(Self::render_dialog_input_row("Text Value", value, af == 1, "value")))
+                        .when(is_f, |el| el.child(Self::render_dialog_input_row("File Path", file_path, af == 2, "path/to/file.bin"))),
+                )
+            }
+        };
+
+        div()
+            .id("editor-dialog-overlay")
+            .absolute()
+            .inset_0()
+            .bg(rgba(0x000000bb))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .id("editor-dialog-card")
+                    .w(px(width))
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(rgb(0x333333))
+                    .rounded_md()
+                    .p_5()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(0xffffff))
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x888888))
+                                    .child("Esc to cancel • ↵ to save"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0xaaaaaa))
+                            .child(subtitle),
+                    )
+                    .child(body_el)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap_2()
+                            .mt_3()
+                            .child(
+                                div()
+                                    .id("cancel-editor-dialog-btn")
+                                    .px_3()
+                                    .py_1()
+                                    .bg(rgb(0x333333))
+                                    .hover(|s| s.bg(rgb(0x444444)))
+                                    .text_xs()
+                                    .text_color(rgb(0xffffff))
+                                    .rounded_sm()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.cancel_editor_dialog();
+                                        cx.notify();
+                                    }))
+                                    .child("Cancel"),
+                            )
+                            .child(
+                                div()
+                                    .id("confirm-editor-dialog-btn")
+                                    .px_3()
+                                    .py_1()
+                                    .bg(rgb(0x0066cc))
+                                    .hover(|s| s.bg(rgb(0x0071e3)))
+                                    .text_xs()
+                                    .text_color(rgb(0xffffff))
+                                    .rounded_sm()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.confirm_editor_dialog();
+                                        cx.notify();
+                                    }))
+                                    .child("Save"),
+                            ),
+                    ),
+            )
+    }
+
+    fn render_dialog_input_row(label: &'static str, val: &str, is_focused: bool, placeholder: &'static str) -> Div {
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if is_focused { rgb(0x2997ff) } else { rgb(0xaaaaaa) })
+                    .child(label),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .px_3()
+                    .py_2()
+                    .bg(rgb(0x1d1d1f))
+                    .border_1()
+                    .border_color(if is_focused { rgb(0x0066cc) } else { rgb(0x333333) })
+                    .rounded_sm()
+                    .text_xs()
+                    .text_color(rgb(0xffffff))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                if val.is_empty() {
+                                    div().text_color(rgb(0x666666)).child(placeholder)
+                                } else {
+                                    div().child(val.to_string())
+                                }
+                            )
+                            .when(is_focused, |el| {
+                                el.child(
+                                    div()
+                                        .w(px(2.0))
+                                        .h(px(14.0))
+                                        .bg(rgb(0x0066cc))
+                                )
+                            }),
+                    ),
+            )
+    }
 }
 
 
@@ -333,6 +758,48 @@ impl Render for AuraWorkspaceView {
             .text_color(text_color)
             .track_focus(&focus)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+                if this.state.editor_dialog.is_some() {
+                    let key = event.keystroke.key.as_str();
+                    match key {
+                        "escape" => {
+                            this.state.cancel_editor_dialog();
+                            cx.notify();
+                        }
+                        "enter" => {
+                            this.state.confirm_editor_dialog();
+                            cx.notify();
+                        }
+                        "tab" => {
+                            this.state.dialog_tab_next_field();
+                            cx.notify();
+                        }
+                        "backspace" => {
+                            this.state.dialog_backspace();
+                            cx.notify();
+                        }
+                        "space" => {
+                            this.state.dialog_append_char(' ');
+                            cx.notify();
+                        }
+                        _ => {
+                            if key.len() == 1
+                                && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.alt
+                            {
+                                let c = key.chars().next().unwrap();
+                                let final_c = if event.keystroke.modifiers.shift {
+                                    c.to_ascii_uppercase()
+                                } else {
+                                    c
+                                };
+                                this.state.dialog_append_char(final_c);
+                                cx.notify();
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 if this.state.rename_dialog.is_some() {
                     let key = event.keystroke.key.as_str();
                     match key {
@@ -684,9 +1151,8 @@ impl Render for AuraWorkspaceView {
                                         self.state.active_editor_tab,
                                         active_tab.map(|t| &t.request),
                                         cx,
-                                        |this, tab, _window, cx| {
-                                            this.state.set_editor_tab(tab);
-                                            cx.notify();
+                                        |this, action, _window, cx| {
+                                            this.handle_request_editor_action(action, cx);
                                         },
                                     ))
                                     .child(SplitResizerView::render(
@@ -1003,6 +1469,9 @@ impl Render for AuraWorkspaceView {
                         cx.notify();
                     },
                 ))
+            })
+            .when_some(self.state.editor_dialog.clone(), |el, dialog| {
+                el.child(Self::render_editor_dialog(&dialog, cx))
             })
     }
 }
