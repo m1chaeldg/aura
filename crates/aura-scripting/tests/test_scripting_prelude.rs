@@ -23,7 +23,8 @@ fn test_prelude_jasmine_chai_bdd_assertions() {
     let mut rt = AuraScriptRuntime::new(HashMap::new()).expect("create runtime");
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), "application/json".to_string());
-    rt.inject_response_context(200, r#"{"users":[{"id":1,"name":"Alice"}]}"#, &headers).expect("inject response");
+    rt.inject_response_context(200, r#"{"users":[{"id":1,"name":"Alice"}]}"#, &headers)
+        .expect("inject response");
 
     let script = r#"
         console.log("Starting test suite");

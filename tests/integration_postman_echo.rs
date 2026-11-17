@@ -184,7 +184,10 @@ async fn test_e2e_request_execution_full_lifecycle_with_postman_echo() {
 
     assert_eq!(resp.status, 200);
     assert!(!resp.console_logs.is_empty());
-    assert!(resp.console_logs.iter().any(|l| l.message.contains("Setting echo_user to")));
+    assert!(resp
+        .console_logs
+        .iter()
+        .any(|l| l.message.contains("Setting echo_user to")));
     assert_eq!(resp.assertions.len(), 2);
     assert!(resp.assertions.iter().all(|a| a.passed));
 }

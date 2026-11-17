@@ -2,8 +2,8 @@
 
 use anyhow::{anyhow, Result};
 use aura_core::model::{AuraRequest, HttpMethod};
-use aura_sync::workspace_meta::WorkspaceMetadata;
 use aura_sync::request_to_toml;
+use aura_sync::workspace_meta::WorkspaceMetadata;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use std::collections::HashSet;
@@ -193,7 +193,10 @@ impl WorkspaceService {
     /// Asynchronously duplicates a file or folder with auto-incrementing naming and updates `workspace.json`.
     pub async fn duplicate_item(&self, root: &Path, source_path: &Path) -> Result<PathBuf> {
         if !source_path.exists() {
-            return Err(anyhow!("Source path does not exist: {}", source_path.display()));
+            return Err(anyhow!(
+                "Source path does not exist: {}",
+                source_path.display()
+            ));
         }
 
         let parent = source_path.parent().unwrap_or(root);
@@ -278,7 +281,6 @@ impl WorkspaceService {
         Ok(dest_path)
     }
 
-
     /// Asynchronously moves/reorders an item.
     pub async fn reorder_item(
         &self,
@@ -315,7 +317,10 @@ impl WorkspaceService {
     pub fn start_watcher(
         &self,
         root: &Path,
-    ) -> Result<(tokio_util::sync::CancellationToken, UnboundedReceiver<WorkspaceDiskEvent>)> {
+    ) -> Result<(
+        tokio_util::sync::CancellationToken,
+        UnboundedReceiver<WorkspaceDiskEvent>,
+    )> {
         let (debounced_tx, debounced_rx) = unbounded_channel();
         let (raw_tx, raw_rx) = std::sync::mpsc::channel::<WorkspaceDiskEvent>();
         let suppression_tokens = Arc::clone(&self.suppression_tokens);
@@ -436,4 +441,3 @@ async fn copy_dir_all(service: &WorkspaceService, src: &Path, dst: &Path) -> Res
     }
     Ok(())
 }
-

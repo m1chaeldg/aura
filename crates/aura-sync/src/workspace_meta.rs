@@ -173,7 +173,10 @@ impl WorkspaceMetadata {
     }
 }
 
-fn reconcile_directory(dir: &Path, existing_order: &[WorkspaceOrderItem]) -> Result<Vec<WorkspaceOrderItem>> {
+fn reconcile_directory(
+    dir: &Path,
+    existing_order: &[WorkspaceOrderItem],
+) -> Result<Vec<WorkspaceOrderItem>> {
     let mut discovered_folders = Vec::new();
     let mut discovered_requests = Vec::new();
 

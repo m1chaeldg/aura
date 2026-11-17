@@ -36,7 +36,11 @@ impl RequestHeaderView {
             _ => rgb(0x7a7a7a),
         };
 
-        let btn_bg = if is_in_flight { cancel_red } else { accent_blue };
+        let btn_bg = if is_in_flight {
+            cancel_red
+        } else {
+            accent_blue
+        };
         let btn_label = Self::button_label(is_in_flight);
 
         div()
@@ -86,7 +90,13 @@ impl RequestHeaderView {
                     .py_2()
                     .rounded_md()
                     .bg(btn_bg)
-                    .hover(|s| s.bg(if is_in_flight { rgb(0xd03828) } else { rgb(0x0071e3) }))
+                    .hover(|s| {
+                        s.bg(if is_in_flight {
+                            rgb(0xd03828)
+                        } else {
+                            rgb(0x0071e3)
+                        })
+                    })
                     .text_sm()
                     .text_color(rgb(0xffffff))
                     .child(btn_label)

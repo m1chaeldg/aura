@@ -1,11 +1,15 @@
-use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::Selectable;
 use aura_core::model::{AuraRequest, HttpMethod};
 use aura_ui::WorkspaceTab;
+use gpui_kit::component::tab::{Tab, TabBar};
+use gpui_kit::component::Selectable;
 
 #[test]
 fn test_tab_bar_tab_state_mapping() {
-    let mut tab_data = WorkspaceTab::new(AuraRequest::new("Get User", HttpMethod::GET, "https://api.example.com/users"));
+    let mut tab_data = WorkspaceTab::new(AuraRequest::new(
+        "Get User",
+        HttpMethod::GET,
+        "https://api.example.com/users",
+    ));
     tab_data.mark_dirty(true);
 
     let prefix_badge = tab_data.method.as_str();

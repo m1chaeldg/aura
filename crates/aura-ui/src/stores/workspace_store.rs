@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use aura_core::model::{AuraRequest, Collection, HttpMethod};
-use aura_sync::workspace_meta::WorkspaceMetadata;
 use aura_sync::toml_to_request;
+use aura_sync::workspace_meta::WorkspaceMetadata;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -203,7 +203,6 @@ impl WorkspaceStore {
         self.drag_state = state;
     }
 
-
     /// Sets the active workspace with root, metadata, and tree.
     pub fn set_workspace(
         &mut self,
@@ -347,7 +346,13 @@ impl WorkspaceStore {
 
 fn collect_expansion_states(nodes: &[WorkspaceTreeNode], map: &mut HashMap<PathBuf, bool>) {
     for node in nodes {
-        if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
+        if let WorkspaceTreeNode::Folder {
+            path,
+            is_expanded,
+            children,
+            ..
+        } = node
+        {
             map.insert(path.clone(), *is_expanded);
             collect_expansion_states(children, map);
         }
@@ -356,7 +361,13 @@ fn collect_expansion_states(nodes: &[WorkspaceTreeNode], map: &mut HashMap<PathB
 
 fn restore_expansion_states(nodes: &mut [WorkspaceTreeNode], map: &HashMap<PathBuf, bool>) {
     for node in nodes {
-        if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
+        if let WorkspaceTreeNode::Folder {
+            path,
+            is_expanded,
+            children,
+            ..
+        } = node
+        {
             if let Some(&expanded) = map.get(path) {
                 *is_expanded = expanded;
             }
@@ -367,7 +378,13 @@ fn restore_expansion_states(nodes: &mut [WorkspaceTreeNode], map: &HashMap<PathB
 
 fn toggle_folder_recursive(nodes: &mut [WorkspaceTreeNode], target: &Path) -> bool {
     for node in nodes {
-        if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
+        if let WorkspaceTreeNode::Folder {
+            path,
+            is_expanded,
+            children,
+            ..
+        } = node
+        {
             if path == target {
                 *is_expanded = !*is_expanded;
                 return true;
@@ -388,7 +405,12 @@ fn rename_node_recursive(
 ) -> bool {
     for node in nodes {
         match node {
-            WorkspaceTreeNode::Folder { name, path, children, .. } => {
+            WorkspaceTreeNode::Folder {
+                name,
+                path,
+                children,
+                ..
+            } => {
                 if path == old_path {
                     *name = new_name.to_string();
                     *path = new_path.to_path_buf();
@@ -444,7 +466,10 @@ fn delete_node_recursive(nodes: &mut Vec<WorkspaceTreeNode>, target: &Path) -> b
     false
 }
 
-fn extract_node_recursive(nodes: &mut Vec<WorkspaceTreeNode>, target: &Path) -> Option<WorkspaceTreeNode> {
+fn extract_node_recursive(
+    nodes: &mut Vec<WorkspaceTreeNode>,
+    target: &Path,
+) -> Option<WorkspaceTreeNode> {
     if let Some(pos) = nodes.iter().position(|n| n.path() == target) {
         return Some(nodes.remove(pos));
     }
@@ -478,7 +503,12 @@ fn insert_node_recursive(
                 children.insert(idx, node_to_insert);
                 return true;
             }
-            if insert_node_recursive(children, target_parent, insert_index, node_to_insert.clone()) {
+            if insert_node_recursive(
+                children,
+                target_parent,
+                insert_index,
+                node_to_insert.clone(),
+            ) {
                 return true;
             }
         }
@@ -490,7 +520,12 @@ fn insert_node_recursive(
 fn collect_visible_nodes<'a>(nodes: &'a [WorkspaceTreeNode], out: &mut Vec<&'a WorkspaceTreeNode>) {
     for node in nodes {
         out.push(node);
-        if let WorkspaceTreeNode::Folder { is_expanded, children, .. } = node {
+        if let WorkspaceTreeNode::Folder {
+            is_expanded,
+            children,
+            ..
+        } = node
+        {
             if *is_expanded {
                 collect_visible_nodes(children, out);
             }
@@ -498,7 +533,10 @@ fn collect_visible_nodes<'a>(nodes: &'a [WorkspaceTreeNode], out: &mut Vec<&'a W
     }
 }
 
-fn find_node_recursive<'a>(nodes: &'a [WorkspaceTreeNode], target: &Path) -> Option<&'a WorkspaceTreeNode> {
+fn find_node_recursive<'a>(
+    nodes: &'a [WorkspaceTreeNode],
+    target: &Path,
+) -> Option<&'a WorkspaceTreeNode> {
     for node in nodes {
         if node.path() == target {
             return Some(node);
@@ -512,9 +550,19 @@ fn find_node_recursive<'a>(nodes: &'a [WorkspaceTreeNode], target: &Path) -> Opt
     None
 }
 
-fn set_folder_expanded_recursive(nodes: &mut [WorkspaceTreeNode], target: &Path, expanded: bool) -> bool {
+fn set_folder_expanded_recursive(
+    nodes: &mut [WorkspaceTreeNode],
+    target: &Path,
+    expanded: bool,
+) -> bool {
     for node in nodes {
-        if let WorkspaceTreeNode::Folder { path, is_expanded, children, .. } = node {
+        if let WorkspaceTreeNode::Folder {
+            path,
+            is_expanded,
+            children,
+            ..
+        } = node
+        {
             if path == target {
                 *is_expanded = expanded;
                 return true;
@@ -526,4 +574,3 @@ fn set_folder_expanded_recursive(nodes: &mut [WorkspaceTreeNode], target: &Path,
     }
     false
 }
-

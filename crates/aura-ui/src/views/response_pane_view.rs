@@ -116,11 +116,20 @@ impl ResponsePaneView {
         let (passed_tests, total_tests) = Self::assertion_counts(&resp.assertions);
         let tabs = [
             (ResponseTab::Body, "Body".to_string()),
-            (ResponseTab::Headers, format!("Headers ({})", resp.headers.len())),
+            (
+                ResponseTab::Headers,
+                format!("Headers ({})", resp.headers.len()),
+            ),
             (ResponseTab::Raw, "Raw".to_string()),
             (ResponseTab::Json, "JSON".to_string()),
-            (ResponseTab::Tests, format!("Tests ({}/{})", passed_tests, total_tests)),
-            (ResponseTab::Console, format!("Console ({})", resp.console_logs.len())),
+            (
+                ResponseTab::Tests,
+                format!("Tests ({}/{})", passed_tests, total_tests),
+            ),
+            (
+                ResponseTab::Console,
+                format!("Console ({})", resp.console_logs.len()),
+            ),
         ];
 
         div()
@@ -233,15 +242,26 @@ impl ResponsePaneView {
                     .children(tabs.into_iter().map(|(tab, label)| {
                         let is_active = tab == active_tab;
                         div()
-                            .id(ElementId::NamedInteger("resp-tab".into(), tab as u16 as u64))
+                            .id(ElementId::NamedInteger(
+                                "resp-tab".into(),
+                                tab as u16 as u64,
+                            ))
                             .flex()
                             .items_center()
                             .px_3()
                             .py_1()
                             .rounded_md()
-                            .bg(if is_active { rgb(0x1b1b1d) } else { rgb(0x222224) })
+                            .bg(if is_active {
+                                rgb(0x1b1b1d)
+                            } else {
+                                rgb(0x222224)
+                            })
                             .border_b_2()
-                            .border_color(if is_active { rgb(0x0066cc) } else { rgba(0x00000000) })
+                            .border_color(if is_active {
+                                rgb(0x0066cc)
+                            } else {
+                                rgba(0x00000000)
+                            })
                             .hover(|s| s.bg(rgb(0x333333)))
                             .cursor_pointer()
                             .text_xs()
@@ -259,11 +279,19 @@ impl ResponsePaneView {
                     .flex_1()
                     .p_4()
                     .overflow_y_scroll()
-                    .child(Self::render_tab_content(resp, active_tab, body_mode, border, muted)),
+                    .child(Self::render_tab_content(
+                        resp, active_tab, body_mode, border, muted,
+                    )),
             )
     }
 
-    fn render_tab_content(resp: &AuraResponse, tab: ResponseTab, body_mode: ResponseBodyMode, border: Rgba, muted: Rgba) -> Div {
+    fn render_tab_content(
+        resp: &AuraResponse,
+        tab: ResponseTab,
+        body_mode: ResponseBodyMode,
+        border: Rgba,
+        muted: Rgba,
+    ) -> Div {
         match tab {
             ResponseTab::Body => {
                 let formatted = Self::format_body(&resp.body, body_mode);
@@ -303,7 +331,11 @@ impl ResponsePaneView {
                             .font_family("monospace")
                             .text_xs()
                             .text_color(rgb(0xcccccc))
-                            .child(if formatted.is_empty() { "// Response body is empty".to_string() } else { formatted }),
+                            .child(if formatted.is_empty() {
+                                "// Response body is empty".to_string()
+                            } else {
+                                formatted
+                            }),
                     )
             }
             ResponseTab::Raw => {
@@ -321,7 +353,13 @@ impl ResponsePaneView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("FULL RAW HTTP PAYLOAD"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(muted)
+                            .child("FULL RAW HTTP PAYLOAD"),
+                    )
                     .child(
                         div()
                             .p_3()
@@ -337,14 +375,22 @@ impl ResponsePaneView {
             }
             ResponseTab::Json => {
                 let json_pretty = match serde_json::from_str::<serde_json::Value>(&resp.body) {
-                    Ok(val) => serde_json::to_string_pretty(&val).unwrap_or_else(|_| resp.body.clone()),
+                    Ok(val) => {
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| resp.body.clone())
+                    }
                     Err(_) => "/* Response body is not valid JSON */\n\n".to_string() + &resp.body,
                 };
                 div()
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("JSON VIEWER"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(muted)
+                            .child("JSON VIEWER"),
+                    )
                     .child(
                         div()
                             .p_3()
@@ -371,42 +417,65 @@ impl ResponsePaneView {
                             .flex()
                             .items_center()
                             .justify_between()
-                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child(format!("RESPONSE HEADERS ({})", header_entries.len())))
-                            .child(div().text_xs().text_color(muted).child("Case-insensitive RFC 7230 headers")),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .children(header_entries.into_iter().map(|(k, v)| {
+                            .child(
                                 div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_between()
-                                    .p_2()
-                                    .rounded_md()
-                                    .bg(rgb(0x272729))
-                                    .border_1()
-                                    .border_color(border)
                                     .text_xs()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .child(div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0x2997ff)).child(format!("{}:", k)))
-                                            .child(div().font_family("monospace").text_color(rgb(0xffffff)).child(v.clone())),
-                                    )
-                            })),
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(muted)
+                                    .child(format!("RESPONSE HEADERS ({})", header_entries.len())),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child("Case-insensitive RFC 7230 headers"),
+                            ),
                     )
+                    .child(div().flex().flex_col().gap_1().children(
+                        header_entries.into_iter().map(|(k, v)| {
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .p_2()
+                                .rounded_md()
+                                .bg(rgb(0x272729))
+                                .border_1()
+                                .border_color(border)
+                                .text_xs()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(0x2997ff))
+                                                .child(format!("{}:", k)),
+                                        )
+                                        .child(
+                                            div()
+                                                .font_family("monospace")
+                                                .text_color(rgb(0xffffff))
+                                                .child(v.clone()),
+                                        ),
+                                )
+                        }),
+                    ))
             }
             ResponseTab::Tests => div()
                 .flex()
                 .flex_col()
                 .gap_2()
                 .when(resp.assertions.is_empty(), |el| {
-                    el.child(div().py_3().text_xs().text_color(muted).child("No test assertions executed."))
+                    el.child(
+                        div()
+                            .py_3()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("No test assertions executed."),
+                    )
                 })
                 .children(resp.assertions.iter().map(|a| {
                     div()
@@ -429,10 +498,28 @@ impl ResponsePaneView {
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(div().text_color(if a.passed { rgb(0x28a745) } else { rgb(0xe74c3c) }).child(if a.passed { "✓ PASS" } else { "✗ FAIL" }))
-                                        .child(div().text_color(rgb(0xffffff)).child(a.name.clone())),
+                                        .child(
+                                            div()
+                                                .text_color(if a.passed {
+                                                    rgb(0x28a745)
+                                                } else {
+                                                    rgb(0xe74c3c)
+                                                })
+                                                .child(if a.passed {
+                                                    "✓ PASS"
+                                                } else {
+                                                    "✗ FAIL"
+                                                }),
+                                        )
+                                        .child(
+                                            div().text_color(rgb(0xffffff)).child(a.name.clone()),
+                                        ),
                                 )
-                                .child(div().text_color(muted).child(format!("{} ms", a.duration_ms))),
+                                .child(
+                                    div()
+                                        .text_color(muted)
+                                        .child(format!("{} ms", a.duration_ms)),
+                                ),
                         )
                         .when(!a.passed && a.message.is_some(), |el| {
                             el.child(
@@ -452,7 +539,13 @@ impl ResponsePaneView {
                 .flex_col()
                 .gap_1()
                 .when(resp.console_logs.is_empty(), |el| {
-                    el.child(div().py_3().text_xs().text_color(muted).child("No console output recorded."))
+                    el.child(
+                        div()
+                            .py_3()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("No console output recorded."),
+                    )
                 })
                 .children(resp.console_logs.iter().map(|log| {
                     let level_color = match log.level.to_uppercase().as_str() {
@@ -478,10 +571,17 @@ impl ResponsePaneView {
                                 .text_color(level_color)
                                 .child(log.level.to_uppercase()),
                         )
-                        .child(div().text_color(muted).child(log.timestamp.format("%H:%M:%S%.3f").to_string()))
+                        .child(
+                            div()
+                                .text_color(muted)
+                                .child(log.timestamp.format("%H:%M:%S%.3f").to_string()),
+                        )
                         .child(div().text_color(rgb(0xcccccc)).child(log.message.clone()))
                 })),
-            _ => div().text_xs().text_color(muted).child("Tab not implemented"),
+            _ => div()
+                .text_xs()
+                .text_color(muted)
+                .child("Tab not implemented"),
         }
     }
 }

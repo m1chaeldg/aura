@@ -30,11 +30,17 @@ async fn test_workspace_service_async_crud_and_metadata_sync() {
     let service = WorkspaceService::new();
 
     // Create folder
-    let folder_path = service.create_folder(root, root, "Auth").await.expect("create folder");
+    let folder_path = service
+        .create_folder(root, root, "Auth")
+        .await
+        .expect("create folder");
     assert!(folder_path.is_dir());
 
     // Create request
-    let req_path = service.create_request(root, &folder_path, "Login", HttpMethod::POST).await.expect("create request");
+    let req_path = service
+        .create_request(root, &folder_path, "Login", HttpMethod::POST)
+        .await
+        .expect("create request");
     assert!(req_path.is_file());
     assert!(req_path.to_string_lossy().ends_with("Login.aura"));
 
@@ -43,12 +49,18 @@ async fn test_workspace_service_async_crud_and_metadata_sync() {
     assert!(meta_content.contains("Login.aura"));
 
     // Rename request
-    let renamed_path = service.rename_item(root, &req_path, "SignIn.aura").await.expect("rename");
+    let renamed_path = service
+        .rename_item(root, &req_path, "SignIn.aura")
+        .await
+        .expect("rename");
     assert!(renamed_path.exists());
     assert!(!req_path.exists());
 
     // Delete request
-    service.delete_item(root, &renamed_path).await.expect("delete");
+    service
+        .delete_item(root, &renamed_path)
+        .await
+        .expect("delete");
     assert!(!renamed_path.exists());
 }
 
@@ -71,17 +83,27 @@ async fn test_watcher_external_disk_sync_flow() {
     state.open_workspace_sync(root).expect("open workspace");
     assert!(state.workspace_store.tree.is_empty());
 
-    let (cancel_token, mut rx) = state.workspace_service.start_watcher(root).expect("start watcher");
+    let (cancel_token, mut rx) = state
+        .workspace_service
+        .start_watcher(root)
+        .expect("start watcher");
 
     // 1. External creation: simulate Windows Explorer pasting a folder and file
     let folder_path = root.join("Payments");
     fs::create_dir_all(&folder_path).unwrap();
     let file_path = folder_path.join("Charge.aura");
-    fs::write(&file_path, "[request]\nname = \"Charge\"\nmethod = \"POST\"\nurl = \"https://api.com\"").unwrap();
+    fs::write(
+        &file_path,
+        "[request]\nname = \"Charge\"\nmethod = \"POST\"\nurl = \"https://api.com\"",
+    )
+    .unwrap();
 
     // Watcher should emit an event
     let event = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await;
-    assert!(event.is_ok(), "Watcher timed out waiting for external disk change event");
+    assert!(
+        event.is_ok(),
+        "Watcher timed out waiting for external disk change event"
+    );
     assert!(event.unwrap().is_some());
 
     // Debounce drain simulation
@@ -105,7 +127,10 @@ async fn test_watcher_external_disk_sync_flow() {
     // 2. External deletion: simulate deleting file in Windows Explorer
     fs::remove_file(&file_path).unwrap();
     let del_event = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await;
-    assert!(del_event.is_ok(), "Watcher timed out waiting for delete event");
+    assert!(
+        del_event.is_ok(),
+        "Watcher timed out waiting for delete event"
+    );
     assert!(del_event.unwrap().is_some());
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -113,8 +138,13 @@ async fn test_watcher_external_disk_sync_flow() {
 
     state.reconcile_workspace_sync().expect("reconcile delete");
     let folder_after = &state.workspace_store.tree[0];
-    if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { children, .. } = folder_after {
-        assert!(children.is_empty(), "Folder should be empty after deleting file");
+    if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { children, .. } =
+        folder_after
+    {
+        assert!(
+            children.is_empty(),
+            "Folder should be empty after deleting file"
+        );
     }
 
     cancel_token.cancel();
@@ -134,22 +164,34 @@ async fn test_workspace_service_duplicate_collision_naming() {
     assert!(login_path.exists());
 
     // 2. First duplicate: Login (Copy).aura
-    let dup1 = service.duplicate_item(root, &login_path).await.expect("dup1");
+    let dup1 = service
+        .duplicate_item(root, &login_path)
+        .await
+        .expect("dup1");
     assert_eq!(dup1.file_name().unwrap(), "Login (Copy).aura");
     assert!(dup1.exists());
 
     // 3. Second duplicate of original: Login (Copy 2).aura (Review Focus #1)
-    let dup2 = service.duplicate_item(root, &login_path).await.expect("dup2");
+    let dup2 = service
+        .duplicate_item(root, &login_path)
+        .await
+        .expect("dup2");
     assert_eq!(dup2.file_name().unwrap(), "Login (Copy 2).aura");
     assert!(dup2.exists());
 
     // 4. Duplicate of a folder recursively (Review Focus #2)
-    let folder = service.create_folder(root, root, "Auth").await.expect("folder");
+    let folder = service
+        .create_folder(root, root, "Auth")
+        .await
+        .expect("folder");
     let _ = service
         .create_request(root, &folder, "Token", HttpMethod::GET)
         .await
         .expect("token");
-    let dup_folder = service.duplicate_item(root, &folder).await.expect("dup folder");
+    let dup_folder = service
+        .duplicate_item(root, &folder)
+        .await
+        .expect("dup folder");
     assert_eq!(dup_folder.file_name().unwrap(), "Auth (Copy)");
     assert!(dup_folder.join("Token.aura").exists());
 }
@@ -180,5 +222,3 @@ async fn test_workspace_service_paste_item_and_missing_source() {
     let err = service.paste_item(root, &fake_payload, &folder_b).await;
     assert!(err.is_err(), "Expected error when pasting missing source");
 }
-
-

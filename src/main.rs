@@ -13,9 +13,7 @@ fn main() -> Result<()> {
     let builder = std::thread::Builder::new()
         .name("aura-main".into())
         .stack_size(STACK_SIZE);
-    let handler = builder.spawn(move || -> Result<()> {
-        aura_main()
-    })?;
+    let handler = builder.spawn(move || -> Result<()> { aura_main() })?;
     handler.join().unwrap()
 }
 
@@ -38,9 +36,7 @@ fn aura_main() -> Result<()> {
         aura_ui::init_kit(cx);
         let window_options = WindowOptions::default();
 
-        let _ = cx.open_window(window_options, |_window, cx| {
-            cx.new(AuraWorkspaceView::new)
-        });
+        let _ = cx.open_window(window_options, |_window, cx| cx.new(AuraWorkspaceView::new));
     });
 
     tracing::info!("Aura application shutting down.");

@@ -6,8 +6,7 @@ use nom::{
     combinator::{recognize, rest},
     multi::many0,
     sequence::{pair, tuple},
-    IResult,
-    Parser,
+    IResult, Parser,
 };
 
 /// Recognizes a newline (CRLF or LF)
@@ -129,12 +128,8 @@ pub fn parse_fenced_block(input: &str) -> IResult<&str, CstFencedBlock> {
     }
 
     // Capture opening fence line: ```tag \n
-    let (rem_open, open_line) = recognize(tuple((
-        space0,
-        tag("```"),
-        not_line_ending,
-        parse_newline,
-    )))(input)?;
+    let (rem_open, open_line) =
+        recognize(tuple((space0, tag("```"), not_line_ending, parse_newline)))(input)?;
 
     let lang = open_line
         .trim_start()
@@ -144,11 +139,8 @@ pub fn parse_fenced_block(input: &str) -> IResult<&str, CstFencedBlock> {
 
     // Look for closing fence
     let (rem_content, content) = take_until("```")(rem_open)?;
-    let (rem_close, _close_line) = recognize(tuple((
-        tag("```"),
-        space0,
-        alt((parse_newline, rest)),
-    )))(rem_content)?;
+    let (rem_close, _close_line) =
+        recognize(tuple((tag("```"), space0, alt((parse_newline, rest)))))(rem_content)?;
 
     let consumed_len = input.len() - rem_close.len();
     let raw = input[..consumed_len].to_string();
@@ -200,18 +192,26 @@ pub fn parse_table(input: &str) -> IResult<&str, CstTable> {
 pub fn parse_conflict_block(input: &str) -> IResult<&str, CstConflictBlock> {
     let (after_ws, _) = space0(input)?;
     if !after_ws.starts_with("<<<<<<<") {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
 
     let start_idx = input.find("<<<<<<<").unwrap();
     let rest_after_start = &input[start_idx..];
 
-    let eq_pos = rest_after_start.find("\n=======").or_else(|| rest_after_start.find("\r\n======="));
-    let gt_pos = rest_after_start.find("\n>>>>>>>").or_else(|| rest_after_start.find("\r\n>>>>>>>"));
+    let eq_pos = rest_after_start
+        .find("\n=======")
+        .or_else(|| rest_after_start.find("\r\n======="));
+    let gt_pos = rest_after_start
+        .find("\n>>>>>>>")
+        .or_else(|| rest_after_start.find("\r\n>>>>>>>"));
 
     if let (Some(eq_idx), Some(gt_idx)) = (eq_pos, gt_pos) {
         if eq_idx < gt_idx {
-            let line_end = rest_after_start[gt_idx + 1..].find('\n')
+            let line_end = rest_after_start[gt_idx + 1..]
+                .find('\n')
                 .map(|p| gt_idx + 1 + p + 1)
                 .unwrap_or(rest_after_start.len());
 
@@ -222,9 +222,14 @@ pub fn parse_conflict_block(input: &str) -> IResult<&str, CstConflictBlock> {
             let ours_label = open_line.trim_start_matches('<').trim().to_string();
 
             let ours_start = open_line.len();
-            let ours_content = rest_after_start[ours_start..eq_idx].trim_start_matches(['\r', '\n']).to_string();
+            let ours_content = rest_after_start[ours_start..eq_idx]
+                .trim_start_matches(['\r', '\n'])
+                .to_string();
 
-            let close_line = rest_after_start[gt_idx + 1..line_end].lines().next().unwrap_or("");
+            let close_line = rest_after_start[gt_idx + 1..line_end]
+                .lines()
+                .next()
+                .unwrap_or("");
             let theirs_label = close_line.trim_start_matches('>').trim().to_string();
 
             let eq_slice = &rest_after_start[eq_idx..];
@@ -236,18 +241,24 @@ pub fn parse_conflict_block(input: &str) -> IResult<&str, CstConflictBlock> {
                 String::new()
             };
 
-            return Ok((rem, CstConflictBlock {
-                raw: full_raw.to_string(),
-                ours_label,
-                ours_content,
-                base_content: None,
-                theirs_label,
-                theirs_content,
-            }));
+            return Ok((
+                rem,
+                CstConflictBlock {
+                    raw: full_raw.to_string(),
+                    ours_label,
+                    ours_content,
+                    base_content: None,
+                    theirs_label,
+                    theirs_content,
+                },
+            ));
         }
     }
 
-    Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Tag,
+    )))
 }
 
 /// Parses a full document into a CstDocument
@@ -280,7 +291,9 @@ pub fn parse_document(mut input: &str) -> Result<CstDocument, String> {
         }
 
         // If nothing matches, consume one line as trivia to prevent hanging
-        if let Ok((rem, unrecog)) = recognize(pair(not_line_ending, alt((parse_newline, rest))))(input) {
+        if let Ok((rem, unrecog)) =
+            recognize(pair(not_line_ending, alt((parse_newline, rest))))(input)
+        {
             if !unrecog.is_empty() {
                 items.push(CstTopLevelItem::Trivia(unrecog.to_string()));
                 input = rem;

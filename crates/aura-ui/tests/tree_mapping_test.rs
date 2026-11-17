@@ -1,6 +1,4 @@
-use gpui_kit::component::sidebar::{
-    Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem,
-};
+use gpui_kit::component::sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem};
 
 #[test]
 fn test_sidebar_menu_construction() {

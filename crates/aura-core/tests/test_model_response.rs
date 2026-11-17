@@ -27,7 +27,8 @@ fn test_aura_response_with_console_logs_serialization() {
     };
 
     let serialized = serde_json::to_string(&response).expect("serialize response");
-    let deserialized: AuraResponse = serde_json::from_str(&serialized).expect("deserialize response");
+    let deserialized: AuraResponse =
+        serde_json::from_str(&serialized).expect("deserialize response");
     assert_eq!(deserialized.status, 200);
     assert_eq!(deserialized.console_logs.len(), 1);
     assert_eq!(deserialized.console_logs[0].level, "INFO");

@@ -7,7 +7,9 @@ pub struct CstDocument {
 
 impl CstDocument {
     pub fn has_conflicts(&self) -> bool {
-        self.items.iter().any(|item| matches!(item, CstTopLevelItem::ConflictBlock(_)))
+        self.items
+            .iter()
+            .any(|item| matches!(item, CstTopLevelItem::ConflictBlock(_)))
     }
 }
 
@@ -159,7 +161,8 @@ impl CstDocument {
                         for sub in &table.items {
                             if let CstTableItem::KeyValue(kv) = sub {
                                 if !kv.key.ends_with('~') && !kv.key.starts_with('~') {
-                                    req.headers.insert(kv.key.clone(), kv.value.as_str().to_string());
+                                    req.headers
+                                        .insert(kv.key.clone(), kv.value.as_str().to_string());
                                 }
                             }
                         }
@@ -168,7 +171,8 @@ impl CstDocument {
                         for sub in &table.items {
                             if let CstTableItem::KeyValue(kv) = sub {
                                 if !kv.key.ends_with('~') && !kv.key.starts_with('~') {
-                                    req.query_params.insert(kv.key.clone(), kv.value.as_str().to_string());
+                                    req.query_params
+                                        .insert(kv.key.clone(), kv.value.as_str().to_string());
                                 }
                             }
                         }
@@ -240,7 +244,6 @@ impl CstDocument {
                             }
                         }
                         req.flow = Some(flow);
-
                     }
                     "body.json" => {
                         for sub in &table.items {
@@ -291,7 +294,8 @@ impl CstDocument {
                                 if !kv.key.ends_with('~') && !kv.key.starts_with('~') {
                                     let val_str = kv.value.as_str();
                                     if val_str.starts_with('@') {
-                                        let file_path = val_str.trim_start_matches('@').trim().to_string();
+                                        let file_path =
+                                            val_str.trim_start_matches('@').trim().to_string();
                                         parts.push(MultipartPart {
                                             name: kv.key.clone(),
                                             value: None,
@@ -318,7 +322,9 @@ impl CstDocument {
                             if let CstTableItem::KeyValue(kv) = sub {
                                 match kv.key.as_str() {
                                     "file" | "path" => file_path = kv.value.as_str().to_string(),
-                                    "content_type" => content_type = Some(kv.value.as_str().to_string()),
+                                    "content_type" => {
+                                        content_type = Some(kv.value.as_str().to_string())
+                                    }
                                     _ => {}
                                 }
                             }
@@ -346,7 +352,8 @@ impl CstDocument {
                         for sub in &table.items {
                             if let CstTableItem::KeyValue(kv) = sub {
                                 if !kv.key.ends_with('~') && !kv.key.starts_with('~') {
-                                    req.variables.insert(kv.key.clone(), kv.value.as_str().to_string());
+                                    req.variables
+                                        .insert(kv.key.clone(), kv.value.as_str().to_string());
                                 }
                             }
                         }

@@ -81,9 +81,21 @@ async fn test_app_state_delete_confirmation_and_tab_cleanup() {
     state.open_workspace_sync(root).unwrap();
 
     // Create folder with two requests
-    let folder = state.workspace_service.create_folder(root, root, "Nested").await.unwrap();
-    let r1 = state.workspace_service.create_request(root, &folder, "Req1", HttpMethod::GET).await.unwrap();
-    let r2 = state.workspace_service.create_request(root, &folder, "Req2", HttpMethod::POST).await.unwrap();
+    let folder = state
+        .workspace_service
+        .create_folder(root, root, "Nested")
+        .await
+        .unwrap();
+    let r1 = state
+        .workspace_service
+        .create_request(root, &folder, "Req1", HttpMethod::GET)
+        .await
+        .unwrap();
+    let r2 = state
+        .workspace_service
+        .create_request(root, &folder, "Req2", HttpMethod::POST)
+        .await
+        .unwrap();
 
     // Open both requests in tabs
     let _ = state.open_file_in_tab(&r1);
@@ -105,5 +117,3 @@ async fn test_app_state_delete_confirmation_and_tab_cleanup() {
 
     let _ = std::fs::remove_dir_all(&temp_root);
 }
-
-

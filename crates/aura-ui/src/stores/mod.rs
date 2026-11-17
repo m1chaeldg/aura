@@ -10,4 +10,3 @@ pub use workspace_store::{
     ClipboardPayload, ContextMenuState, DragPlacement, SidebarDragState, WorkspaceStore,
     WorkspaceTreeNode,
 };
-

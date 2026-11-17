@@ -21,4 +21,3 @@ pub use sidebar_view::SidebarView;
 pub use split_resizer_view::SplitResizerView;
 pub use tab_bar_view::TabBarView;
 pub use workspace_view::AuraWorkspaceView;
-

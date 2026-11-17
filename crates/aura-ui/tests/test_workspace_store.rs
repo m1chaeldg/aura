@@ -88,11 +88,17 @@ Accept = "application/json"
     assert_eq!(req.name, "Create User Account");
     assert_eq!(req.method, HttpMethod::POST);
     assert_eq!(req.url, "https://api.example.com/users");
-    assert!(req.headers.iter().any(|h| h.key == "Content-Type" && h.value == "application/json"));
+    assert!(req
+        .headers
+        .iter()
+        .any(|h| h.key == "Content-Type" && h.value == "application/json"));
     if let aura_core::model::BodyType::Json(body_str) = &req.body {
         assert!(body_str.contains("aura_user"));
     } else {
-        panic!("Expected Json body parsed from fenced block, got {:?}", req.body);
+        panic!(
+            "Expected Json body parsed from fenced block, got {:?}",
+            req.body
+        );
     }
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -124,29 +130,47 @@ fn test_workspace_store_visible_nodes_and_keyboard_traversal() {
     let visible = store.visible_nodes();
     assert_eq!(visible.len(), 2);
     assert_eq!(visible[0].path(), PathBuf::from("/ws/Auth").as_path());
-    assert_eq!(visible[1].path(), PathBuf::from("/ws/Health.aura").as_path());
+    assert_eq!(
+        visible[1].path(),
+        PathBuf::from("/ws/Health.aura").as_path()
+    );
 
     // Traversal: start at top
     store.select_node(PathBuf::from("/ws/Auth"));
-    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Auth").as_path()));
+    assert_eq!(
+        store.selected_path.as_deref(),
+        Some(PathBuf::from("/ws/Auth").as_path())
+    );
 
     store.select_next_node();
-    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Health.aura").as_path()));
+    assert_eq!(
+        store.selected_path.as_deref(),
+        Some(PathBuf::from("/ws/Health.aura").as_path())
+    );
 
     // Next at end stays clamped
     store.select_next_node();
-    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Health.aura").as_path()));
+    assert_eq!(
+        store.selected_path.as_deref(),
+        Some(PathBuf::from("/ws/Health.aura").as_path())
+    );
 
     // Expand Auth folder
     store.select_node(PathBuf::from("/ws/Auth"));
     store.expand_selected();
     let visible_after_expand = store.visible_nodes();
     assert_eq!(visible_after_expand.len(), 3);
-    assert_eq!(visible_after_expand[1].path(), PathBuf::from("/ws/Auth/Login.aura").as_path());
+    assert_eq!(
+        visible_after_expand[1].path(),
+        PathBuf::from("/ws/Auth/Login.aura").as_path()
+    );
 
     // Navigate into expanded child
     store.select_next_node();
-    assert_eq!(store.selected_path.as_deref(), Some(PathBuf::from("/ws/Auth/Login.aura").as_path()));
+    assert_eq!(
+        store.selected_path.as_deref(),
+        Some(PathBuf::from("/ws/Auth/Login.aura").as_path())
+    );
 
     // Collapse
     store.select_node(PathBuf::from("/ws/Auth"));
@@ -178,4 +202,3 @@ fn test_workspace_store_clipboard_and_context_menu_state() {
     store.close_context_menu();
     assert!(store.active_context_menu.is_none());
 }
-

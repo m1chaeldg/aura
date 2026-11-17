@@ -165,13 +165,24 @@ impl BodyType {
         match name.to_uppercase().as_str() {
             "NONE" => Self::None,
             "JSON" => Self::Json("{\n  \"key\": \"value\"\n}".to_string()),
-            "XML" => Self::Xml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>value</item>\n</root>".to_string()),
+            "XML" => Self::Xml(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>value</item>\n</root>"
+                    .to_string(),
+            ),
             "TEXT" => Self::Text("".to_string()),
-            "RAW" => Self::Raw { content: "".to_string(), content_type: Some("text/plain".to_string()) },
+            "RAW" => Self::Raw {
+                content: "".to_string(),
+                content_type: Some("text/plain".to_string()),
+            },
             "FORM" => Self::Form(indexmap::IndexMap::new()),
-            "FORMURLENCODED" | "FORM_URLENCODED" | "X-WWW-FORM-URLENCODED" => Self::FormUrlEncoded(Vec::new()),
+            "FORMURLENCODED" | "FORM_URLENCODED" | "X-WWW-FORM-URLENCODED" => {
+                Self::FormUrlEncoded(Vec::new())
+            }
             "MULTIPART" | "MULTIPART/FORM-DATA" => Self::Multipart(Vec::new()),
-            "BINARY" => Self::Binary { file_path: "".to_string(), content_type: None },
+            "BINARY" => Self::Binary {
+                file_path: "".to_string(),
+                content_type: None,
+            },
             _ => Self::None,
         }
     }
@@ -246,9 +257,18 @@ impl AuthConfig {
         match name.to_lowercase().as_str() {
             "inherit" => Self::Inherit,
             "none" => Self::None,
-            "bearer" | "bearer token" => Self::Bearer { token: "".to_string() },
-            "basic" | "basic auth" => Self::Basic { username: "".to_string(), password: "".to_string() },
-            "api_key" | "apikey" | "api key" => Self::ApiKey { key: "X-API-Key".to_string(), value: "".to_string(), in_header: true },
+            "bearer" | "bearer token" => Self::Bearer {
+                token: "".to_string(),
+            },
+            "basic" | "basic auth" => Self::Basic {
+                username: "".to_string(),
+                password: "".to_string(),
+            },
+            "api_key" | "apikey" | "api key" => Self::ApiKey {
+                key: "X-API-Key".to_string(),
+                value: "".to_string(),
+                in_header: true,
+            },
             "aws" | "aws_sigv4" | "awssigv4" | "aws sigv4" => Self::AwsSigV4 {
                 access_key: "".to_string(),
                 secret_key: "".to_string(),

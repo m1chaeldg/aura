@@ -133,7 +133,10 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
                 .header(reqwest::header::CONTENT_TYPE, "text/plain")
                 .body(rendered_body);
         }
-        BodyType::Raw { content, content_type } => {
+        BodyType::Raw {
+            content,
+            content_type,
+        } => {
             let rendered_body = active_context.render(content);
             let ct = content_type.as_deref().unwrap_or("text/plain");
             request_builder = request_builder
@@ -143,10 +146,7 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         BodyType::Form(map) => {
             let mut form_data = Vec::new();
             for (k, v) in map {
-                form_data.push((
-                    active_context.render(k),
-                    active_context.render(v),
-                ));
+                form_data.push((active_context.render(k), active_context.render(v)));
             }
             request_builder = request_builder.form(&form_data);
         }
@@ -186,13 +186,10 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
 
     // Execute Request & measure exact duration
     let start_time = Instant::now();
-    let resp = request_builder
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(target: "aura_engine", error = %e, "HTTP network error encountered");
-            anyhow!("Network error: {e}")
-        })?;
+    let resp = request_builder.send().await.map_err(|e| {
+        tracing::error!(target: "aura_engine", error = %e, "HTTP network error encountered");
+        anyhow!("Network error: {e}")
+    })?;
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
     let status = resp.status().as_u16();

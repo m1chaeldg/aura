@@ -73,16 +73,11 @@ impl LogViewerView {
                                             .text_color(text_color)
                                             .child("System Logs & Diagnostics"),
                                     )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(text_muted)
-                                            .child(format!(
-                                                "(Showing {} of {} entries)",
-                                                filtered_logs.len(),
-                                                total_count
-                                            )),
-                                    ),
+                                    .child(div().text_xs().text_color(text_muted).child(format!(
+                                        "(Showing {} of {} entries)",
+                                        filtered_logs.len(),
+                                        total_count
+                                    ))),
                             )
                             .child(
                                 div()
@@ -153,35 +148,53 @@ impl LogViewerView {
                                     .items_center()
                                     .gap_1()
                                     .child(div().text_xs().text_color(text_muted).child("Level:"))
-                                    .children([
-                                        (None, "ALL"),
-                                        (Some(LogLevel::ERROR), "ERROR"),
-                                        (Some(LogLevel::WARN), "WARN"),
-                                        (Some(LogLevel::INFO), "INFO"),
-                                        (Some(LogLevel::DEBUG), "DEBUG"),
-                                        (Some(LogLevel::TRACE), "TRACE"),
-                                    ].into_iter().map(|(lvl, label)| {
-                                        let is_active = active_level == lvl;
-                                        let bg = if is_active { accent_blue } else { surface_tile_2 };
-                                        let txt = if is_active { rgb(0xffffff) } else { text_color };
+                                    .children(
+                                        [
+                                            (None, "ALL"),
+                                            (Some(LogLevel::ERROR), "ERROR"),
+                                            (Some(LogLevel::WARN), "WARN"),
+                                            (Some(LogLevel::INFO), "INFO"),
+                                            (Some(LogLevel::DEBUG), "DEBUG"),
+                                            (Some(LogLevel::TRACE), "TRACE"),
+                                        ]
+                                        .into_iter()
+                                        .map(
+                                            |(lvl, label)| {
+                                                let is_active = active_level == lvl;
+                                                let bg = if is_active {
+                                                    accent_blue
+                                                } else {
+                                                    surface_tile_2
+                                                };
+                                                let txt = if is_active {
+                                                    rgb(0xffffff)
+                                                } else {
+                                                    text_color
+                                                };
 
-                                        div()
-                                            .id(ElementId::Name(format!("log-lvl-{label}").into()))
-                                            .px_2()
-                                            .py_0p5()
-                                            .rounded_sm()
-                                            .bg(bg)
-                                            .border_1()
-                                            .border_color(border_color)
-                                            .hover(|s| s.bg(rgb(0x3a3a3e)))
-                                            .text_xs()
-                                            .text_color(txt)
-                                            .child(label)
-                                            .on_click(cx.listener(move |this, _, _window, cx| {
-                                                this.state.set_log_filter_level(lvl);
-                                                cx.notify();
-                                            }))
-                                    }))
+                                                div()
+                                                    .id(ElementId::Name(
+                                                        format!("log-lvl-{label}").into(),
+                                                    ))
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded_sm()
+                                                    .bg(bg)
+                                                    .border_1()
+                                                    .border_color(border_color)
+                                                    .hover(|s| s.bg(rgb(0x3a3a3e)))
+                                                    .text_xs()
+                                                    .text_color(txt)
+                                                    .child(label)
+                                                    .on_click(cx.listener(
+                                                        move |this, _, _window, cx| {
+                                                            this.state.set_log_filter_level(lvl);
+                                                            cx.notify();
+                                                        },
+                                                    ))
+                                            },
+                                        ),
+                                    ),
                             )
                             // Subsystem Filter Pills
                             .child(
@@ -189,35 +202,57 @@ impl LogViewerView {
                                     .flex()
                                     .items_center()
                                     .gap_1()
-                                    .child(div().text_xs().text_color(text_muted).child("Subsystem:"))
-                                    .children([
-                                        (None, "All"),
-                                        (Some("aura_engine".to_string()), "Engine"),
-                                        (Some("aura_ui".to_string()), "UI"),
-                                        (Some("aura_sync".to_string()), "Sync"),
-                                        (Some("aura_parser".to_string()), "Parser"),
-                                    ].into_iter().map(|(sub, label)| {
-                                        let is_active = active_subsystem == sub;
-                                        let bg = if is_active { accent_blue } else { surface_tile_2 };
-                                        let txt = if is_active { rgb(0xffffff) } else { text_color };
+                                    .child(
+                                        div().text_xs().text_color(text_muted).child("Subsystem:"),
+                                    )
+                                    .children(
+                                        [
+                                            (None, "All"),
+                                            (Some("aura_engine".to_string()), "Engine"),
+                                            (Some("aura_ui".to_string()), "UI"),
+                                            (Some("aura_sync".to_string()), "Sync"),
+                                            (Some("aura_parser".to_string()), "Parser"),
+                                        ]
+                                        .into_iter()
+                                        .map(
+                                            |(sub, label)| {
+                                                let is_active = active_subsystem == sub;
+                                                let bg = if is_active {
+                                                    accent_blue
+                                                } else {
+                                                    surface_tile_2
+                                                };
+                                                let txt = if is_active {
+                                                    rgb(0xffffff)
+                                                } else {
+                                                    text_color
+                                                };
 
-                                        div()
-                                            .id(ElementId::Name(format!("log-sub-{label}").into()))
-                                            .px_2()
-                                            .py_0p5()
-                                            .rounded_sm()
-                                            .bg(bg)
-                                            .border_1()
-                                            .border_color(border_color)
-                                            .hover(|s| s.bg(rgb(0x3a3a3e)))
-                                            .text_xs()
-                                            .text_color(txt)
-                                            .child(label)
-                                            .on_click(cx.listener(move |this, _, _window, cx| {
-                                                this.state.set_log_filter_subsystem(sub.clone());
-                                                cx.notify();
-                                            }))
-                                    }))
+                                                div()
+                                                    .id(ElementId::Name(
+                                                        format!("log-sub-{label}").into(),
+                                                    ))
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded_sm()
+                                                    .bg(bg)
+                                                    .border_1()
+                                                    .border_color(border_color)
+                                                    .hover(|s| s.bg(rgb(0x3a3a3e)))
+                                                    .text_xs()
+                                                    .text_color(txt)
+                                                    .child(label)
+                                                    .on_click(cx.listener(
+                                                        move |this, _, _window, cx| {
+                                                            this.state.set_log_filter_subsystem(
+                                                                sub.clone(),
+                                                            );
+                                                            cx.notify();
+                                                        },
+                                                    ))
+                                            },
+                                        ),
+                                    ),
                             ),
                     )
                     // Log Entries Table Header
@@ -248,17 +283,15 @@ impl LogViewerView {
                             .overflow_y_scroll()
                             .bg(surface_tile_3)
                             .children(if filtered_logs.is_empty() {
-                                vec![
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .py_16()
-                                        .text_xs()
-                                        .text_color(text_muted)
-                                        .child("No log entries matching criteria.")
-                                        .into_any_element(),
-                                ]
+                                vec![div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .py_16()
+                                    .text_xs()
+                                    .text_color(text_muted)
+                                    .child("No log entries matching criteria.")
+                                    .into_any_element()]
                             } else {
                                 filtered_logs
                                     .iter()
@@ -272,7 +305,8 @@ impl LogViewerView {
                                             LogLevel::WARN => rgb(0xf5a623),
                                             LogLevel::ERROR => rgb(0xe74c3c),
                                         };
-                                        let time_str = entry.timestamp.format("%H:%M:%S%.3f").to_string();
+                                        let time_str =
+                                            entry.timestamp.format("%H:%M:%S%.3f").to_string();
 
                                         div()
                                             .flex()
@@ -290,20 +324,16 @@ impl LogViewerView {
                                                     .child(time_str),
                                             )
                                             .child(
-                                                div()
-                                                    .w_20()
-                                                    .flex()
-                                                    .items_center()
-                                                    .child(
-                                                        div()
-                                                            .px_1p5()
-                                                            .py_0p5()
-                                                            .rounded_sm()
-                                                            .bg(badge_color)
-                                                            .text_xs()
-                                                            .text_color(rgb(0xffffff))
-                                                            .child(entry.level.as_str()),
-                                                    ),
+                                                div().w_20().flex().items_center().child(
+                                                    div()
+                                                        .px_1p5()
+                                                        .py_0p5()
+                                                        .rounded_sm()
+                                                        .bg(badge_color)
+                                                        .text_xs()
+                                                        .text_color(rgb(0xffffff))
+                                                        .child(entry.level.as_str()),
+                                                ),
                                             )
                                             .child(
                                                 div()

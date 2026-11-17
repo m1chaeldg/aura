@@ -75,7 +75,11 @@ impl SessionStore {
 
     /// Open a request backed by a file path, activating existing tab if already open.
     pub fn open_request_file(&mut self, request: AuraRequest, path: PathBuf) {
-        if let Some(pos) = self.tabs.iter().position(|t| t.file_path.as_ref() == Some(&path)) {
+        if let Some(pos) = self
+            .tabs
+            .iter()
+            .position(|t| t.file_path.as_ref() == Some(&path))
+        {
             self.select_tab(pos);
             return;
         }

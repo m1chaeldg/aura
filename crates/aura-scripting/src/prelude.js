@@ -1,12 +1,14 @@
 // Embedded Zero-Dependency Faker Implementation
 (function () {
-    let seed = Date.now() ^ (Math.random() * 0x10000000);
+    let seed = Math.abs((Date.now() ^ (Math.random() * 0x10000000)) >>> 0) % 233280;
     function pseudo() {
         seed = (seed * 9301 + 49297) % 233280;
-        return seed / 233280;
+        return Math.abs(seed) / 233280;
     }
     function pick(arr) {
-        return arr[Math.floor(pseudo() * arr.length)];
+        if (!arr || arr.length === 0) return "";
+        const idx = Math.min(arr.length - 1, Math.max(0, Math.floor(pseudo() * arr.length)));
+        return arr[idx] || arr[0];
     }
     function randInt(min, max) {
         return Math.floor(pseudo() * (max - min + 1)) + min;
@@ -24,9 +26,9 @@
 
     function genUuid() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            const r = Math.floor(pseudo() * 16);
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
+            const r = Math.floor(pseudo() * 16) % 16;
+            const v = c === 'x' ? r : ((r & 0x3) | 0x8);
+            return (v & 0xf).toString(16);
         });
     }
 

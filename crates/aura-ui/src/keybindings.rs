@@ -304,14 +304,29 @@ impl KeybindingPreset {
             (Action::PrevTab, self.primary_shortcut(Action::PrevTab)),
             (Action::TreeUp, self.primary_shortcut(Action::TreeUp)),
             (Action::TreeDown, self.primary_shortcut(Action::TreeDown)),
-            (Action::TreeExpand, self.primary_shortcut(Action::TreeExpand)),
-            (Action::TreeCollapse, self.primary_shortcut(Action::TreeCollapse)),
+            (
+                Action::TreeExpand,
+                self.primary_shortcut(Action::TreeExpand),
+            ),
+            (
+                Action::TreeCollapse,
+                self.primary_shortcut(Action::TreeCollapse),
+            ),
             (Action::TreeOpen, self.primary_shortcut(Action::TreeOpen)),
-            (Action::DuplicateItem, self.primary_shortcut(Action::DuplicateItem)),
+            (
+                Action::DuplicateItem,
+                self.primary_shortcut(Action::DuplicateItem),
+            ),
             (Action::CopyItem, self.primary_shortcut(Action::CopyItem)),
             (Action::PasteItem, self.primary_shortcut(Action::PasteItem)),
-            (Action::DeleteItem, self.primary_shortcut(Action::DeleteItem)),
-            (Action::RenameItem, self.primary_shortcut(Action::RenameItem)),
+            (
+                Action::DeleteItem,
+                self.primary_shortcut(Action::DeleteItem),
+            ),
+            (
+                Action::RenameItem,
+                self.primary_shortcut(Action::RenameItem),
+            ),
         ]
     }
 }

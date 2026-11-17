@@ -82,10 +82,17 @@ fn test_reconcile_with_disk_discovers_new_files_and_cleans_orphans() {
     fs::remove_file(root.join("Health.aura")).unwrap();
 
     // Reconcile again with existing metadata
-    let updated = WorkspaceMetadata::reconcile_with_disk(root, Some(meta)).expect("reconcile update");
+    let updated =
+        WorkspaceMetadata::reconcile_with_disk(root, Some(meta)).expect("reconcile update");
     // Health.aura should be gone; Users should be added; Auth should remain
-    let has_health = updated.order.iter().any(|item| matches!(item, WorkspaceOrderItem::Request { name } if name == "Health.aura"));
-    let has_users = updated.order.iter().any(|item| matches!(item, WorkspaceOrderItem::Folder { name, .. } if name == "Users"));
+    let has_health = updated
+        .order
+        .iter()
+        .any(|item| matches!(item, WorkspaceOrderItem::Request { name } if name == "Health.aura"));
+    let has_users = updated
+        .order
+        .iter()
+        .any(|item| matches!(item, WorkspaceOrderItem::Folder { name, .. } if name == "Users"));
     assert!(!has_health);
     assert!(has_users);
 }
@@ -95,7 +102,8 @@ fn test_reconcile_empty_or_nonexistent_directory_does_not_crash() {
     // Review Focus #1
     let tmp = tempdir().expect("tempdir");
     let missing_path = tmp.path().join("does_not_exist");
-    let meta = WorkspaceMetadata::reconcile_with_disk(&missing_path, None).expect("reconcile missing");
+    let meta =
+        WorkspaceMetadata::reconcile_with_disk(&missing_path, None).expect("reconcile missing");
     assert_eq!(meta.version, 1);
     assert!(meta.order.is_empty());
 }
@@ -107,11 +115,17 @@ fn test_workspace_meta_item_mutations() {
         WorkspaceOrderItem::Folder {
             name: "Auth".to_string(),
             order: vec![
-                WorkspaceOrderItem::Request { name: "Login.aura".to_string() },
-                WorkspaceOrderItem::Request { name: "Signup.aura".to_string() },
+                WorkspaceOrderItem::Request {
+                    name: "Login.aura".to_string(),
+                },
+                WorkspaceOrderItem::Request {
+                    name: "Signup.aura".to_string(),
+                },
             ],
         },
-        WorkspaceOrderItem::Request { name: "Root.aura".to_string() },
+        WorkspaceOrderItem::Request {
+            name: "Root.aura".to_string(),
+        },
     ];
 
     // Reorder inside Auth
@@ -122,13 +136,15 @@ fn test_workspace_meta_item_mutations() {
     }
 
     // Rename
-    meta.rename_item(Path::new("Auth/Login.aura"), "SignIn.aura").expect("rename");
+    meta.rename_item(Path::new("Auth/Login.aura"), "SignIn.aura")
+        .expect("rename");
     if let WorkspaceOrderItem::Folder { order, .. } = &meta.order[0] {
         assert_eq!(order[1].name(), "SignIn.aura");
     }
 
     // Move from Auth to root
-    meta.move_item(Path::new("Auth/SignIn.aura"), Path::new(""), 0).expect("move");
+    meta.move_item(Path::new("Auth/SignIn.aura"), Path::new(""), 0)
+        .expect("move");
     assert_eq!(meta.order[0].name(), "SignIn.aura");
 
     // Remove

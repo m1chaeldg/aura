@@ -73,9 +73,7 @@ pub fn request_to_toml(req: &AuraRequest) -> Result<String> {
             let json = serde_json::to_string_pretty(fields).unwrap_or_default();
             (Some("multipart".to_string()), Some(json))
         }
-        BodyType::Binary { file_path, .. } => {
-            (Some("binary".to_string()), Some(file_path.clone()))
-        }
+        BodyType::Binary { file_path, .. } => (Some("binary".to_string()), Some(file_path.clone())),
     };
 
     let schema = TomlRequestSchema {

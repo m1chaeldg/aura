@@ -4,7 +4,9 @@ use crate::app_state::AuraAppState;
 use crate::stores::workspace_store::WorkspaceTreeNode;
 use aura_core::model::HttpMethod;
 use gpui::*;
-use gpui_kit::component::sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem};
+use gpui_kit::component::sidebar::{
+    Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem,
+};
 use gpui_kit::component::Collapsible;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -35,7 +37,12 @@ impl Collapsible for SidebarCustomItem {
 }
 
 impl SidebarItem for SidebarCustomItem {
-    fn render(self, _id: impl Into<ElementId>, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(
+        self,
+        _id: impl Into<ElementId>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> impl IntoElement {
         let items = self.elements.borrow_mut().take().unwrap_or_default();
         div()
             .flex()
@@ -57,9 +64,15 @@ impl SidebarView {
         cx: &mut Context<V>,
         on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
         on_new: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
-        on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
-        on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>) + 'static + Copy,
-        on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>)
+            + 'static
+            + Copy,
+        on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>)
+            + 'static
+            + Copy,
+        on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>)
+            + 'static
+            + Copy,
         on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
         let _border_color = rgb(0x333333);
@@ -206,10 +219,7 @@ impl SidebarView {
                         ),
                 ),
             )
-            .child(
-                SidebarGroup::new("COLLECTIONS")
-                    .child(SidebarCustomItem::new(item_elements)),
-            )
+            .child(SidebarGroup::new("COLLECTIONS").child(SidebarCustomItem::new(item_elements)))
             .footer(
                 SidebarFooter::new().child(
                     div()
@@ -246,7 +256,9 @@ fn render_tree_node<V: 'static>(
     cx: &mut Context<V>,
     on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
     on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
-    on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>) + 'static + Copy,
+    on_context_menu: impl Fn(&mut V, &std::path::Path, bool, (f32, f32), &mut Window, &mut Context<V>)
+        + 'static
+        + Copy,
     on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     counter: &mut u64,
@@ -254,11 +266,7 @@ fn render_tree_node<V: 'static>(
 ) {
     let padding_left = px(8.0 + (depth as f32 * 12.0));
     let node_path = node.path();
-    let is_selected = state
-        .workspace_store
-        .selected_path
-        .as_deref()
-        == Some(node_path);
+    let is_selected = state.workspace_store.selected_path.as_deref() == Some(node_path);
     let is_rename = state
         .inline_rename
         .as_ref()
@@ -275,9 +283,12 @@ fn render_tree_node<V: 'static>(
         .map(|d| d.hover_target_path == node_path)
         .unwrap_or(false);
     let placement = drag_info.map(|d| d.placement);
-    let show_above_line = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Above);
-    let show_below_line = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Below);
-    let is_inside_drop = is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Inside);
+    let show_above_line =
+        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Above);
+    let show_below_line =
+        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Below);
+    let is_inside_drop =
+        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Inside);
 
     let border_indicator = if is_drag_target || is_inside_drop {
         rgb(0x0066cc)
@@ -400,12 +411,23 @@ fn render_tree_node<V: 'static>(
                         .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
                         .text_color(rgb(0x888888))
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            on_context_menu(this, &folder_path_more, true, (180.0, 150.0), window, cx);
+                            on_context_menu(
+                                this,
+                                &folder_path_more,
+                                true,
+                                (180.0, 150.0),
+                                window,
+                                cx,
+                            );
                         }))
                         .child("⋯"),
                 );
 
-            out.push(row.child(left_content).child(right_actions).into_any_element());
+            out.push(
+                row.child(left_content)
+                    .child(right_actions)
+                    .into_any_element(),
+            );
 
             if show_below_line {
                 out.push(
@@ -436,11 +458,7 @@ fn render_tree_node<V: 'static>(
                 }
             }
         }
-        WorkspaceTreeNode::Request {
-            name,
-            path,
-            method,
-        } => {
+        WorkspaceTreeNode::Request { name, path, method } => {
             let badge_col = method_badge_color(*method);
             let el_id = ElementId::NamedInteger("sidebar-node-req".into(), *counter);
             *counter += 1;
@@ -554,12 +572,23 @@ fn render_tree_node<V: 'static>(
                         .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
                         .text_color(rgb(0x888888))
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            on_context_menu(this, &req_path_more, false, (180.0, 150.0), window, cx);
+                            on_context_menu(
+                                this,
+                                &req_path_more,
+                                false,
+                                (180.0, 150.0),
+                                window,
+                                cx,
+                            );
                         }))
                         .child("⋯"),
                 );
 
-            out.push(row.child(left_content).child(right_actions).into_any_element());
+            out.push(
+                row.child(left_content)
+                    .child(right_actions)
+                    .into_any_element(),
+            );
 
             if show_below_line {
                 out.push(

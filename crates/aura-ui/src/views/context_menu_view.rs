@@ -55,7 +55,6 @@ impl ContextMenuView {
                     .flex_col()
                     .gap_0p5()
                     .child(Self::render_menu_item(
-
                         "New Request",
                         None,
                         false,
@@ -165,7 +164,6 @@ impl ContextMenuView {
             .text_xs()
             .text_color(text_color);
 
-
         if !is_disabled {
             row = row
                 .cursor_pointer()
@@ -178,7 +176,11 @@ impl ContextMenuView {
         row.child(div().child(label)).when_some(shortcut, |el, sc| {
             el.child(
                 div()
-                    .text_color(if is_disabled { rgb(0x444444) } else { rgb(0x888888) })
+                    .text_color(if is_disabled {
+                        rgb(0x444444)
+                    } else {
+                        rgb(0x888888)
+                    })
                     .child(sc),
             )
         })

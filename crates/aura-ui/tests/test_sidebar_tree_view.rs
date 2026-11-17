@@ -21,7 +21,10 @@ fn test_open_space1_reconciles_and_builds_tree() {
     let root = PathBuf::from(r"c:\repo\aura\workspaces\space1");
     if root.exists() {
         state.open_workspace_sync(&root).unwrap();
-        assert!(!state.workspace_store.tree.is_empty(), "Tree should not be empty");
+        assert!(
+            !state.workspace_store.tree.is_empty(),
+            "Tree should not be empty"
+        );
 
         let folder = &state.workspace_store.tree[0];
         match folder {
@@ -32,23 +35,33 @@ fn test_open_space1_reconciles_and_builds_tree() {
                 children,
             } => {
                 assert_eq!(name, "Users & Accounts");
-                assert!(*is_expanded, "Folder should default to expanded on initial load");
-                assert!(children.len() >= 5, "Folder should contain all requests and subfolders");
+                assert!(
+                    *is_expanded,
+                    "Folder should default to expanded on initial load"
+                );
+                assert!(
+                    children.len() >= 5,
+                    "Folder should contain all requests and subfolders"
+                );
 
                 let folder_path = path.clone();
 
                 // Test toggle_folder to collapse
                 state.toggle_folder(&folder_path);
-                if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { is_expanded, .. } =
-                    &state.workspace_store.tree[0]
+                if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder {
+                    is_expanded,
+                    ..
+                } = &state.workspace_store.tree[0]
                 {
                     assert!(!*is_expanded, "Folder should now be collapsed");
                 }
 
                 // Test toggle_folder to re-expand
                 state.toggle_folder(&folder_path);
-                if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder { is_expanded, .. } =
-                    &state.workspace_store.tree[0]
+                if let aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder {
+                    is_expanded,
+                    ..
+                } = &state.workspace_store.tree[0]
                 {
                     assert!(*is_expanded, "Folder should be re-expanded");
                 }
@@ -63,7 +76,9 @@ fn test_context_menu_action_state_transitions() {
     let mut state = AuraAppState::new();
     let target = PathBuf::from("/ws/Auth/Login.aura");
 
-    state.workspace_store.open_context_menu(target.clone(), false, (100.0, 150.0));
+    state
+        .workspace_store
+        .open_context_menu(target.clone(), false, (100.0, 150.0));
     assert!(state.workspace_store.active_context_menu.is_some());
 
     let menu = state.workspace_store.active_context_menu.as_ref().unwrap();
@@ -88,7 +103,10 @@ fn test_sidebar_node_selection_and_action_menu_triggers() {
     }];
 
     state.workspace_store.select_node(req_path.clone());
-    assert_eq!(state.workspace_store.selected_path.as_ref(), Some(&req_path));
+    assert_eq!(
+        state.workspace_store.selected_path.as_ref(),
+        Some(&req_path)
+    );
 }
 
 #[test]
@@ -97,15 +115,42 @@ fn test_sidebar_keyboard_shortcuts_resolution() {
 
     let preset = KeybindingPreset::VsCode;
 
-    assert_eq!(preset.resolve("up", false, false, false), Some(Action::TreeUp));
-    assert_eq!(preset.resolve("down", false, false, false), Some(Action::TreeDown));
-    assert_eq!(preset.resolve("right", false, false, false), Some(Action::TreeExpand));
-    assert_eq!(preset.resolve("left", false, false, false), Some(Action::TreeCollapse));
-    assert_eq!(preset.resolve("d", true, false, false), Some(Action::DuplicateItem));
-    assert_eq!(preset.resolve("c", true, false, false), Some(Action::CopyItem));
-    assert_eq!(preset.resolve("v", true, false, false), Some(Action::PasteItem));
-    assert_eq!(preset.resolve("f2", false, false, false), Some(Action::RenameItem));
-    assert_eq!(preset.resolve("delete", false, false, false), Some(Action::DeleteItem));
+    assert_eq!(
+        preset.resolve("up", false, false, false),
+        Some(Action::TreeUp)
+    );
+    assert_eq!(
+        preset.resolve("down", false, false, false),
+        Some(Action::TreeDown)
+    );
+    assert_eq!(
+        preset.resolve("right", false, false, false),
+        Some(Action::TreeExpand)
+    );
+    assert_eq!(
+        preset.resolve("left", false, false, false),
+        Some(Action::TreeCollapse)
+    );
+    assert_eq!(
+        preset.resolve("d", true, false, false),
+        Some(Action::DuplicateItem)
+    );
+    assert_eq!(
+        preset.resolve("c", true, false, false),
+        Some(Action::CopyItem)
+    );
+    assert_eq!(
+        preset.resolve("v", true, false, false),
+        Some(Action::PasteItem)
+    );
+    assert_eq!(
+        preset.resolve("f2", false, false, false),
+        Some(Action::RenameItem)
+    );
+    assert_eq!(
+        preset.resolve("delete", false, false, false),
+        Some(Action::DeleteItem)
+    );
 }
 
 #[test]
@@ -138,10 +183,7 @@ async fn test_sidebar_reorder_item_integration() {
     let folder = service.create_folder(root, root, "FolderA").await.unwrap();
 
     // Reorder r1 into folder
-    service
-        .reorder_item(root, &r1, &folder, 0)
-        .await
-        .unwrap();
+    service.reorder_item(root, &r1, &folder, 0).await.unwrap();
     assert!(folder.join("Req1.aura").exists());
     assert!(!r1.exists());
 
@@ -182,7 +224,10 @@ async fn test_app_state_rename_dialog_workflow() {
     let root = tmp.as_path();
 
     let srv = state.workspace_service.clone();
-    let created = srv.create_request(root, root, "Login", HttpMethod::GET).await.unwrap();
+    let created = srv
+        .create_request(root, root, "Login", HttpMethod::GET)
+        .await
+        .unwrap();
     state.open_workspace_sync(root).unwrap();
     state.open_file_in_tab(&created).unwrap();
 

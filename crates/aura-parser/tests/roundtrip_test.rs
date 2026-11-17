@@ -5,7 +5,10 @@ fn test_roundtrip_spec_file() {
     let spec_content = include_str!("../../../docs/file_format.md");
     let cst = parse(spec_content).expect("Failed to parse spec file");
     let serialized = serialize(&cst);
-    assert_eq!(serialized, spec_content, "Round-trip invariant failed on spec file");
+    assert_eq!(
+        serialized, spec_content,
+        "Round-trip invariant failed on spec file"
+    );
 
     let req = cst.to_request().expect("Failed to map CST to model");
     assert_eq!(req.version, "1.0");
@@ -34,14 +37,22 @@ fn test_conflict_marker_roundtrip() {
     let conflict_input = "version = \"1.0\"\n<<<<<<< HEAD\nname = \"Local Branch\"\n=======\nname = \"Remote Branch\"\n>>>>>>> main\n\n[headers]\nX-Key = \"Val\"\n";
     let cst = parse(conflict_input).expect("Parse conflict block");
     assert!(cst.has_conflicts(), "Should detect git conflict markers");
-    assert_eq!(serialize(&cst), conflict_input, "Roundtrip must preserve conflict markers");
+    assert_eq!(
+        serialize(&cst),
+        conflict_input,
+        "Roundtrip must preserve conflict markers"
+    );
 }
 
 #[test]
 fn test_roundtrip_flow_with_pacing_and_jitter() {
     let flow_input = "version = \"1.0\"\nname = \"Pacing Test\"\nmethod = \"GET\"\nurl = \"http://api.test/items\"\n\n[flow]\nonce_per_run = true\nretry_until = \"response.status == 200\"\nretry_interval_ms = 500\nmax_retries = 3\ndelay_ms = 250\njitter_min_ms = 50\njitter_max_ms = 150\n";
     let cst = parse(flow_input).expect("Parse flow");
-    assert_eq!(serialize(&cst), flow_input, "Round-trip must match flow input exactly");
+    assert_eq!(
+        serialize(&cst),
+        flow_input,
+        "Round-trip must match flow input exactly"
+    );
 
     let req = cst.to_request().expect("To request");
     let flow = req.flow.expect("Flow present");
@@ -58,7 +69,11 @@ fn test_roundtrip_flow_with_pacing_and_jitter() {
 fn test_roundtrip_variables_assert_tests_settings() {
     let input = "version = \"1.0\"\nname = \"Complete Request\"\nmethod = \"POST\"\nurl = \"https://api.example.com/items\"\n\n[settings]\ninherit_auth = true\nverify_ssl = true\nfollow_redirects = true\nmax_redirects = 10\ntimeout_ms = 0\n\n[variables]\nitem_id = \"item_999\"\napi_mode = \"strict\"\n\n[assert]\n```javascript\nresponse.status === 200\nresponse.json().success === true\n```\n\n[tests]\n```javascript\ndescribe(\"Item Verification\", () => {\n  it(\"matches expectation\", () => {\n    expect(response.status).toBe(200);\n  });\n});\n```\n";
     let cst = parse(input).expect("Parse full request");
-    assert_eq!(serialize(&cst), input, "Roundtrip invariant must hold for variables, assert, tests, settings");
+    assert_eq!(
+        serialize(&cst),
+        input,
+        "Roundtrip invariant must hold for variables, assert, tests, settings"
+    );
 
     let req = cst.to_request().expect("To request");
     assert_eq!(req.settings.max_redirects, 10);
@@ -73,7 +88,11 @@ fn test_roundtrip_variables_assert_tests_settings() {
 fn test_inactive_tilde_keys_roundtrip_and_omitted_from_request() {
     let input = "version = \"1.0\"\nname = \"Tilde Test\"\nmethod = \"GET\"\nurl = \"http://api.test/items\"\n\n[headers]\nAccept = \"application/json\"\nAuthorization~ = \"Bearer secret_123\"\n~X-Debug = \"true\"\n\n[params.query]\nlimit = \"10\"\nfilter~ = \"active\"\n\n[variables]\nenv_mode = \"dev\"\nsecret_flag~ = \"true\"\n";
     let cst = parse(input).expect("Parse inactive tilde keys");
-    assert_eq!(serialize(&cst), input, "Roundtrip invariant must hold for inactive tilde keys");
+    assert_eq!(
+        serialize(&cst),
+        input,
+        "Roundtrip invariant must hold for inactive tilde keys"
+    );
 
     let req = cst.to_request().expect("To request");
     // Active headers present
@@ -134,7 +153,11 @@ fn test_roundtrip_all_body_types() {
     assert_eq!(serialize(&cst_mp), multipart_input, "Multipart round-trip");
     let req_mp = cst_mp.to_request().expect("To request Multipart");
     if let BodyType::Multipart(parts) = req_mp.body {
-        assert_eq!(parts.len(), 2, "Inactive doc~ part omitted from execution request");
+        assert_eq!(
+            parts.len(),
+            2,
+            "Inactive doc~ part omitted from execution request"
+        );
         let desc = parts.iter().find(|p| p.name == "description").unwrap();
         assert_eq!(desc.value.as_deref(), Some("Profile Photo"));
         assert_eq!(desc.file_path, None);
@@ -151,7 +174,11 @@ fn test_roundtrip_all_body_types() {
     let cst_bin = parse(binary_input).expect("Parse Binary");
     assert_eq!(serialize(&cst_bin), binary_input, "Binary round-trip");
     let req_bin = cst_bin.to_request().expect("To request Binary");
-    if let BodyType::Binary { file_path, content_type } = req_bin.body {
+    if let BodyType::Binary {
+        file_path,
+        content_type,
+    } = req_bin.body
+    {
         assert_eq!(file_path, "./fixtures/firmware.bin");
         assert_eq!(content_type.as_deref(), Some("application/octet-stream"));
     } else {

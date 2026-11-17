@@ -7,10 +7,12 @@ pub mod services;
 pub mod stores;
 pub mod views;
 
-pub use app_state::{AuraAppState, CommandPaletteItem, DragItemPayload, InlineRenameState, RenameDialogState};
-pub use preferences::AuraPreferences;
+pub use app_state::{
+    AuraAppState, CommandPaletteItem, DragItemPayload, InlineRenameState, RenameDialogState,
+};
 pub use aura_core::design;
 pub use keybindings::{Action, KeybindingPreset};
+pub use preferences::AuraPreferences;
 pub use services::{ExecutionService, FormatService, WorkspaceDiskEvent, WorkspaceService};
 pub use stores::{
     EditorTab, LayoutOrientation, LayoutStore, ResponseTab, SessionStore, WorkspaceStore,

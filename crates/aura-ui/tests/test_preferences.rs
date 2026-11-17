@@ -38,7 +38,10 @@ fn test_preferences_save_and_load_cycle() {
 
     // Load back
     let loaded = AuraPreferences::load_from_file(&pref_file);
-    assert_eq!(loaded.last_workspace_path, Some(PathBuf::from("/custom/workspace/path")));
+    assert_eq!(
+        loaded.last_workspace_path,
+        Some(PathBuf::from("/custom/workspace/path"))
+    );
 }
 
 #[test]

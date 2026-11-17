@@ -182,7 +182,9 @@ impl AuraScriptRuntime {
                 }
             })();
         "#;
-        let _ = self.runtime.execute_script("aura_drain.js", drain_script.to_string());
+        let _ = self
+            .runtime
+            .execute_script("aura_drain.js", drain_script.to_string());
         let _ = futures::executor::block_on(self.runtime.run_event_loop(Default::default()));
 
         // Extract mutated variables, console logs, and test assertions

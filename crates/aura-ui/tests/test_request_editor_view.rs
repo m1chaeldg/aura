@@ -169,7 +169,10 @@ fn test_auth_configurations() {
 
     // Bearer Token
     state.set_auth_type("Bearer Token");
-    state.update_bearer_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.t-IDcSemACt8x4iTMCda8Yhe3iZaWbvV5XKSTbuAn0M".into());
+    state.update_bearer_token(
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.t-IDcSemACt8x4iTMCda8Yhe3iZaWbvV5XKSTbuAn0M"
+            .into(),
+    );
     match &state.tabs[0].request.auth {
         AuthConfig::Bearer { token } => assert!(token.starts_with("eyJ")),
         _ => panic!("Expected AuthConfig::Bearer"),
@@ -190,7 +193,11 @@ fn test_auth_configurations() {
     state.set_auth_type("API Key");
     state.update_api_key("X-API-KEY".into(), "xyz-789".into(), true);
     match &state.tabs[0].request.auth {
-        AuthConfig::ApiKey { key, value, in_header } => {
+        AuthConfig::ApiKey {
+            key,
+            value,
+            in_header,
+        } => {
             assert_eq!(key, "X-API-KEY");
             assert_eq!(value, "xyz-789");
             assert!(*in_header);
@@ -207,9 +214,20 @@ fn test_auth_configurations() {
 
     // AWS SigV4
     state.set_auth_type("AWS SigV4");
-    state.update_aws_sigv4("AKIAEXAMPLE".into(), "secretkey".into(), "us-east-1".into(), "s3".into(), None);
+    state.update_aws_sigv4(
+        "AKIAEXAMPLE".into(),
+        "secretkey".into(),
+        "us-east-1".into(),
+        "s3".into(),
+        None,
+    );
     match &state.tabs[0].request.auth {
-        AuthConfig::AwsSigV4 { access_key, region, service, .. } => {
+        AuthConfig::AwsSigV4 {
+            access_key,
+            region,
+            service,
+            ..
+        } => {
             assert_eq!(access_key, "AKIAEXAMPLE");
             assert_eq!(region, "us-east-1");
             assert_eq!(service, "s3");
@@ -219,9 +237,20 @@ fn test_auth_configurations() {
 
     // OAuth 2.0
     state.set_auth_type("OAuth 2.0");
-    state.update_oauth2("authorization_code".into(), "tok_abc".into(), Some("https://auth.example.com/token".into()), None, None);
+    state.update_oauth2(
+        "authorization_code".into(),
+        "tok_abc".into(),
+        Some("https://auth.example.com/token".into()),
+        None,
+        None,
+    );
     match &state.tabs[0].request.auth {
-        AuthConfig::OAuth2 { grant_type, access_token, token_url, .. } => {
+        AuthConfig::OAuth2 {
+            grant_type,
+            access_token,
+            token_url,
+            ..
+        } => {
             assert_eq!(grant_type, "authorization_code");
             assert_eq!(access_token, "tok_abc");
             assert_eq!(token_url.as_deref(), Some("https://auth.example.com/token"));

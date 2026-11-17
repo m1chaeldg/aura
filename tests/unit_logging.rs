@@ -29,7 +29,8 @@ fn test_logging_broadcaster_and_file_append() {
 
 #[test]
 fn test_system_logging_initialization_and_tracing_capture() {
-    let temp_dir = std::env::temp_dir().join(format!("aura_test_system_log_{}", uuid::Uuid::new_v4()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("aura_test_system_log_{}", uuid::Uuid::new_v4()));
     let _guard = init_system_logging(Some(temp_dir.clone())).expect("initialize system logging");
 
     tracing::info!(target: "aura_engine", "System engine started up");
@@ -40,9 +41,15 @@ fn test_system_logging_initialization_and_tracing_capture() {
     let entries = broadcaster.get_entries();
 
     // Verify events were captured into the in-memory ring buffer
-    assert!(entries.iter().any(|e| e.message.contains("System engine started up") && e.level == LogLevel::INFO));
-    assert!(entries.iter().any(|e| e.message.contains("Layout split adjusted") && e.level == LogLevel::WARN));
-    assert!(entries.iter().any(|e| e.message.contains("Disk sync retry required") && e.level == LogLevel::ERROR));
+    assert!(entries
+        .iter()
+        .any(|e| e.message.contains("System engine started up") && e.level == LogLevel::INFO));
+    assert!(entries
+        .iter()
+        .any(|e| e.message.contains("Layout split adjusted") && e.level == LogLevel::WARN));
+    assert!(entries
+        .iter()
+        .any(|e| e.message.contains("Disk sync retry required") && e.level == LogLevel::ERROR));
 
     // Test filtering by level and subsystem
     let error_entries = broadcaster.filter_entries(Some(LogLevel::ERROR), None, None);

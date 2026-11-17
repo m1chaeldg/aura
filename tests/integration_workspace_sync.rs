@@ -29,10 +29,17 @@ async fn test_e2e_workspace_loading_and_external_sync_cycle() {
 
     // Set up disk files
     fs::create_dir_all(root.join("Auth")).unwrap();
-    fs::write(root.join("Auth").join("Login.aura"), "[request]\nname = \"Login\"\nmethod = \"POST\"\nurl = \"https://echo.com\"").unwrap();
+    fs::write(
+        root.join("Auth").join("Login.aura"),
+        "[request]\nname = \"Login\"\nmethod = \"POST\"\nurl = \"https://echo.com\"",
+    )
+    .unwrap();
 
     let mut state = AuraAppState::new();
-    state.open_workspace_directory(root).await.expect("open workspace");
+    state
+        .open_workspace_directory(root)
+        .await
+        .expect("open workspace");
 
     // Verify workspace loaded into store
     assert_eq!(state.workspace_store.tree.len(), 1);
@@ -47,7 +54,10 @@ async fn test_e2e_workspace_loading_and_external_sync_cycle() {
     fs::remove_file(&req_path).unwrap();
 
     // Trigger sync cycle
-    state.reconcile_workspace_with_disk().await.expect("reconcile");
+    state
+        .reconcile_workspace_with_disk()
+        .await
+        .expect("reconcile");
 
     // Request tab should have been closed automatically, falling back to Untitled Request
     assert_eq!(state.tabs.len(), 1);
