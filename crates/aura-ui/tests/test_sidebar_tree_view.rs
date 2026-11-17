@@ -250,3 +250,79 @@ async fn test_app_state_rename_dialog_workflow() {
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn test_workspace_store_all_folders() {
+    use aura_ui::stores::workspace_store::{WorkspaceStore, WorkspaceTreeNode};
+    let mut store = WorkspaceStore::new();
+    let root = PathBuf::from("/workspace");
+    store.workspace_root = Some(root.clone());
+    store.tree = vec![
+        WorkspaceTreeNode::Folder {
+            name: "Auth".to_string(),
+            path: root.join("Auth"),
+            is_expanded: true,
+            children: vec![
+                WorkspaceTreeNode::Folder {
+                    name: "OAuth".to_string(),
+                    path: root.join("Auth").join("OAuth"),
+                    is_expanded: false,
+                    children: vec![],
+                },
+                WorkspaceTreeNode::Request {
+                    name: "Login".to_string(),
+                    path: root.join("Auth").join("Login.aura"),
+                    method: aura_core::model::HttpMethod::POST,
+                },
+            ],
+        },
+        WorkspaceTreeNode::Folder {
+            name: "Users".to_string(),
+            path: root.join("Users"),
+            is_expanded: false,
+            children: vec![],
+        },
+    ];
+
+    let folders = store.all_folders();
+    assert_eq!(folders.len(), 3);
+    assert_eq!(folders[0], root.join("Auth"));
+    assert_eq!(folders[1], root.join("Auth").join("OAuth"));
+    assert_eq!(folders[2], root.join("Users"));
+}
+
+#[tokio::test]
+async fn test_move_to_dialog_workflow() {
+    let mut state = AuraAppState::new();
+    let root = PathBuf::from("/workspace");
+    state.workspace_store.workspace_root = Some(root.clone());
+    state.workspace_store.tree = vec![
+        aura_ui::stores::workspace_store::WorkspaceTreeNode::Folder {
+            name: "Auth".to_string(),
+            path: root.join("Auth"),
+            is_expanded: true,
+            children: vec![],
+        },
+    ];
+
+    let target = root.join("GetUsers.aura");
+    state.open_move_to_dialog(target.clone());
+    assert!(state.move_to_dialog.is_some());
+    let dialog = state.move_to_dialog.as_ref().unwrap();
+    assert_eq!(dialog.source_path, target);
+    assert_eq!(dialog.filtered_destinations().len(), 2); // Root + Auth
+
+    state.update_move_to_search("Au".to_string());
+    assert_eq!(
+        state
+            .move_to_dialog
+            .as_ref()
+            .unwrap()
+            .filtered_destinations()
+            .len(),
+        1
+    );
+
+    state.cancel_move_to();
+    assert!(state.move_to_dialog.is_none());
+}

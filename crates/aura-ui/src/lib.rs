@@ -8,7 +8,8 @@ pub mod stores;
 pub mod views;
 
 pub use app_state::{
-    AuraAppState, CommandPaletteItem, DragItemPayload, InlineRenameState, RenameDialogState,
+    AuraAppState, CommandPaletteItem, DragItemPayload, InlineRenameState, MoveToDestination,
+    MoveToDialogState, RenameDialogState,
 };
 pub use aura_core::design;
 pub use keybindings::{Action, KeybindingPreset};

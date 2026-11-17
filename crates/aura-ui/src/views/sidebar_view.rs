@@ -1,7 +1,7 @@
 //! Sidebar View: Displays workspace collections, folders, and request items.
 
 use crate::app_state::AuraAppState;
-use crate::stores::workspace_store::WorkspaceTreeNode;
+use crate::stores::workspace_store::{DragPlacement, WorkspaceTreeNode};
 use aura_core::model::HttpMethod;
 use gpui::*;
 use gpui_kit::component::sidebar::{
@@ -49,7 +49,7 @@ impl SidebarItem for SidebarCustomItem {
             .flex_col()
             .flex_1()
             .p_2()
-            .gap_1()
+            .gap_0p5()
             .overflow_hidden()
             .children(items)
     }
@@ -74,8 +74,17 @@ impl SidebarView {
             + 'static
             + Copy,
         on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_drop_item: impl Fn(
+                &mut V,
+                &std::path::Path,
+                &std::path::Path,
+                DragPlacement,
+                &mut Window,
+                &mut Context<V>,
+            )
+            + 'static
+            + Copy,
     ) -> impl IntoElement {
-        let _border_color = rgb(0x333333);
         let text_muted = rgb(0x7a7a7a);
         let accent_blue = rgb(0x0066cc);
         let green_color = rgb(0x28a745);
@@ -95,6 +104,7 @@ impl SidebarView {
                     on_context_menu,
                     on_new_in_folder,
                     on_duplicate,
+                    on_drop_item,
                     &mut element_counter,
                     &mut item_elements,
                 );
@@ -153,10 +163,12 @@ impl SidebarView {
                             }))
                             .child(
                                 div()
-                                    .px_1()
+                                    .px_1p5()
+                                    .py_0p5()
                                     .rounded_sm()
-                                    .bg(rgb(0x1b1b1d))
+                                    .bg(rgb(0x19191b))
                                     .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(badge_col)
                                     .child(req.method.as_str()),
                             )
@@ -170,7 +182,7 @@ impl SidebarView {
                     div()
                         .flex()
                         .flex_col()
-                        .gap_1()
+                        .gap_0p5()
                         .py_1()
                         .children(col_items)
                         .into_any_element(),
@@ -191,34 +203,53 @@ impl SidebarView {
                 }
             });
 
-        Sidebar::new("workspace-sidebar")
-            .header(
-                SidebarHeader::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .w_full()
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(text_muted)
-                                .child(workspace_title),
-                        )
-                        .child(
-                            div()
-                                .id("sidebar-new-btn")
-                                .text_xs()
-                                .text_color(accent_blue)
-                                .hover(|s| s.text_color(rgb(0x0071e3)))
-                                .cursor_pointer()
-                                .child("+ Req")
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    on_new(this, window, cx);
-                                })),
-                        ),
-                ),
+        let root_for_drop = state.workspace_store.workspace_root.clone();
+
+        let mut header_div = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .w_full()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(text_muted)
+                    .child(workspace_title),
             )
+            .child(
+                div()
+                    .id("sidebar-new-btn")
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(accent_blue)
+                    .hover(|s| s.text_color(rgb(0x0071e3)))
+                    .cursor_pointer()
+                    .child("+ Req")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_new(this, window, cx);
+                    })),
+            );
+
+        if let Some(root_path) = root_for_drop {
+            header_div = header_div.on_drop(cx.listener(
+                move |this, payload: &crate::app_state::DragItemPayload, window, cx| {
+                    if payload.path != root_path {
+                        on_drop_item(
+                            this,
+                            &payload.path,
+                            &root_path,
+                            DragPlacement::Inside,
+                            window,
+                            cx,
+                        );
+                    }
+                },
+            ));
+        }
+
+        Sidebar::new("workspace-sidebar")
+            .header(SidebarHeader::new().child(header_div))
             .child(SidebarGroup::new("COLLECTIONS").child(SidebarCustomItem::new(item_elements)))
             .footer(
                 SidebarFooter::new().child(
@@ -261,6 +292,9 @@ fn render_tree_node<V: 'static>(
         + Copy,
     on_new_in_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
     on_duplicate: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
+    on_drop_item: impl Fn(&mut V, &std::path::Path, &std::path::Path, DragPlacement, &mut Window, &mut Context<V>)
+        + 'static
+        + Copy,
     counter: &mut u64,
     out: &mut Vec<AnyElement>,
 ) {
@@ -272,29 +306,15 @@ fn render_tree_node<V: 'static>(
         .as_ref()
         .map(|r| r.path == node_path)
         .unwrap_or(false);
-    let is_drag_target = state
-        .drag_target
-        .as_ref()
-        .map(|d| d == node_path)
-        .unwrap_or(false);
 
     let drag_info = state.workspace_store.drag_state.as_ref();
     let is_hover_target = drag_info
         .map(|d| d.hover_target_path == node_path)
         .unwrap_or(false);
     let placement = drag_info.map(|d| d.placement);
-    let show_above_line =
-        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Above);
-    let show_below_line =
-        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Below);
-    let is_inside_drop =
-        is_hover_target && placement == Some(crate::stores::workspace_store::DragPlacement::Inside);
-
-    let border_indicator = if is_drag_target || is_inside_drop {
-        rgb(0x0066cc)
-    } else {
-        rgb(0x222224)
-    };
+    let show_above_line = is_hover_target && placement == Some(DragPlacement::Above);
+    let show_below_line = is_hover_target && placement == Some(DragPlacement::Below);
+    let is_inside_drop = is_hover_target && placement == Some(DragPlacement::Inside);
 
     match node {
         WorkspaceTreeNode::Folder {
@@ -310,6 +330,7 @@ fn render_tree_node<V: 'static>(
             let folder_path_ctx = path.clone();
             let folder_path_add = path.clone();
             let folder_path_more = path.clone();
+            let folder_path_drop = path.clone();
 
             let add_btn_id = ElementId::NamedInteger("sidebar-folder-add".into(), *counter);
             *counter += 1;
@@ -341,14 +362,40 @@ fn render_tree_node<V: 'static>(
                 .text_xs()
                 .text_color(rgb(0xffffff));
 
-            if is_selected || is_inside_drop {
-                row = row.bg(rgb(0x27374d)).border_1().border_color(rgb(0x0066cc));
-            } else {
+            if is_selected {
                 row = row
-                    .hover(|s| s.bg(rgb(0x2a2a2c)))
-                    .border_b_1()
-                    .border_color(border_indicator);
+                    .bg(rgb(0x27374d))
+                    .border_l_2()
+                    .border_color(rgb(0x0066cc));
+            } else if is_inside_drop {
+                row = row.bg(rgb(0x2a2a2c)).border_1().border_color(rgb(0x0066cc));
+            } else {
+                row = row.hover(|s| s.bg(rgb(0x2a2a2c)));
             }
+
+            // Drag and Drop support
+            let drag_payload = crate::app_state::DragItemPayload {
+                path: path.clone(),
+                is_folder: true,
+            };
+            row = row
+                .on_drag(drag_payload, |item, _, _, cx| cx.new(|_| item.clone()))
+                .on_drop(cx.listener(
+                    move |this, payload: &crate::app_state::DragItemPayload, window, cx| {
+                        if payload.path != folder_path_drop
+                            && !folder_path_drop.starts_with(&payload.path)
+                        {
+                            on_drop_item(
+                                this,
+                                &payload.path,
+                                &folder_path_drop,
+                                DragPlacement::Inside,
+                                window,
+                                cx,
+                            );
+                        }
+                    },
+                ));
 
             row = row
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -359,8 +406,16 @@ fn render_tree_node<V: 'static>(
                 .on_mouse_down(
                     gpui::MouseButton::Right,
                     cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                        let pos = (event.position.x.into(), event.position.y.into());
-                        on_context_menu(this, &folder_path_ctx, true, pos, window, cx);
+                        let vp = window.viewport_size();
+                        let max_x: f32 = (vp.width - px(200.0)).into();
+                        let max_y: f32 = (vp.height - px(260.0)).into();
+                        let px_val: f32 = event.position.x.into();
+                        let py_val: f32 = event.position.y.into();
+                        let clamped_pos = (
+                            px_val.clamp(8.0, max_x.max(8.0)),
+                            py_val.clamp(8.0, max_y.max(8.0)),
+                        );
+                        on_context_menu(this, &folder_path_ctx, true, clamped_pos, window, cx);
                     }),
                 );
 
@@ -369,8 +424,17 @@ fn render_tree_node<V: 'static>(
                 .items_center()
                 .gap_2()
                 .overflow_hidden()
-                .child(div().text_color(rgb(0x7a7a7a)).child(chevron))
-                .child("📁")
+                .child(div().text_xs().text_color(rgb(0x8e8e93)).child(chevron))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(if *is_expanded {
+                            rgb(0x2997ff)
+                        } else {
+                            rgb(0xa1a1a6)
+                        })
+                        .child("📁"),
+                )
                 .child(if is_rename {
                     div()
                         .px_1()
@@ -392,11 +456,12 @@ fn render_tree_node<V: 'static>(
                 .child(
                     div()
                         .id(add_btn_id)
-                        .px_1()
+                        .px_1p5()
+                        .py_0p5()
                         .rounded_sm()
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
-                        .text_color(rgb(0x888888))
+                        .hover(|s| s.bg(rgb(0x38383c)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x8e8e93))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             on_new_in_folder(this, &folder_path_add, window, cx);
                         }))
@@ -405,21 +470,34 @@ fn render_tree_node<V: 'static>(
                 .child(
                     div()
                         .id(more_btn_id)
-                        .px_1()
+                        .px_1p5()
+                        .py_0p5()
                         .rounded_sm()
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
-                        .text_color(rgb(0x888888))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            on_context_menu(
-                                this,
-                                &folder_path_more,
-                                true,
-                                (180.0, 150.0),
-                                window,
-                                cx,
-                            );
-                        }))
+                        .hover(|s| s.bg(rgb(0x38383c)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x8e8e93))
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                                let vp = window.viewport_size();
+                                let max_x: f32 = (vp.width - px(200.0)).into();
+                                let max_y: f32 = (vp.height - px(260.0)).into();
+                                let px_val: f32 = event.position.x.into();
+                                let py_val: f32 = event.position.y.into();
+                                let clamped_pos = (
+                                    px_val.clamp(8.0, max_x.max(8.0)),
+                                    py_val.clamp(8.0, max_y.max(8.0)),
+                                );
+                                on_context_menu(
+                                    this,
+                                    &folder_path_more,
+                                    true,
+                                    clamped_pos,
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        )
                         .child("⋯"),
                 );
 
@@ -452,6 +530,7 @@ fn render_tree_node<V: 'static>(
                         on_context_menu,
                         on_new_in_folder,
                         on_duplicate,
+                        on_drop_item,
                         counter,
                         out,
                     );
@@ -466,6 +545,8 @@ fn render_tree_node<V: 'static>(
             let req_path_ctx = path.clone();
             let req_path_dup = path.clone();
             let req_path_more = path.clone();
+            let req_path_drop = path.clone();
+            let req_parent = path.parent().unwrap_or(path).to_path_buf();
 
             let dup_btn_id = ElementId::NamedInteger("sidebar-req-dup".into(), *counter);
             *counter += 1;
@@ -498,13 +579,37 @@ fn render_tree_node<V: 'static>(
                 .text_color(rgb(0xcccccc));
 
             if is_selected {
-                row = row.bg(rgb(0x27374d)).border_1().border_color(rgb(0x0066cc));
-            } else {
                 row = row
-                    .hover(|s| s.bg(rgb(0x2a2a2c)))
-                    .border_b_1()
-                    .border_color(border_indicator);
+                    .bg(rgb(0x27374d))
+                    .border_l_2()
+                    .border_color(rgb(0x0066cc));
+            } else if is_inside_drop {
+                row = row.bg(rgb(0x2a2a2c)).border_1().border_color(rgb(0x0066cc));
+            } else {
+                row = row.hover(|s| s.bg(rgb(0x2a2a2c)));
             }
+
+            // Drag and Drop support
+            let drag_payload = crate::app_state::DragItemPayload {
+                path: path.clone(),
+                is_folder: false,
+            };
+            row = row
+                .on_drag(drag_payload, |item, _, _, cx| cx.new(|_| item.clone()))
+                .on_drop(cx.listener(
+                    move |this, payload: &crate::app_state::DragItemPayload, window, cx| {
+                        if payload.path != req_path_drop {
+                            on_drop_item(
+                                this,
+                                &payload.path,
+                                &req_parent,
+                                DragPlacement::Inside,
+                                window,
+                                cx,
+                            );
+                        }
+                    },
+                ));
 
             row = row
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -513,8 +618,16 @@ fn render_tree_node<V: 'static>(
                 .on_mouse_down(
                     gpui::MouseButton::Right,
                     cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                        let pos = (event.position.x.into(), event.position.y.into());
-                        on_context_menu(this, &req_path_ctx, false, pos, window, cx);
+                        let vp = window.viewport_size();
+                        let max_x: f32 = (vp.width - px(200.0)).into();
+                        let max_y: f32 = (vp.height - px(260.0)).into();
+                        let px_val: f32 = event.position.x.into();
+                        let py_val: f32 = event.position.y.into();
+                        let clamped_pos = (
+                            px_val.clamp(8.0, max_x.max(8.0)),
+                            py_val.clamp(8.0, max_y.max(8.0)),
+                        );
+                        on_context_menu(this, &req_path_ctx, false, clamped_pos, window, cx);
                     }),
                 );
 
@@ -525,10 +638,12 @@ fn render_tree_node<V: 'static>(
                 .overflow_hidden()
                 .child(
                     div()
-                        .px_1()
+                        .px_1p5()
+                        .py_0p5()
                         .rounded_sm()
-                        .bg(rgb(0x1b1b1d))
+                        .bg(rgb(0x19191b))
                         .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(badge_col)
                         .child(method.as_str()),
                 )
@@ -553,11 +668,12 @@ fn render_tree_node<V: 'static>(
                 .child(
                     div()
                         .id(dup_btn_id)
-                        .px_1()
+                        .px_1p5()
+                        .py_0p5()
                         .rounded_sm()
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
-                        .text_color(rgb(0x888888))
+                        .hover(|s| s.bg(rgb(0x38383c)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x8e8e93))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             on_duplicate(this, &req_path_dup, window, cx);
                         }))
@@ -566,21 +682,34 @@ fn render_tree_node<V: 'static>(
                 .child(
                     div()
                         .id(more_btn_id)
-                        .px_1()
+                        .px_1p5()
+                        .py_0p5()
                         .rounded_sm()
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x333336)).text_color(rgb(0xffffff)))
-                        .text_color(rgb(0x888888))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            on_context_menu(
-                                this,
-                                &req_path_more,
-                                false,
-                                (180.0, 150.0),
-                                window,
-                                cx,
-                            );
-                        }))
+                        .hover(|s| s.bg(rgb(0x38383c)).text_color(rgb(0xffffff)))
+                        .text_color(rgb(0x8e8e93))
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                                let vp = window.viewport_size();
+                                let max_x: f32 = (vp.width - px(200.0)).into();
+                                let max_y: f32 = (vp.height - px(260.0)).into();
+                                let px_val: f32 = event.position.x.into();
+                                let py_val: f32 = event.position.y.into();
+                                let clamped_pos = (
+                                    px_val.clamp(8.0, max_x.max(8.0)),
+                                    py_val.clamp(8.0, max_y.max(8.0)),
+                                );
+                                on_context_menu(
+                                    this,
+                                    &req_path_more,
+                                    false,
+                                    clamped_pos,
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        )
                         .child("⋯"),
                 );
 

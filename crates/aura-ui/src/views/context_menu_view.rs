@@ -10,6 +10,7 @@ pub enum SidebarMenuAction {
     Copy,
     Paste,
     Rename,
+    MoveTo,
     Delete,
 }
 
@@ -107,6 +108,15 @@ impl ContextMenuView {
                         false,
                         false,
                         SidebarMenuAction::Rename,
+                        cx,
+                        on_action,
+                    ))
+                    .child(Self::render_menu_item(
+                        "Move To...",
+                        Some("Ctrl+M"),
+                        false,
+                        false,
+                        SidebarMenuAction::MoveTo,
                         cx,
                         on_action,
                     ))

@@ -342,6 +342,22 @@ impl WorkspaceStore {
     pub fn add_collection(&mut self, collection: Collection) {
         self.collections.push(collection);
     }
+
+    /// Returns all folders in the workspace tree in depth-first order.
+    pub fn all_folders(&self) -> Vec<PathBuf> {
+        let mut folders = Vec::new();
+        collect_folders_recursive(&self.tree, &mut folders);
+        folders
+    }
+}
+
+fn collect_folders_recursive(nodes: &[WorkspaceTreeNode], out: &mut Vec<PathBuf>) {
+    for node in nodes {
+        if let WorkspaceTreeNode::Folder { path, children, .. } = node {
+            out.push(path.clone());
+            collect_folders_recursive(children, out);
+        }
+    }
 }
 
 fn collect_expansion_states(nodes: &[WorkspaceTreeNode], map: &mut HashMap<PathBuf, bool>) {

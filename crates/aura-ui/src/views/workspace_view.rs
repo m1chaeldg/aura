@@ -135,6 +135,22 @@ impl AuraWorkspaceView {
         .detach();
     }
 
+    /// Confirms pending Move To dialog action and relocates item.
+    pub fn confirm_move_to_action(&mut self, cx: &mut Context<Self>) {
+        if let Some(dialog) = self.state.move_to_dialog.take() {
+            if let Some(dest) = dialog.selected_destination() {
+                let source = dialog.source_path.clone();
+                let target_parent = dest.path.clone();
+                self.handle_drop_item(
+                    source,
+                    target_parent,
+                    crate::stores::workspace_store::DragPlacement::Inside,
+                    cx,
+                );
+            }
+        }
+    }
+
     /// Handles actions dispatched from the sidebar context menu.
     pub fn handle_sidebar_menu_action(
         &mut self,
@@ -256,6 +272,11 @@ impl AuraWorkspaceView {
                     .to_string();
                 self.state.request_rename(target.clone(), is_folder);
                 self.state.start_inline_rename(target, name);
+                cx.notify();
+            }
+
+            SidebarMenuAction::MoveTo => {
+                self.state.open_move_to_dialog(target);
                 cx.notify();
             }
 
@@ -1187,6 +1208,51 @@ impl Render for AuraWorkspaceView {
                     return;
                 }
 
+                if this.state.move_to_dialog.is_some() {
+                    let key = event.keystroke.key.as_str();
+                    match key {
+                        "escape" => {
+                            this.state.cancel_move_to();
+                            cx.notify();
+                        }
+                        "enter" => {
+                            this.confirm_move_to_action(cx);
+                        }
+                        "up" => {
+                            this.state.move_to_select_prev();
+                            cx.notify();
+                        }
+                        "down" => {
+                            this.state.move_to_select_next();
+                            cx.notify();
+                        }
+                        "backspace" => {
+                            this.state.backspace_move_to_search();
+                            cx.notify();
+                        }
+                        "space" => {
+                            this.state.append_move_to_search_char(' ');
+                            cx.notify();
+                        }
+                        _ => {
+                            if key.len() == 1
+                                && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.alt
+                            {
+                                let c = key.chars().next().unwrap();
+                                let final_c = if event.keystroke.modifiers.shift {
+                                    c.to_ascii_uppercase()
+                                } else {
+                                    c
+                                };
+                                this.state.append_move_to_search_char(final_c);
+                                cx.notify();
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 if event.keystroke.key == "f2" {
                     if let Some(selected) = this.state.workspace_store.selected_path.clone() {
                         let is_folder = selected.is_dir();
@@ -1413,6 +1479,14 @@ impl Render for AuraWorkspaceView {
                                 }
                             })
                             .detach();
+                        },
+                        |this, dragging_path, target_parent, placement, _window, cx| {
+                            this.handle_drop_item(
+                                dragging_path.to_path_buf(),
+                                target_parent.to_path_buf(),
+                                placement,
+                                cx,
+                            );
                         },
                     ))
                     .child(
@@ -1805,6 +1879,193 @@ impl Render for AuraWorkspaceView {
                                                     this.confirm_rename_action(cx);
                                                 }))
                                                 .child("Rename"),
+                                        ),
+                                ),
+                        ),
+                )
+            })
+            .when_some(self.state.move_to_dialog.clone(), |el, move_dialog| {
+                let item_name = move_dialog
+                    .source_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("item")
+                    .to_string();
+                let filtered = move_dialog.filtered_destinations();
+                let sel_idx = move_dialog.selected_index;
+
+                el.child(
+                    div()
+                        .id("move-to-dialog-overlay")
+                        .absolute()
+                        .inset_0()
+                        .bg(rgba(0x000000bb))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("move-to-dialog-card")
+                                .w(px(460.0))
+                                .max_h(px(420.0))
+                                .bg(rgb(0x272729))
+                                .border_1()
+                                .border_color(rgb(0x0066cc))
+                                .rounded_md()
+                                .p_4()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .shadow_xl()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(0xffffff))
+                                                .child(format!("Move '{}' To...", item_name)),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(rgb(0x888888))
+                                                .child("Esc to cancel"),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .px_3()
+                                        .py_2()
+                                        .bg(rgb(0x1d1d1f))
+                                        .border_1()
+                                        .border_color(rgb(0x333333))
+                                        .rounded_sm()
+                                        .gap_2()
+                                        .child(div().text_xs().text_color(rgb(0x0066cc)).child("🔍"))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(if move_dialog.search_query.is_empty() {
+                                                    rgb(0x7a7a7a)
+                                                } else {
+                                                    rgb(0xffffff)
+                                                })
+                                                .child(if move_dialog.search_query.is_empty() {
+                                                    "Type to filter destination folders...".to_string()
+                                                } else {
+                                                    move_dialog.search_query.clone()
+                                                }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .max_h(px(240.0))
+                                        .overflow_hidden()
+                                        .children(filtered.iter().enumerate().map(|(idx, dest)| {
+                                            let is_sel = idx == sel_idx;
+                                            let dest_path = dest.path.clone();
+                                            let source_path = move_dialog.source_path.clone();
+                                            div()
+                                                .id(ElementId::NamedInteger("move-to-dest".into(), idx as u64))
+                                                .flex()
+                                                .items_center()
+                                                .justify_between()
+                                                .px_3()
+                                                .py_1p5()
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .bg(if is_sel {
+                                                    rgb(0x27374d)
+                                                } else {
+                                                    rgb(0x272729)
+                                                })
+                                                .hover(|s| s.bg(rgb(0x333338)))
+                                                .when(is_sel, |s| s.border_l_2().border_color(rgb(0x0066cc)))
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.state.cancel_move_to();
+                                                    this.handle_drop_item(
+                                                        source_path.clone(),
+                                                        dest_path.clone(),
+                                                        crate::stores::workspace_store::DragPlacement::Inside,
+                                                        cx,
+                                                    );
+                                                }))
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_2()
+                                                        .text_xs()
+                                                        .text_color(if is_sel {
+                                                            rgb(0xffffff)
+                                                        } else {
+                                                            rgb(0xcccccc)
+                                                        })
+                                                        .child(if dest.is_root { "🏠" } else { "📁" })
+                                                        .child(dest.display_name.clone()),
+                                                )
+                                        })),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .pt_2()
+                                        .border_t_1()
+                                        .border_color(rgb(0x333333))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(rgb(0x7a7a7a))
+                                                .child("↑/↓ to navigate • Enter to move"),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .gap_2()
+                                                .child(
+                                                    div()
+                                                        .id("cancel-move-to-btn")
+                                                        .px_3()
+                                                        .py_1()
+                                                        .bg(rgb(0x333333))
+                                                        .hover(|s| s.bg(rgb(0x444444)))
+                                                        .text_xs()
+                                                        .text_color(rgb(0xffffff))
+                                                        .rounded_sm()
+                                                        .cursor_pointer()
+                                                        .on_click(cx.listener(|this, _, _, cx| {
+                                                            this.state.cancel_move_to();
+                                                            cx.notify();
+                                                        }))
+                                                        .child("Cancel"),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .id("confirm-move-to-btn")
+                                                        .px_3()
+                                                        .py_1()
+                                                        .bg(rgb(0x0066cc))
+                                                        .hover(|s| s.bg(rgb(0x0071e3)))
+                                                        .text_xs()
+                                                        .text_color(rgb(0xffffff))
+                                                        .rounded_sm()
+                                                        .cursor_pointer()
+                                                        .on_click(cx.listener(|this, _, _, cx| {
+                                                            this.confirm_move_to_action(cx);
+                                                        }))
+                                                        .child("Move"),
+                                                ),
                                         ),
                                 ),
                         ),

@@ -5,6 +5,7 @@ use crate::stores::{
     EditorTab, LayoutOrientation, ResponseBodyMode, ResponseTab, WorkspaceStore, WorkspaceTab,
 };
 use aura_core::model::{AuraRequest, Collection, Folder, HttpMethod};
+use gpui::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -43,6 +44,124 @@ pub enum ActiveInputTarget {
 pub struct DragItemPayload {
     pub path: PathBuf,
     pub is_folder: bool,
+}
+
+impl gpui::Render for DragItemPayload {
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        let name = self
+            .path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Item");
+        let icon = if self.is_folder { "📁" } else { "📄" };
+        gpui::div()
+            .px_2()
+            .py_1()
+            .bg(gpui::rgb(0x27374d))
+            .border_1()
+            .border_color(gpui::rgb(0x0066cc))
+            .rounded_sm()
+            .text_xs()
+            .text_color(gpui::rgb(0xffffff))
+            .shadow_md()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(icon)
+            .child(name.to_string())
+    }
+}
+
+/// Destination item for the Move To quick-pick dialog
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoveToDestination {
+    pub display_name: String,
+    pub path: PathBuf,
+    pub is_root: bool,
+}
+
+/// State for active Move To quick-pick dialog
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoveToDialogState {
+    pub source_path: PathBuf,
+    pub search_query: String,
+    pub selected_index: usize,
+    pub destinations: Vec<MoveToDestination>,
+}
+
+impl MoveToDialogState {
+    pub fn new(source_path: PathBuf, root: PathBuf, folders: Vec<PathBuf>) -> Self {
+        let mut destinations = Vec::new();
+        let root_name = root
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Workspace Root");
+        destinations.push(MoveToDestination {
+            display_name: format!("/ (Root: {})", root_name),
+            path: root.clone(),
+            is_root: true,
+        });
+        for folder in folders {
+            if folder == source_path || folder.starts_with(&source_path) {
+                continue; // Cannot move into itself or its descendants
+            }
+            let rel = folder.strip_prefix(&root).unwrap_or(&folder);
+            destinations.push(MoveToDestination {
+                display_name: format!("/{}", rel.to_string_lossy().replace('\\', "/")),
+                path: folder,
+                is_root: false,
+            });
+        }
+        Self {
+            source_path,
+            search_query: String::new(),
+            selected_index: 0,
+            destinations,
+        }
+    }
+
+    pub fn filtered_destinations(&self) -> Vec<&MoveToDestination> {
+        if self.search_query.trim().is_empty() {
+            return self.destinations.iter().collect();
+        }
+        let q = self.search_query.to_lowercase();
+        self.destinations
+            .iter()
+            .filter(|d| d.display_name.to_lowercase().contains(&q))
+            .collect()
+    }
+
+    pub fn select_next(&mut self) {
+        let total = self.filtered_destinations().len();
+        if total > 0 {
+            self.selected_index = (self.selected_index + 1) % total;
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        let total = self.filtered_destinations().len();
+        if total > 0 {
+            if self.selected_index == 0 {
+                self.selected_index = total - 1;
+            } else {
+                self.selected_index -= 1;
+            }
+        }
+    }
+
+    pub fn selected_destination(&self) -> Option<&MoveToDestination> {
+        let filtered = self.filtered_destinations();
+        if filtered.is_empty() {
+            None
+        } else {
+            let idx = self.selected_index.min(filtered.len() - 1);
+            Some(filtered[idx])
+        }
+    }
 }
 
 /// State for active inline renaming in the sidebar
@@ -167,6 +286,7 @@ pub struct AuraAppState {
     pub workspace_store: WorkspaceStore,
     pub inline_rename: Option<InlineRenameState>,
     pub rename_dialog: Option<RenameDialogState>,
+    pub move_to_dialog: Option<MoveToDialogState>,
     pub drag_target: Option<PathBuf>,
     pub pending_delete_path: Option<PathBuf>,
     pub editor_dialog: Option<EditorDialogState>,
@@ -211,6 +331,7 @@ impl Default for AuraAppState {
             workspace_store: WorkspaceStore::new(),
             inline_rename: None,
             rename_dialog: None,
+            move_to_dialog: None,
             drag_target: None,
             pending_delete_path: None,
             editor_dialog: None,
@@ -1842,6 +1963,57 @@ impl AuraAppState {
     pub fn backspace_rename(&mut self) {
         if let Some(ref mut d) = self.rename_dialog {
             d.current_name.pop();
+        }
+    }
+
+    /// Opens the Move To dialog for the given source item.
+    pub fn open_move_to_dialog(&mut self, source_path: PathBuf) {
+        if let Some(root) = self.workspace_store.workspace_root.clone() {
+            let folders = self.workspace_store.all_folders();
+            self.move_to_dialog = Some(MoveToDialogState::new(source_path, root, folders));
+        }
+    }
+
+    /// Cancels active Move To dialog.
+    pub fn cancel_move_to(&mut self) {
+        self.move_to_dialog = None;
+    }
+
+    /// Updates the search filter in active Move To dialog.
+    pub fn update_move_to_search(&mut self, text: String) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.search_query = text;
+            d.selected_index = 0;
+        }
+    }
+
+    /// Appends a character to the search query in active Move To dialog.
+    pub fn append_move_to_search_char(&mut self, c: char) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.search_query.push(c);
+            d.selected_index = 0;
+        }
+    }
+
+    /// Removes the last character from the search query in active Move To dialog.
+    pub fn backspace_move_to_search(&mut self) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.search_query.pop();
+            d.selected_index = 0;
+        }
+    }
+
+    /// Selects next destination in Move To dialog.
+    pub fn move_to_select_next(&mut self) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.select_next();
+        }
+    }
+
+    /// Selects previous destination in Move To dialog.
+    pub fn move_to_select_prev(&mut self) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.select_prev();
         }
     }
 

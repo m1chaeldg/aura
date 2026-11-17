@@ -27,3 +27,10 @@ fn test_popup_menu_item_creation() {
     let sep = PopupMenuItem::separator();
     let _ = (item1, item2, item3, sep);
 }
+
+#[test]
+fn test_sidebar_context_menu_includes_move_to() {
+    use aura_ui::views::context_menu_view::SidebarMenuAction;
+    let action = SidebarMenuAction::MoveTo;
+    assert_eq!(format!("{:?}", action), "MoveTo");
+}
