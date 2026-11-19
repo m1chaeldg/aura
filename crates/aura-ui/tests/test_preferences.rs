@@ -31,9 +31,11 @@ fn test_preferences_save_and_load_cycle() {
     let default_prefs = AuraPreferences::load_from_file(&pref_file);
     assert_eq!(default_prefs.last_workspace_path, None);
 
-    // Save custom path
+    // Save custom path and layout
     let mut prefs = AuraPreferences::default();
     prefs.last_workspace_path = Some(PathBuf::from("/custom/workspace/path"));
+    prefs.split_ratio = 0.65;
+    prefs.layout_orientation = "vertical".to_string();
     prefs.save_to_file(&pref_file).expect("save");
 
     // Load back
@@ -42,6 +44,8 @@ fn test_preferences_save_and_load_cycle() {
         loaded.last_workspace_path,
         Some(PathBuf::from("/custom/workspace/path"))
     );
+    assert_eq!(loaded.split_ratio, 0.65);
+    assert_eq!(loaded.layout_orientation, "vertical");
 }
 
 #[test]

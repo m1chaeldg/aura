@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Application preferences persisted across app launches.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuraPreferences {
     #[serde(default)]
     pub last_workspace_path: Option<PathBuf>,
@@ -12,6 +12,10 @@ pub struct AuraPreferences {
     pub auto_save_enabled: bool,
     #[serde(default = "default_auto_save_delay_ms")]
     pub auto_save_delay_ms: u64,
+    #[serde(default = "default_split_ratio")]
+    pub split_ratio: f32,
+    #[serde(default = "default_layout_orientation")]
+    pub layout_orientation: String,
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -22,12 +26,22 @@ fn default_auto_save_delay_ms() -> u64 {
     1000
 }
 
+fn default_split_ratio() -> f32 {
+    0.5
+}
+
+fn default_layout_orientation() -> String {
+    "horizontal".to_string()
+}
+
 impl Default for AuraPreferences {
     fn default() -> Self {
         Self {
             last_workspace_path: None,
             auto_save_enabled: true,
             auto_save_delay_ms: 1000,
+            split_ratio: 0.5,
+            layout_orientation: "horizontal".to_string(),
         }
     }
 }

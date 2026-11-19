@@ -82,9 +82,9 @@ impl LayoutStore {
         self.split_ratio = 0.5;
     }
 
-    /// Set split ratio clamped between 0.1 and 0.9
+    /// Set split ratio clamped between 0.2 and 0.8
     pub fn set_split_ratio(&mut self, ratio: f32) {
-        self.split_ratio = ratio.clamp(0.1, 0.9);
+        self.split_ratio = ratio.clamp(0.2, 0.8);
     }
 
     /// Toggle layout between Horizontal and Vertical

@@ -41,10 +41,10 @@ fn test_layout_store_divider_clamping_and_reset() {
     assert_eq!(store.split_ratio, 0.5);
 
     store.set_split_ratio(0.99);
-    assert_eq!(store.split_ratio, 0.9);
+    assert_eq!(store.split_ratio, 0.8);
 
     store.set_split_ratio(0.01);
-    assert_eq!(store.split_ratio, 0.1);
+    assert_eq!(store.split_ratio, 0.2);
 
     store.reset_divider();
     assert_eq!(store.split_ratio, 0.5);
@@ -52,6 +52,16 @@ fn test_layout_store_divider_clamping_and_reset() {
     assert_eq!(store.orientation, LayoutOrientation::Horizontal);
     store.toggle_orientation();
     assert_eq!(store.orientation, LayoutOrientation::Vertical);
+}
+
+#[test]
+fn test_layout_store_dragging_state() {
+    let mut store = LayoutStore::new();
+    assert!(!store.is_dragging_divider);
+    store.is_dragging_divider = true;
+    assert!(store.is_dragging_divider);
+    store.is_dragging_divider = false;
+    assert!(!store.is_dragging_divider);
 }
 
 #[test]

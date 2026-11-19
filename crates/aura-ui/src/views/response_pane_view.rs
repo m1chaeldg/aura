@@ -67,8 +67,11 @@ impl ResponsePaneView {
         div()
             .flex()
             .flex_col()
-            .when(is_horizontal, |el| el.w(gpui::relative(1.0 - split_ratio)))
-            .when(!is_horizontal, |el| el.h(gpui::relative(1.0 - split_ratio)))
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden()
+            .when(is_horizontal, |el| el.w(gpui::relative(1.0 - split_ratio)).flex_shrink_0())
+            .when(!is_horizontal, |el| el.h(gpui::relative(1.0 - split_ratio)).flex_shrink_0())
             .bg(rgb(0x1b1b1d))
             .child(match response {
                 None => div()
@@ -138,6 +141,9 @@ impl ResponsePaneView {
             .flex()
             .flex_col()
             .size_full()
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden()
             // Metrics Header Bar
             .child(
                 div()
@@ -260,8 +266,11 @@ impl ResponsePaneView {
                 div()
                     .id("response-panel-scroll")
                     .flex_1()
+                    .min_w_0()
+                    .min_h_0()
                     .p_4()
                     .overflow_y_scroll()
+                    .overflow_x_hidden()
                     .child(Self::render_tab_content(
                         resp, active_tab, body_mode, border, muted,
                     )),
@@ -282,6 +291,7 @@ impl ResponsePaneView {
                     .flex()
                     .flex_col()
                     .gap_2()
+                    .min_w_0()
                     .child(
                         div()
                             .flex()
@@ -314,6 +324,8 @@ impl ResponsePaneView {
                             .font_family("monospace")
                             .text_xs()
                             .text_color(rgb(0xcccccc))
+                            .min_w_0()
+                            .overflow_x_hidden()
                             .child(if formatted.is_empty() {
                                 "// Response body is empty".to_string()
                             } else {
@@ -336,6 +348,7 @@ impl ResponsePaneView {
                     .flex()
                     .flex_col()
                     .gap_2()
+                    .min_w_0()
                     .child(
                         div()
                             .text_xs()
@@ -353,6 +366,8 @@ impl ResponsePaneView {
                             .font_family("monospace")
                             .text_xs()
                             .text_color(rgb(0xcccccc))
+                            .min_w_0()
+                            .overflow_x_hidden()
                             .child(raw_http),
                     )
             }
@@ -367,6 +382,7 @@ impl ResponsePaneView {
                     .flex()
                     .flex_col()
                     .gap_2()
+                    .min_w_0()
                     .child(
                         div()
                             .text_xs()
@@ -384,6 +400,8 @@ impl ResponsePaneView {
                             .font_family("monospace")
                             .text_xs()
                             .text_color(rgb(0xcccccc))
+                            .min_w_0()
+                            .overflow_x_hidden()
                             .child(json_pretty),
                     )
             }
@@ -395,6 +413,7 @@ impl ResponsePaneView {
                     .flex()
                     .flex_col()
                     .gap_2()
+                    .min_w_0()
                     .child(
                         div()
                             .flex()
@@ -414,7 +433,7 @@ impl ResponsePaneView {
                                     .child("Case-insensitive RFC 7230 headers"),
                             ),
                     )
-                    .child(div().flex().flex_col().gap_1().children(
+                    .child(div().flex().flex_col().gap_1().min_w_0().children(
                         header_entries.into_iter().map(|(k, v)| {
                             div()
                                 .flex()
@@ -426,21 +445,27 @@ impl ResponsePaneView {
                                 .border_1()
                                 .border_color(border)
                                 .text_xs()
+                                .min_w_0()
                                 .child(
                                     div()
                                         .flex()
                                         .items_center()
                                         .gap_2()
+                                        .min_w_0()
+                                        .flex_1()
                                         .child(
                                             div()
                                                 .font_weight(FontWeight::SEMIBOLD)
                                                 .text_color(rgb(0x2997ff))
+                                                .flex_shrink_0()
                                                 .child(format!("{}:", k)),
                                         )
                                         .child(
                                             div()
                                                 .font_family("monospace")
                                                 .text_color(rgb(0xffffff))
+                                                .min_w_0()
+                                                .overflow_x_hidden()
                                                 .child(v.clone()),
                                         ),
                                 )
@@ -451,6 +476,7 @@ impl ResponsePaneView {
                 .flex()
                 .flex_col()
                 .gap_2()
+                .min_w_0()
                 .when(resp.assertions.is_empty(), |el| {
                     el.child(
                         div()
@@ -521,6 +547,7 @@ impl ResponsePaneView {
                 .flex()
                 .flex_col()
                 .gap_1()
+                .min_w_0()
                 .when(resp.console_logs.is_empty(), |el| {
                     el.child(
                         div()
@@ -546,6 +573,7 @@ impl ResponsePaneView {
                         .border_1()
                         .border_color(border)
                         .text_xs()
+                        .min_w_0()
                         .child(
                             div()
                                 .px_1()
@@ -559,7 +587,13 @@ impl ResponsePaneView {
                                 .text_color(muted)
                                 .child(log.timestamp.format("%H:%M:%S%.3f").to_string()),
                         )
-                        .child(div().text_color(rgb(0xcccccc)).child(log.message.clone()))
+                        .child(
+                            div()
+                                .text_color(rgb(0xcccccc))
+                                .min_w_0()
+                                .overflow_x_hidden()
+                                .child(log.message.clone()),
+                        )
                 })),
             _ => div()
                 .text_xs()

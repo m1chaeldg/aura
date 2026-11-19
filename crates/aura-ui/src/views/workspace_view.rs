@@ -18,6 +18,7 @@ pub struct AuraWorkspaceView {
     #[allow(dead_code)]
     watcher_cancel: Option<tokio_util::sync::CancellationToken>,
     pub auto_save_seq: u64,
+    pub divider_drag_start: Option<(f32, f32, f32)>,
 }
 
 impl AuraWorkspaceView {
@@ -27,10 +28,17 @@ impl AuraWorkspaceView {
             focus_handle: Some(cx.focus_handle()),
             watcher_cancel: None,
             auto_save_seq: 0,
+            divider_drag_start: None,
         };
         let prefs = crate::preferences::AuraPreferences::load();
         view.state.auto_save_enabled = prefs.auto_save_enabled;
         view.state.auto_save_delay_ms = prefs.auto_save_delay_ms;
+        view.state.set_split_ratio(prefs.split_ratio);
+        if prefs.layout_orientation.eq_ignore_ascii_case("vertical") {
+            view.state.orientation = LayoutOrientation::Vertical;
+        } else {
+            view.state.orientation = LayoutOrientation::Horizontal;
+        }
         if let Some(ref path) = prefs.last_workspace_path {
             if path.exists() && path.is_dir() && view.state.open_workspace_sync(path).is_ok() {
                 view.start_workspace_watcher(path.clone(), cx);
@@ -85,6 +93,22 @@ impl AuraWorkspaceView {
             })
             .detach();
         }
+    }
+
+    /// Persists layout split ratio, orientation, auto-save settings, and last workspace to preferences file.
+    pub fn save_preferences_sync(&self) {
+        let mut prefs = crate::preferences::AuraPreferences::load();
+        prefs.split_ratio = self.state.split_ratio;
+        prefs.layout_orientation = match self.state.orientation {
+            LayoutOrientation::Horizontal => "horizontal".to_string(),
+            LayoutOrientation::Vertical => "vertical".to_string(),
+        };
+        prefs.auto_save_enabled = self.state.auto_save_enabled;
+        prefs.auto_save_delay_ms = self.state.auto_save_delay_ms;
+        if let Some(ref root) = self.state.workspace_store.workspace_root {
+            prefs.last_workspace_path = Some(root.clone());
+        }
+        let _ = prefs.save();
     }
 
     /// Dispatches active HTTP request via execution service off the main thread.
@@ -1240,6 +1264,7 @@ impl Default for AuraWorkspaceView {
             focus_handle: None,
             watcher_cancel: None,
             auto_save_seq: 0,
+            divider_drag_start: None,
         }
     }
 }
@@ -1279,6 +1304,40 @@ impl Render for AuraWorkspaceView {
             .bg(bg_color)
             .text_color(text_color)
             .track_focus(&focus)
+            .when(self.state.is_dragging_divider && is_horizontal, |el| el.cursor_col_resize())
+            .when(self.state.is_dragging_divider && !is_horizontal, |el| el.cursor_row_resize())
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
+                if this.state.is_dragging_divider {
+                    this.state.is_dragging_divider = false;
+                    this.divider_drag_start = None;
+                    this.save_preferences_sync();
+                    cx.notify();
+                }
+            }))
+            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
+                if this.state.is_dragging_divider {
+                    if let Some((start_x, start_y, start_ratio)) = this.divider_drag_start {
+                        let vp = window.viewport_size();
+                        let is_horizontal = this.state.orientation == LayoutOrientation::Horizontal;
+                        if is_horizontal {
+                            let sidebar_w = 255.0f32;
+                            let available_w = (f32::from(vp.width) - sidebar_w).max(200.0);
+                            let current_x: f32 = event.position.x.into();
+                            let delta = current_x - start_x;
+                            let new_ratio = (start_ratio + (delta / available_w)).clamp(0.2, 0.8);
+                            this.state.set_split_ratio(new_ratio);
+                        } else {
+                            let chrome_h = 150.0f32;
+                            let available_h = (f32::from(vp.height) - chrome_h).max(200.0);
+                            let current_y: f32 = event.position.y.into();
+                            let delta = current_y - start_y;
+                            let new_ratio = (start_ratio + (delta / available_h)).clamp(0.2, 0.8);
+                            this.state.set_split_ratio(new_ratio);
+                        }
+                        cx.notify();
+                    }
+                }
+            }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
                 if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
                     && (event.keystroke.key == "s" || event.keystroke.key == "S")
@@ -1541,6 +1600,7 @@ impl Render for AuraWorkspaceView {
                                     })
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.state.toggle_orientation();
+                                        this.save_preferences_sync();
                                         cx.notify();
                                     })),
                             )
@@ -1746,6 +1806,9 @@ impl Render for AuraWorkspaceView {
                                 div()
                                     .flex()
                                     .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .overflow_hidden()
                                     .when(is_horizontal, |el| el.flex_row())
                                     .when(!is_horizontal, |el| el.flex_col())
                                     .child(RequestEditorView::render(
@@ -1765,10 +1828,22 @@ impl Render for AuraWorkspaceView {
                                     ))
                                     .child(SplitResizerView::render(
                                         is_horizontal,
+                                        self.state.is_dragging_divider,
                                         cx,
-                                        |this, _window, cx| {
-                                            this.state.reset_divider();
-                                            cx.notify();
+                                        |this, event, _window, cx| {
+                                            if event.click_count >= 2 {
+                                                this.state.reset_divider();
+                                                this.divider_drag_start = None;
+                                                this.state.is_dragging_divider = false;
+                                                this.save_preferences_sync();
+                                                cx.notify();
+                                            } else {
+                                                let px_val: f32 = event.position.x.into();
+                                                let py_val: f32 = event.position.y.into();
+                                                this.divider_drag_start = Some((px_val, py_val, this.state.split_ratio));
+                                                this.state.is_dragging_divider = true;
+                                                cx.notify();
+                                            }
                                         },
                                     ))
                                     .child(ResponsePaneView::render(
