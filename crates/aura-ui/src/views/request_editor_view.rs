@@ -57,6 +57,11 @@ pub enum RequestEditorAction {
     FocusTests,
     InsertTestSnippet(&'static str),
     RunTests,
+    // Spec
+    FocusSpec,
+    FormatSpec,
+    CopySpec,
+    RevertSpec,
 }
 
 pub struct RequestEditorView;
@@ -72,6 +77,7 @@ impl RequestEditorView {
             EditorTab::Scripts,
             EditorTab::Tests,
             EditorTab::Settings,
+            EditorTab::Spec,
         ]
     }
 
@@ -85,6 +91,7 @@ impl RequestEditorView {
             EditorTab::Scripts => "Scripts",
             EditorTab::Tests => "Tests",
             EditorTab::Settings => "Settings",
+            EditorTab::Spec => "Spec",
         }
     }
 
@@ -99,6 +106,8 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         script_sub_tab: ScriptSubTab,
         test_assertions: Option<&[TestAssertion]>,
+        spec_buffer: Option<&str>,
+        spec_error: Option<&str>,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -179,6 +188,8 @@ impl RequestEditorView {
                         active_input,
                         script_sub_tab,
                         test_assertions,
+                        spec_buffer,
+                        spec_error,
                         cx,
                         on_action,
                     )),
@@ -192,6 +203,8 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         script_sub_tab: ScriptSubTab,
         test_assertions: Option<&[TestAssertion]>,
+        spec_buffer: Option<&str>,
+        spec_error: Option<&str>,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -253,6 +266,27 @@ impl RequestEditorView {
                 on_action,
             ),
             EditorTab::Settings => Self::render_settings_panel(request, border, muted, normal),
+            EditorTab::Spec => {
+                let default_spec;
+                let content = if let Some(buf) = spec_buffer {
+                    buf
+                } else if let Some(r) = request {
+                    default_spec = aura_parser::request_to_spec(r);
+                    &default_spec
+                } else {
+                    ""
+                };
+                Self::render_spec_panel(
+                    content,
+                    spec_error,
+                    active_input,
+                    border,
+                    muted,
+                    normal,
+                    cx,
+                    on_action,
+                )
+            }
         }
     }
 
@@ -2457,5 +2491,166 @@ impl RequestEditorView {
             muted,
             normal,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_spec_panel<V: 'static>(
+        spec_content: &str,
+        spec_error: Option<&str>,
+        active_input: Option<&ActiveInputTarget>,
+        border: Rgba,
+        muted: Rgba,
+        normal: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> Div {
+        let is_focused = matches!(active_input, Some(ActiveInputTarget::SpecText));
+        let byte_len = spec_content.len();
+        let line_count = spec_content.lines().count().max(1);
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            // Top Toolbar: Label + Metrics + Status Pill + Actions (Format, Copy, Revert)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(muted)
+                                    .child("Aura Specification (.aura)"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x777777))
+                                    .child(format!("({line_count} lines, {byte_len} bytes)")),
+                            )
+                            // Live Status Pill
+                            .child(if let Some(err) = spec_error {
+                                div()
+                                    .id("spec-status-error")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x4a1d1d))
+                                    .border_1()
+                                    .border_color(rgb(0xe74c3c))
+                                    .text_xs()
+                                    .text_color(rgb(0xff6b6b))
+                                    .child(format!("⚠ {}", err))
+                            } else {
+                                div()
+                                    .id("spec-status-synced")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x1d3a24))
+                                    .border_1()
+                                    .border_color(rgb(0x28a745))
+                                    .text_xs()
+                                    .text_color(rgb(0x4cd964))
+                                    .child("✓ Synced")
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .id("format-spec-btn")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x28a745))
+                                    .hover(|s| s.bg(rgb(0x218838)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(rgb(0xffffff))
+                                    .child("⚡ Format Spec")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_action(this, RequestEditorAction::FormatSpec, window, cx);
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("copy-spec-btn")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x333333))
+                                    .hover(|s| s.bg(rgb(0x444444)).text_color(rgb(0xffffff)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child("Copy Spec")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_action(this, RequestEditorAction::CopySpec, window, cx);
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("revert-spec-btn")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x333333))
+                                    .hover(|s| s.bg(rgb(0xe74c3c)).text_color(rgb(0xffffff)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child("Revert")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_action(this, RequestEditorAction::RevertSpec, window, cx);
+                                    })),
+                            ),
+                    ),
+            )
+            // Monospace Editor Textarea
+            .child(
+                div()
+                    .id("direct-spec-editor")
+                    .p_3()
+                    .min_h(px(320.0))
+                    .rounded_md()
+                    .bg(rgb(0x18181a))
+                    .border_1()
+                    .border_color(if is_focused { rgb(0x0071e3) } else { border })
+                    .font_family("monospace")
+                    .text_xs()
+                    .text_color(if is_focused { rgb(0xffffff) } else { normal })
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .child(if spec_content.is_empty() {
+                                div()
+                                    .text_color(rgb(0x555555))
+                                    .child("// Empty .aura specification...")
+                            } else {
+                                div().child(spec_content.to_string())
+                            })
+                            .when(is_focused, |el| {
+                                el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                            }),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_action(this, RequestEditorAction::FocusSpec, window, cx);
+                    })),
+            )
     }
 }

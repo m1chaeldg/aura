@@ -38,6 +38,7 @@ pub enum ActiveInputTarget {
     PreRequestScript,
     PostResponseScript,
     TestScript,
+    SpecText,
 }
 
 /// Drag and drop payload for sidebar items
@@ -365,6 +366,39 @@ impl AuraAppState {
 
     pub fn set_editor_tab(&mut self, tab: EditorTab) {
         self.active_editor_tab = tab;
+        if tab == EditorTab::Spec {
+            if let Some(active_tab) = self.tabs.get_mut(self.active_tab_index) {
+                active_tab.sync_spec_from_request();
+            }
+        }
+    }
+
+    pub fn active_tab(&self) -> Option<&WorkspaceTab> {
+        self.tabs.get(self.active_tab_index)
+    }
+
+    pub fn active_tab_mut(&mut self) -> Option<&mut WorkspaceTab> {
+        self.tabs.get_mut(self.active_tab_index)
+    }
+
+    pub fn active_request(&self) -> Option<&AuraRequest> {
+        self.active_tab().map(|t| &t.request)
+    }
+
+    pub fn active_request_mut(&mut self) -> Option<&mut AuraRequest> {
+        self.active_tab_mut().map(|t| &mut t.request)
+    }
+
+    pub fn set_active_url(&mut self, url: String) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request.url = url;
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
+    }
+
+    pub fn set_active_editor_tab(&mut self, tab: EditorTab) {
+        self.set_editor_tab(tab);
     }
 
     pub fn set_response_tab(&mut self, tab: ResponseTab) {
@@ -631,6 +665,12 @@ impl AuraAppState {
                     tab.request.scripts.tests.push(c);
                     tab.mark_dirty(true);
                 }
+                ActiveInputTarget::SpecText => {
+                    tab.ensure_spec_buffer();
+                    let mut curr = tab.spec_buffer.clone().unwrap_or_default();
+                    curr.push(c);
+                    tab.update_spec_buffer(curr);
+                }
             }
         }
     }
@@ -821,6 +861,12 @@ impl AuraAppState {
                     tab.request.scripts.tests.pop();
                     tab.mark_dirty(true);
                 }
+                ActiveInputTarget::SpecText => {
+                    tab.ensure_spec_buffer();
+                    let mut curr = tab.spec_buffer.clone().unwrap_or_default();
+                    curr.pop();
+                    tab.update_spec_buffer(curr);
+                }
             }
         }
     }
@@ -940,7 +986,8 @@ impl AuraAppState {
                 ActiveInputTarget::BodyText
                 | ActiveInputTarget::PreRequestScript
                 | ActiveInputTarget::PostResponseScript
-                | ActiveInputTarget::TestScript => {
+                | ActiveInputTarget::TestScript
+                | ActiveInputTarget::SpecText => {
                     self.type_char_into_active(' ');
                     self.type_char_into_active(' ');
                 }
@@ -959,7 +1006,8 @@ impl AuraAppState {
             ActiveInputTarget::BodyText
             | ActiveInputTarget::PreRequestScript
             | ActiveInputTarget::PostResponseScript
-            | ActiveInputTarget::TestScript => {
+            | ActiveInputTarget::TestScript
+            | ActiveInputTarget::SpecText => {
                 self.type_char_into_active('\n');
             }
             ActiveInputTarget::ParamKey(idx) => {

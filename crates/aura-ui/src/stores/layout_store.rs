@@ -18,6 +18,7 @@ pub enum EditorTab {
     Scripts,
     Tests,
     Settings,
+    Spec,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

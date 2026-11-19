@@ -16,6 +16,8 @@ pub struct WorkspaceTab {
     pub request: AuraRequest,
     pub response: Option<AuraResponse>,
     pub file_path: Option<PathBuf>,
+    pub spec_buffer: Option<String>,
+    pub spec_error: Option<String>,
 }
 
 impl WorkspaceTab {
@@ -29,6 +31,8 @@ impl WorkspaceTab {
             request,
             response: None,
             file_path: None,
+            spec_buffer: None,
+            spec_error: None,
         }
     }
 
@@ -38,6 +42,41 @@ impl WorkspaceTab {
 
     pub fn mark_dirty(&mut self, is_dirty: bool) {
         self.is_dirty = is_dirty;
+    }
+
+    pub fn ensure_spec_buffer(&mut self) {
+        if self.spec_buffer.is_none() {
+            self.spec_buffer = Some(aura_parser::request_to_spec(&self.request));
+            self.spec_error = None;
+        }
+    }
+
+    pub fn sync_spec_from_request(&mut self) {
+        if self.spec_error.is_none() {
+            self.spec_buffer = Some(aura_parser::request_to_spec(&self.request));
+        }
+    }
+
+    pub fn update_spec_buffer(&mut self, text: String) {
+        self.spec_buffer = Some(text.clone());
+        self.mark_dirty(true);
+
+        match aura_parser::parse_request(&text) {
+            Ok(parsed) => {
+                self.request = parsed;
+                self.title = self.request.name.clone();
+                self.method = self.request.method;
+                self.spec_error = None;
+            }
+            Err(err) => {
+                self.spec_error = Some(err);
+            }
+        }
+    }
+
+    pub fn revert_spec_buffer(&mut self) {
+        self.spec_buffer = Some(aura_parser::request_to_spec(&self.request));
+        self.spec_error = None;
     }
 }
 

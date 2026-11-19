@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Request Spec Tab & Lossless Bidirectional Sync**:
+  - Added new "Spec" sub-tab in `RequestEditorView` (positioned after Settings) displaying the canonical `.aura` specification format (`docs/file_format.md`).
+  - Implemented lossless bidirectional synchronization: visual tab modifications automatically regenerate the spec buffer on switch, and live text edits in the Spec editor update the underlying request model and visual tabs in real-time.
+  - Built-in syntax error resilience: keeps visual tabs safely anchored to the last valid state during active typing while displaying an inline syntax status indicator (`⚠`).
+  - Full developer toolbar with line and byte metrics, "⚡ Format Spec" canonical formatter, "Copy Spec" clipboard integration, "Revert" button, and live "✓ Synced" / "⚠ Error" status pills.
+  - Integrated with Aura's unified save and debounced auto-save lifecycle to persist `.aura` files directly to disk.
 - **Modular Cargo Workspace Architecture (`AGENTS.md`)**:
   - Partitioned monolithic repository into 5 domain-isolated crates:
     - `aura-core`: Zero-dependency domain models (`AuraRequest`, `AuraResponse`, `HttpMethod`), cascading templating, token-boundary secret scrubber, JWT inspector, and design tokens.

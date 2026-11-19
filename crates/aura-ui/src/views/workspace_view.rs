@@ -703,6 +703,32 @@ impl AuraWorkspaceView {
                     }
                 }
             }
+            RequestEditorAction::FocusSpec => {
+                self.state
+                    .set_active_input(Some(crate::app_state::ActiveInputTarget::SpecText));
+            }
+            RequestEditorAction::FormatSpec => {
+                if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
+                    tab.ensure_spec_buffer();
+                    tab.spec_buffer = Some(aura_parser::request_to_spec(&tab.request));
+                    tab.spec_error = None;
+                    tab.mark_dirty(true);
+                }
+            }
+            RequestEditorAction::CopySpec => {
+                if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
+                    tab.ensure_spec_buffer();
+                    if let Some(content) = &tab.spec_buffer {
+                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(content.clone()));
+                        self.state.status_message = Some("Copied Aura spec to clipboard".to_string());
+                    }
+                }
+            }
+            RequestEditorAction::RevertSpec => {
+                if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
+                    tab.revert_spec_buffer();
+                }
+            }
         }
         if self.state.is_active_tab_dirty() {
             self.schedule_auto_save(cx);
@@ -1821,6 +1847,8 @@ impl Render for AuraWorkspaceView {
                                         self.state.active_input_target.as_ref(),
                                         self.state.active_script_sub_tab,
                                         active_tab.and_then(|t| t.response.as_ref()).map(|r| r.assertions.as_slice()),
+                                        active_tab.and_then(|t| t.spec_buffer.as_deref()),
+                                        active_tab.and_then(|t| t.spec_error.as_deref()),
                                         cx,
                                         |this, action, _window, cx| {
                                             this.handle_request_editor_action(action, cx);

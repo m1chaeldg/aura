@@ -99,7 +99,38 @@ pub struct CstFencedBlock {
 impl CstDocument {
     /// Converts the Concrete Syntax Tree to the typed AuraRequest runtime model
     pub fn to_aura_request(&self) -> Result<AuraRequest, String> {
-        self.to_request().map(|req| req.into())
+        let mut req: AuraRequest = self.to_request()?.into();
+
+        // Preserve disabled headers and query params (ending or starting with ~)
+        for item in &self.items {
+            if let CstTopLevelItem::Table(table) = item {
+                match table.name.as_str() {
+                    "headers" => {
+                        for sub in &table.items {
+                            if let CstTableItem::KeyValue(kv) = sub {
+                                if kv.key.ends_with('~') || kv.key.starts_with('~') {
+                                    let clean_key = kv.key.trim_matches('~').to_string();
+                                    req.headers.push(HeaderItem::disabled(clean_key, kv.value.as_str()));
+                                }
+                            }
+                        }
+                    }
+                    "params.query" => {
+                        for sub in &table.items {
+                            if let CstTableItem::KeyValue(kv) = sub {
+                                if kv.key.ends_with('~') || kv.key.starts_with('~') {
+                                    let clean_key = kv.key.trim_matches('~').to_string();
+                                    req.params.push(ParamItem::disabled(clean_key, kv.value.as_str()));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(req)
     }
 
     /// Converts the Concrete Syntax Tree to the typed file AuraFileRequest model
@@ -337,14 +368,16 @@ impl CstDocument {
                     "scripts.pre-request" => {
                         for sub in &table.items {
                             if let CstTableItem::FencedBlock(fb) = sub {
-                                req.scripts.pre_request = Some(fb.content.clone());
+                                req.scripts.pre_request =
+                                    Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
                             }
                         }
                     }
                     "scripts.post-response" => {
                         for sub in &table.items {
                             if let CstTableItem::FencedBlock(fb) = sub {
-                                req.scripts.post_response = Some(fb.content.clone());
+                                req.scripts.post_response =
+                                    Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
                             }
                         }
                     }
@@ -361,14 +394,16 @@ impl CstDocument {
                     "assert" | "asserts" => {
                         for sub in &table.items {
                             if let CstTableItem::FencedBlock(fb) = sub {
-                                req.assert = Some(fb.content.clone());
+                                req.assert =
+                                    Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
                             }
                         }
                     }
                     "test" | "tests" => {
                         for sub in &table.items {
                             if let CstTableItem::FencedBlock(fb) = sub {
-                                req.tests = Some(fb.content.clone());
+                                req.tests =
+                                    Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
                             }
                         }
                     }

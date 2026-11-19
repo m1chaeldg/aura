@@ -290,10 +290,14 @@ pub fn parse_document(mut input: &str) -> Result<CstDocument, String> {
             continue;
         }
 
-        // If nothing matches, consume one line as trivia to prevent hanging
+        // If nothing matches, check if it's unrecognized non-whitespace/non-comment syntax
         if let Ok((rem, unrecog)) =
             recognize(pair(not_line_ending, alt((parse_newline, rest))))(input)
         {
+            let trimmed = unrecog.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                return Err(format!("Unrecognized syntax: {}", trimmed));
+            }
             if !unrecog.is_empty() {
                 items.push(CstTopLevelItem::Trivia(unrecog.to_string()));
                 input = rem;

@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, Result};
 use aura_core::model::{AuraRequest, HttpMethod};
-use aura_sync::request_to_toml;
+use aura_parser::request_to_spec;
 use aura_sync::workspace_meta::WorkspaceMetadata;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parking_lot::Mutex;
@@ -67,10 +67,10 @@ impl WorkspaceService {
         let file_path = parent_dir.join(&file_name);
         let req_name = file_name.trim_end_matches(".aura");
         let req = AuraRequest::new(req_name, method, "https://postman-echo.com/get");
-        let toml_str = request_to_toml(&req)?;
+        let spec_str = request_to_spec(&req);
 
         self.suppress_path(&file_path);
-        tokio::fs::write(&file_path, toml_str).await?;
+        tokio::fs::write(&file_path, spec_str).await?;
 
         self.sync_meta_file(root).await?;
 
@@ -405,21 +405,21 @@ impl WorkspaceService {
         request: &AuraRequest,
         target_dir: &Path,
     ) -> Result<PathBuf> {
-        let toml_str = request_to_toml(request)?;
+        let spec_str = request_to_spec(request);
         let sanitized_name = request
             .name
             .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
         let file_path = target_dir.join(format!("{}.aura", sanitized_name));
         self.suppress_path(&file_path);
-        tokio::fs::write(&file_path, toml_str).await?;
+        tokio::fs::write(&file_path, spec_str).await?;
         Ok(file_path)
     }
 
     /// Asynchronously saves a request `.aura` file to disk and suppresses watcher notification.
     pub async fn save_request_file(&self, file_path: &Path, request: &AuraRequest) -> Result<()> {
-        let toml_str = request_to_toml(request)?;
+        let spec_str = request_to_spec(request);
         self.suppress_path(file_path);
-        tokio::fs::write(file_path, toml_str).await?;
+        tokio::fs::write(file_path, spec_str).await?;
         tracing::info!(target: "aura_ui::workspace", path = %file_path.display(), "Saved request file to disk");
         Ok(())
     }
