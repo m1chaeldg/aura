@@ -437,7 +437,7 @@ impl ResponsePaneView {
                         header_entries.into_iter().map(|(k, v)| {
                             div()
                                 .flex()
-                                .items_center()
+                                .items_start()
                                 .justify_between()
                                 .p_2()
                                 .rounded_md()
@@ -449,7 +449,7 @@ impl ResponsePaneView {
                                 .child(
                                     div()
                                         .flex()
-                                        .items_center()
+                                        .items_start()
                                         .gap_2()
                                         .min_w_0()
                                         .flex_1()
@@ -465,7 +465,8 @@ impl ResponsePaneView {
                                                 .font_family("monospace")
                                                 .text_color(rgb(0xffffff))
                                                 .min_w_0()
-                                                .overflow_x_hidden()
+                                                .flex_1()
+                                                .whitespace_normal()
                                                 .child(v.clone()),
                                         ),
                                 )
