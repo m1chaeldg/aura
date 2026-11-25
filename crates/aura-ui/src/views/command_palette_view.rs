@@ -43,21 +43,29 @@ impl CommandPaletteView {
                             .border_b_1()
                             .border_color(border_color)
                             .gap_2()
+                            .cursor_text()
                             .child(div().text_sm().text_color(accent_blue).child("🔍"))
                             .child(
                                 div()
-                                    .text_sm()
-                                    .text_color(if state.command_palette_search.is_empty() {
-                                        text_muted
-                                    } else {
-                                        text_color
-                                    })
-                                    .child(if state.command_palette_search.is_empty() {
-                                        "Search requests or type command... (Esc to dismiss)"
-                                            .to_string()
-                                    } else {
-                                        state.command_palette_search.clone()
-                                    }),
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(if state.command_palette_search.is_empty() {
+                                                text_muted
+                                            } else {
+                                                text_color
+                                            })
+                                            .child(if state.command_palette_search.is_empty() {
+                                                "Search requests or type command... (Esc to dismiss)"
+                                                    .to_string()
+                                            } else {
+                                                state.command_palette_search.clone()
+                                            }),
+                                    )
+                                    .child(div().w(px(2.0)).h(px(14.0)).bg(accent_blue)),
                             ),
                     )
                     .child(div().flex().flex_col().py_2().children(

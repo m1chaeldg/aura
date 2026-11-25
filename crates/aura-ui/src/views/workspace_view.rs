@@ -724,6 +724,16 @@ impl AuraWorkspaceView {
                     }
                 }
             }
+            RequestEditorAction::PasteSpec => {
+                if let Some(item) = cx.read_from_clipboard() {
+                    if let Some(text) = item.text() {
+                        if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
+                            tab.update_spec_buffer(text);
+                            self.state.status_message = Some("Pasted spec from clipboard".to_string());
+                        }
+                    }
+                }
+            }
             RequestEditorAction::RevertSpec => {
                 if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
                     tab.revert_spec_buffer();
@@ -1263,6 +1273,7 @@ impl AuraWorkspaceView {
                         rgb(0x333333)
                     })
                     .rounded_sm()
+                    .cursor_text()
                     .text_xs()
                     .text_color(rgb(0xffffff))
                     .child(
@@ -1271,12 +1282,19 @@ impl AuraWorkspaceView {
                             .items_center()
                             .gap_1()
                             .child(if val.is_empty() {
-                                div().text_color(rgb(0x666666)).child(placeholder)
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                    .child(div().text_color(rgb(0x666666)).child(placeholder))
                             } else {
-                                div().child(val.to_string())
-                            })
-                            .when(is_focused, |el| {
-                                el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().child(val.to_string()))
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
                             }),
                     ),
             )
@@ -1373,7 +1391,48 @@ impl Render for AuraWorkspaceView {
                 }
 
                 if this.state.active_input_target.is_some() {
+                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
                     let key = event.keystroke.key.as_str();
+
+                    if has_ctrl {
+                        match key {
+                            "c" | "C" => {
+                                if let Some(text) = this.state.get_active_input_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    this.state.status_message = Some("Copied input text to clipboard".to_string());
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            "v" | "V" => {
+                                if let Some(item) = cx.read_from_clipboard() {
+                                    if let Some(text) = item.text() {
+                                        this.state.paste_text_into_active(&text);
+                                        this.schedule_auto_save(cx);
+                                        cx.notify();
+                                    }
+                                }
+                                return;
+                            }
+                            "x" | "X" => {
+                                if let Some(text) = this.state.get_active_input_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    this.state.set_active_input_text(String::new());
+                                    this.state.status_message = Some("Cut input text to clipboard".to_string());
+                                    this.schedule_auto_save(cx);
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            "a" | "A" => {
+                                this.state.status_message = Some("Selected input text".to_string());
+                                cx.notify();
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match key {
                         "escape" => {
                             this.state.blur_active_input();
@@ -1387,7 +1446,7 @@ impl Render for AuraWorkspaceView {
                             this.state.tab_next_input(event.keystroke.modifiers.shift);
                             cx.notify();
                         }
-                        "backspace" => {
+                        "backspace" | "delete" => {
                             this.state.backspace_active();
                             this.schedule_auto_save(cx);
                             cx.notify();
@@ -1400,6 +1459,7 @@ impl Render for AuraWorkspaceView {
                         _ => {
                             if key.len() == 1
                                 && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform
                                 && !event.keystroke.modifiers.alt
                             {
                                 let c = key.chars().next().unwrap();
@@ -1418,7 +1478,39 @@ impl Render for AuraWorkspaceView {
                 }
 
                 if this.state.editor_dialog.is_some() {
+                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
                     let key = event.keystroke.key.as_str();
+
+                    if has_ctrl {
+                        match key {
+                            "c" | "C" => {
+                                if let Some(text) = this.state.dialog_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            "v" | "V" => {
+                                if let Some(item) = cx.read_from_clipboard() {
+                                    if let Some(text) = item.text() {
+                                        this.state.dialog_paste_text(&text);
+                                        cx.notify();
+                                    }
+                                }
+                                return;
+                            }
+                            "x" | "X" => {
+                                if let Some(text) = this.state.dialog_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    this.state.dialog_set_text(String::new());
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match key {
                         "escape" => {
                             this.state.cancel_editor_dialog();
@@ -1433,7 +1525,7 @@ impl Render for AuraWorkspaceView {
                             this.state.dialog_tab_next_field();
                             cx.notify();
                         }
-                        "backspace" => {
+                        "backspace" | "delete" => {
                             this.state.dialog_backspace();
                             cx.notify();
                         }
@@ -1444,6 +1536,7 @@ impl Render for AuraWorkspaceView {
                         _ => {
                             if key.len() == 1
                                 && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform
                                 && !event.keystroke.modifiers.alt
                             {
                                 let c = key.chars().next().unwrap();
@@ -1461,7 +1554,39 @@ impl Render for AuraWorkspaceView {
                 }
 
                 if this.state.rename_dialog.is_some() {
+                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
                     let key = event.keystroke.key.as_str();
+
+                    if has_ctrl {
+                        match key {
+                            "c" | "C" => {
+                                if let Some(text) = this.state.rename_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            "v" | "V" => {
+                                if let Some(item) = cx.read_from_clipboard() {
+                                    if let Some(text) = item.text() {
+                                        this.state.rename_paste_text(&text);
+                                        cx.notify();
+                                    }
+                                }
+                                return;
+                            }
+                            "x" | "X" => {
+                                if let Some(text) = this.state.rename_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    this.state.update_rename_text(String::new());
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match key {
                         "escape" => {
                             this.state.cancel_rename();
@@ -1470,7 +1595,7 @@ impl Render for AuraWorkspaceView {
                         "enter" => {
                             this.confirm_rename_action(cx);
                         }
-                        "backspace" => {
+                        "backspace" | "delete" => {
                             this.state.backspace_rename();
                             cx.notify();
                         }
@@ -1481,6 +1606,7 @@ impl Render for AuraWorkspaceView {
                         _ => {
                             if key.len() == 1
                                 && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform
                                 && !event.keystroke.modifiers.alt
                             {
                                 let c = key.chars().next().unwrap();
@@ -1498,7 +1624,39 @@ impl Render for AuraWorkspaceView {
                 }
 
                 if this.state.move_to_dialog.is_some() {
+                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
                     let key = event.keystroke.key.as_str();
+
+                    if has_ctrl {
+                        match key {
+                            "c" | "C" => {
+                                if let Some(text) = this.state.move_to_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            "v" | "V" => {
+                                if let Some(item) = cx.read_from_clipboard() {
+                                    if let Some(text) = item.text() {
+                                        this.state.move_to_paste_text(&text);
+                                        cx.notify();
+                                    }
+                                }
+                                return;
+                            }
+                            "x" | "X" => {
+                                if let Some(text) = this.state.move_to_get_text() {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                                    this.state.update_move_to_search(String::new());
+                                    cx.notify();
+                                }
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match key {
                         "escape" => {
                             this.state.cancel_move_to();
@@ -1515,7 +1673,7 @@ impl Render for AuraWorkspaceView {
                             this.state.move_to_select_next();
                             cx.notify();
                         }
-                        "backspace" => {
+                        "backspace" | "delete" => {
                             this.state.backspace_move_to_search();
                             cx.notify();
                         }
@@ -1526,6 +1684,7 @@ impl Render for AuraWorkspaceView {
                         _ => {
                             if key.len() == 1
                                 && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform
                                 && !event.keystroke.modifiers.alt
                             {
                                 let c = key.chars().next().unwrap();
@@ -1535,6 +1694,81 @@ impl Render for AuraWorkspaceView {
                                     c
                                 };
                                 this.state.append_move_to_search_char(final_c);
+                                cx.notify();
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                if this.state.is_command_palette_open {
+                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
+                    let key = event.keystroke.key.as_str();
+
+                    if has_ctrl {
+                        match key {
+                            "c" | "C" => {
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(this.state.command_palette_search.clone()));
+                                cx.notify();
+                                return;
+                            }
+                            "v" | "V" => {
+                                if let Some(item) = cx.read_from_clipboard() {
+                                    if let Some(text) = item.text() {
+                                        this.state.command_palette_search.push_str(&text);
+                                        cx.notify();
+                                    }
+                                }
+                                return;
+                            }
+                            "x" | "X" => {
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(this.state.command_palette_search.clone()));
+                                this.state.command_palette_search.clear();
+                                cx.notify();
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    match key {
+                        "escape" => {
+                            this.state.close_command_palette();
+                            cx.notify();
+                        }
+                        "enter" => {
+                            let _ = this.state.execute_selected_palette_item();
+                            cx.notify();
+                        }
+                        "up" => {
+                            this.state.palette_select_prev();
+                            cx.notify();
+                        }
+                        "down" => {
+                            this.state.palette_select_next();
+                            cx.notify();
+                        }
+                        "backspace" | "delete" => {
+                            this.state.command_palette_search.pop();
+                            cx.notify();
+                        }
+                        "space" => {
+                            this.state.command_palette_search.push(' ');
+                            cx.notify();
+                        }
+                        _ => {
+                            if key.len() == 1
+                                && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform
+                                && !event.keystroke.modifiers.alt
+                            {
+                                let c = key.chars().next().unwrap();
+                                let final_c = if event.keystroke.modifiers.shift {
+                                    c.to_ascii_uppercase()
+                                } else {
+                                    c
+                                };
+                                this.state.command_palette_search.push(final_c);
                                 cx.notify();
                             }
                         }
@@ -2099,6 +2333,7 @@ impl Render for AuraWorkspaceView {
                                         .border_1()
                                         .border_color(rgb(0x0066cc))
                                         .rounded_sm()
+                                        .cursor_text()
                                         .text_sm()
                                         .text_color(rgb(0xffffff))
                                         .child(
@@ -2230,6 +2465,7 @@ impl Render for AuraWorkspaceView {
                                         .border_1()
                                         .border_color(rgb(0x333333))
                                         .rounded_sm()
+                                        .cursor_text()
                                         .gap_2()
                                         .child(div().text_xs().text_color(rgb(0x0066cc)).child("🔍"))
                                         .child(

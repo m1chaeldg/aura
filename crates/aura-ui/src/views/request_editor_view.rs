@@ -61,6 +61,7 @@ pub enum RequestEditorAction {
     FocusSpec,
     FormatSpec,
     CopySpec,
+    PasteSpec,
     RevertSpec,
 }
 
@@ -489,7 +490,7 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(if is_key_focused {
@@ -505,9 +506,9 @@ impl RequestEditorView {
                                     .items_center()
                                     .gap_0p5()
                                     .child(if key.is_empty() {
-                                        "Header Name".to_string()
+                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Header Name")
                                     } else {
-                                        key
+                                        div().child(key)
                                     })
                                     .when(is_key_focused, |el| {
                                         el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
@@ -545,7 +546,7 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .text_color(if is_val_focused {
                                 rgb(0xffffff)
@@ -560,9 +561,9 @@ impl RequestEditorView {
                                     .items_center()
                                     .gap_0p5()
                                     .child(if val.is_empty() {
-                                        "Header Value".to_string()
+                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Header Value")
                                     } else {
-                                        val
+                                        div().child(val)
                                     })
                                     .when(is_val_focused, |el| {
                                         el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
@@ -796,7 +797,7 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(if is_key_focused {
@@ -812,9 +813,9 @@ impl RequestEditorView {
                                     .items_center()
                                     .gap_0p5()
                                     .child(if key.is_empty() {
-                                        "Key".to_string()
+                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Key")
                                     } else {
-                                        key
+                                        div().child(key)
                                     })
                                     .when(is_key_focused, |el| {
                                         el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
@@ -849,7 +850,7 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .text_color(if is_val_focused {
                                 rgb(0xffffff)
@@ -864,9 +865,9 @@ impl RequestEditorView {
                                     .items_center()
                                     .gap_0p5()
                                     .child(if val.is_empty() {
-                                        "Value".to_string()
+                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Value")
                                     } else {
-                                        val
+                                        div().child(val)
                                     })
                                     .when(is_val_focused, |el| {
                                         el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
@@ -1217,7 +1218,7 @@ impl RequestEditorView {
                     .font_family("monospace")
                     .text_xs()
                     .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_pointer()
+                    .cursor_text()
                     .child(
                         div()
                             .flex()
@@ -1225,13 +1226,24 @@ impl RequestEditorView {
                             .gap_0p5()
                             .child(if content.is_empty() {
                                 div()
-                                    .text_color(rgb(0x555555))
-                                    .child("// Click to edit request body payload...")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                    .child(div().text_color(rgb(0x555555)).child("// Click or type to edit request body (Ctrl+C / Ctrl+V supported)..."))
                             } else {
                                 div().child(content.to_string())
                             })
-                            .when(is_focused, |el| {
-                                el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                            .when(is_focused && !content.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .mt_1()
+                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Body (Ctrl+C copy • Ctrl+V paste)")),
+                                )
                             }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -1363,7 +1375,7 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(if is_key_focused {
@@ -1371,11 +1383,20 @@ impl RequestEditorView {
                             } else {
                                 normal
                             })
-                            .child(if k.is_empty() {
-                                "Field Key".to_string()
-                            } else {
-                                k
-                            })
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_0p5()
+                                    .child(if k.is_empty() {
+                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Field Key")
+                                    } else {
+                                        div().child(k)
+                                    })
+                                    .when(is_key_focused, |el| {
+                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
+                                    }),
+                            )
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -1404,18 +1425,27 @@ impl RequestEditorView {
                             } else {
                                 rgb(0x38383a)
                             })
-                            .cursor_pointer()
+                            .cursor_text()
                             .text_xs()
                             .text_color(if is_val_focused {
                                 rgb(0xffffff)
                             } else {
                                 normal
                             })
-                            .child(if v.is_empty() {
-                                "Field Value".to_string()
-                            } else {
-                                v
-                            })
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_0p5()
+                                    .child(if v.is_empty() {
+                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Field Value")
+                                    } else {
+                                        div().child(v)
+                                    })
+                                    .when(is_val_focused, |el| {
+                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
+                                    }),
+                            )
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -1698,18 +1728,27 @@ impl RequestEditorView {
                                         .font_family("monospace")
                                         .text_xs()
                                         .text_color(if is_token_focused { rgb(0xffffff) } else { normal })
-                                        .cursor_pointer()
+                                        .cursor_text()
                                         .child(
                                             div()
                                                 .flex()
                                                 .items_center()
                                                 .gap_1()
                                                 .child(if token.is_empty() {
-                                                    div().text_color(rgb(0x555555)).child("Enter Bearer token or paste JWT here...")
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .when(is_token_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        .child(div().text_color(rgb(0x555555)).child("Enter Bearer token or paste JWT here..."))
                                                 } else {
-                                                    div().child(token.clone())
-                                                })
-                                                .when(is_token_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .child(div().child(token.clone()))
+                                                        .when(is_token_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                }),
                                         )
                                         .on_click(cx.listener(move |this, _, window, cx| {
                                             on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBearerToken), window, cx);
@@ -1806,18 +1845,27 @@ impl RequestEditorView {
                                                 .border_color(if is_user_focused { rgb(0x0071e3) } else { border })
                                                 .text_xs()
                                                 .text_color(if is_user_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_pointer()
+                                                .cursor_text()
                                                 .child(
                                                     div()
                                                         .flex()
                                                         .items_center()
                                                         .gap_1()
                                                         .child(if username.is_empty() {
-                                                            div().text_color(rgb(0x555555)).child("Enter username...")
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .when(is_user_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                                .child(div().text_color(rgb(0x555555)).child("Enter username..."))
                                                         } else {
-                                                            div().child(username.clone())
-                                                        })
-                                                        .when(is_user_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .child(div().child(username.clone()))
+                                                                .when(is_user_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        }),
                                                 )
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBasicUsername), window, cx);
@@ -1843,18 +1891,27 @@ impl RequestEditorView {
                                                 .border_color(if is_pass_focused { rgb(0x0071e3) } else { border })
                                                 .text_xs()
                                                 .text_color(if is_pass_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_pointer()
+                                                .cursor_text()
                                                 .child(
                                                     div()
                                                         .flex()
                                                         .items_center()
                                                         .gap_1()
                                                         .child(if password.is_empty() {
-                                                            div().text_color(rgb(0x555555)).child("Enter password...")
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .when(is_pass_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                                .child(div().text_color(rgb(0x555555)).child("Enter password..."))
                                                         } else {
-                                                            div().child("••••••••".to_string())
-                                                        })
-                                                        .when(is_pass_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .child(div().child("•".repeat(password.len().max(1))))
+                                                                .when(is_pass_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        }),
                                                 )
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBasicPassword), window, cx);
@@ -1909,18 +1966,27 @@ impl RequestEditorView {
                                                 .border_color(if is_key_focused { rgb(0x0071e3) } else { border })
                                                 .text_xs()
                                                 .text_color(if is_key_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_pointer()
+                                                .cursor_text()
                                                 .child(
                                                     div()
                                                         .flex()
                                                         .items_center()
                                                         .gap_1()
                                                         .child(if key.is_empty() {
-                                                            div().text_color(rgb(0x555555)).child("e.g. X-API-Key")
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .when(is_key_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                                .child(div().text_color(rgb(0x555555)).child("e.g. X-API-Key"))
                                                         } else {
-                                                            div().child(key.clone())
-                                                        })
-                                                        .when(is_key_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .child(div().child(key.clone()))
+                                                                .when(is_key_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        }),
                                                 )
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthApiKeyName), window, cx);
@@ -1946,18 +2012,27 @@ impl RequestEditorView {
                                                 .border_color(if is_val_focused { rgb(0x0071e3) } else { border })
                                                 .text_xs()
                                                 .text_color(if is_val_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_pointer()
+                                                .cursor_text()
                                                 .child(
                                                     div()
                                                         .flex()
                                                         .items_center()
                                                         .gap_1()
                                                         .child(if value.is_empty() {
-                                                            div().text_color(rgb(0x555555)).child("secret_key_123...")
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .when(is_val_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                                .child(div().text_color(rgb(0x555555)).child("secret_key_123..."))
                                                         } else {
-                                                            div().child(value.clone())
-                                                        })
-                                                        .when(is_val_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
+                                                                .child(div().child(value.clone()))
+                                                                .when(is_val_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        }),
                                                 )
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthApiKeyValue), window, cx);
@@ -2039,18 +2114,27 @@ impl RequestEditorView {
                                         .border_color(if is_f { rgb(0x0071e3) } else { border })
                                         .text_xs()
                                         .text_color(if is_f { rgb(0xffffff) } else { normal })
-                                        .cursor_pointer()
+                                        .cursor_text()
                                         .child(
                                             div()
                                                 .flex()
                                                 .items_center()
                                                 .gap_1()
                                                 .child(if val.is_empty() {
-                                                    div().text_color(rgb(0x555555)).child(format!("Enter {label}..."))
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        .child(div().text_color(rgb(0x555555)).child(format!("Enter {label}...")))
                                                 } else {
-                                                    div().child(val.to_string())
-                                                })
-                                                .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .child(div().child(val.to_string()))
+                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                }),
                                         )
                                         .on_click(cx.listener(move |this, _, window, cx| {
                                             on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthAwsField(f_idx)), window, cx);
@@ -2090,18 +2174,27 @@ impl RequestEditorView {
                                         .border_color(if is_f { rgb(0x0071e3) } else { border })
                                         .text_xs()
                                         .text_color(if is_f { rgb(0xffffff) } else { normal })
-                                        .cursor_pointer()
+                                        .cursor_text()
                                         .child(
                                             div()
                                                 .flex()
                                                 .items_center()
                                                 .gap_1()
                                                 .child(if val.is_empty() {
-                                                    div().text_color(rgb(0x555555)).child(format!("Enter {label}..."))
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                        .child(div().text_color(rgb(0x555555)).child(format!("Enter {label}...")))
                                                 } else {
-                                                    div().child(val.to_string())
-                                                })
-                                                .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_1()
+                                                        .child(div().child(val.to_string()))
+                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                                }),
                                         )
                                         .on_click(cx.listener(move |this, _, window, cx| {
                                             on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthOAuth2Field(f_idx)), window, cx);
@@ -2215,22 +2308,37 @@ impl RequestEditorView {
                     .font_family("monospace")
                     .text_xs()
                     .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_pointer()
+                    .cursor_text()
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_0p5()
                             .child(if script_content.is_empty() {
-                                div().text_color(rgb(0x555555)).child(if is_pre {
-                                    "// Write pre-request script here (runs before sending)..."
-                                } else {
-                                    "// Write post-response script here (runs after receiving response)..."
-                                })
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                    .child(div().text_color(rgb(0x555555)).child(if is_pre {
+                                        "// Write pre-request script here (Ctrl+C / Ctrl+V supported)..."
+                                    } else {
+                                        "// Write post-response script here (Ctrl+C / Ctrl+V supported)..."
+                                    }))
                             } else {
                                 div().child(script_content.to_string())
                             })
-                            .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                            .when(is_focused && !script_content.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .mt_1()
+                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Script (Ctrl+C copy • Ctrl+V paste)")),
+                                )
+                            }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(this, RequestEditorAction::FocusScript(sub_tab), window, cx);
@@ -2384,18 +2492,33 @@ impl RequestEditorView {
                     .font_family("monospace")
                     .text_xs()
                     .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_pointer()
+                    .cursor_text()
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_0p5()
                             .child(if tests.is_empty() {
-                                div().text_color(rgb(0x555555)).child("// Write Jasmine/Chai BDD assertions: describe(), it(), expect()...")
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                    .child(div().text_color(rgb(0x555555)).child("// Write Jasmine/Chai assertions (Ctrl+C / Ctrl+V supported)..."))
                             } else {
                                 div().child(tests.to_string())
                             })
-                            .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))),
+                            .when(is_focused && !tests.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .mt_1()
+                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Tests (Ctrl+C copy • Ctrl+V paste)")),
+                                )
+                            }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(this, RequestEditorAction::FocusTests, window, cx);
@@ -2602,6 +2725,22 @@ impl RequestEditorView {
                             )
                             .child(
                                 div()
+                                    .id("paste-spec-btn")
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(rgb(0x333333))
+                                    .hover(|s| s.bg(rgb(0x444444)).text_color(rgb(0xffffff)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child("Paste Spec")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_action(this, RequestEditorAction::PasteSpec, window, cx);
+                                    })),
+                            )
+                            .child(
+                                div()
                                     .id("revert-spec-btn")
                                     .px_2()
                                     .py_0p5()
@@ -2631,7 +2770,7 @@ impl RequestEditorView {
                     .font_family("monospace")
                     .text_xs()
                     .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_pointer()
+                    .cursor_text()
                     .child(
                         div()
                             .flex()
@@ -2639,13 +2778,24 @@ impl RequestEditorView {
                             .gap_0p5()
                             .child(if spec_content.is_empty() {
                                 div()
-                                    .text_color(rgb(0x555555))
-                                    .child("// Empty .aura specification...")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
+                                    .child(div().text_color(rgb(0x555555)).child("// Empty .aura specification (Ctrl+C / Ctrl+V supported)..."))
                             } else {
                                 div().child(spec_content.to_string())
                             })
-                            .when(is_focused, |el| {
-                                el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                            .when(is_focused && !spec_content.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .mt_1()
+                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
+                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Spec (Ctrl+C copy • Ctrl+V paste)")),
+                                )
                             }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {

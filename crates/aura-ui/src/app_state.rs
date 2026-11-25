@@ -871,6 +871,455 @@ impl AuraAppState {
         }
     }
 
+    /// Retrieves current text content of the active input target for clipboard copying
+    pub fn get_active_input_text(&self) -> Option<String> {
+        let target = self.active_input_target.as_ref()?;
+        let tab = self.tabs.get(self.active_tab_index)?;
+
+        match target {
+            ActiveInputTarget::Url => Some(tab.request.url.clone()),
+            ActiveInputTarget::ParamKey(idx) => tab.request.params.get(*idx).map(|p| p.key.clone()),
+            ActiveInputTarget::ParamValue(idx) => tab.request.params.get(*idx).map(|p| p.value.clone()),
+            ActiveInputTarget::HeaderKey(idx) => tab.request.headers.get(*idx).map(|h| h.key.clone()),
+            ActiveInputTarget::HeaderValue(idx) => tab.request.headers.get(*idx).map(|h| h.value.clone()),
+            ActiveInputTarget::FormParamKey(idx) => {
+                if let aura_core::model::BodyType::FormUrlEncoded(items) = &tab.request.body {
+                    items.get(*idx).map(|item| item.key.clone())
+                } else {
+                    None
+                }
+            }
+            ActiveInputTarget::FormParamValue(idx) => {
+                if let aura_core::model::BodyType::FormUrlEncoded(items) = &tab.request.body {
+                    items.get(*idx).map(|item| item.value.clone())
+                } else {
+                    None
+                }
+            }
+            ActiveInputTarget::AuthBearerToken => match &tab.request.auth {
+                aura_core::model::AuthConfig::Bearer { token } => Some(token.clone()),
+                _ => None,
+            },
+            ActiveInputTarget::AuthBasicUsername => match &tab.request.auth {
+                aura_core::model::AuthConfig::Basic { username, .. } => Some(username.clone()),
+                _ => None,
+            },
+            ActiveInputTarget::AuthBasicPassword => match &tab.request.auth {
+                aura_core::model::AuthConfig::Basic { password, .. } => Some(password.clone()),
+                _ => None,
+            },
+            ActiveInputTarget::AuthApiKeyName => match &tab.request.auth {
+                aura_core::model::AuthConfig::ApiKey { key, .. } => Some(key.clone()),
+                _ => None,
+            },
+            ActiveInputTarget::AuthApiKeyValue => match &tab.request.auth {
+                aura_core::model::AuthConfig::ApiKey { value, .. } => Some(value.clone()),
+                _ => None,
+            },
+            ActiveInputTarget::AuthAwsField(field_idx) => match &tab.request.auth {
+                aura_core::model::AuthConfig::AwsSigV4 {
+                    access_key,
+                    secret_key,
+                    region,
+                    service,
+                    session_token,
+                } => match *field_idx {
+                    0 => Some(access_key.clone()),
+                    1 => Some(secret_key.clone()),
+                    2 => Some(region.clone()),
+                    3 => Some(service.clone()),
+                    _ => Some(session_token.clone().unwrap_or_default()),
+                },
+                _ => None,
+            },
+            ActiveInputTarget::AuthOAuth2Field(field_idx) => match &tab.request.auth {
+                aura_core::model::AuthConfig::OAuth2 {
+                    grant_type,
+                    access_token,
+                    token_url,
+                    client_id,
+                    client_secret,
+                } => match *field_idx {
+                    0 => Some(access_token.clone()),
+                    1 => Some(grant_type.clone()),
+                    2 => Some(token_url.clone().unwrap_or_default()),
+                    3 => Some(client_id.clone().unwrap_or_default()),
+                    _ => Some(client_secret.clone().unwrap_or_default()),
+                },
+                _ => None,
+            },
+            ActiveInputTarget::BodyText => match &tab.request.body {
+                aura_core::model::BodyType::Json(s)
+                | aura_core::model::BodyType::Xml(s)
+                | aura_core::model::BodyType::Text(s) => Some(s.clone()),
+                aura_core::model::BodyType::Raw { content, .. } => Some(content.clone()),
+                _ => Some(tab.request.body.content_str().to_string()),
+            },
+            ActiveInputTarget::PreRequestScript => Some(tab.request.scripts.pre_request.clone()),
+            ActiveInputTarget::PostResponseScript => Some(tab.request.scripts.post_response.clone()),
+            ActiveInputTarget::TestScript => Some(tab.request.scripts.tests.clone()),
+            ActiveInputTarget::SpecText => {
+                Some(tab.spec_buffer.clone().unwrap_or_else(|| aura_parser::request_to_spec(&tab.request)))
+            }
+        }
+    }
+
+    /// Sets the text content of the active input target completely (used by cut / paste / replace)
+    pub fn set_active_input_text(&mut self, text: String) {
+        let target = match &self.active_input_target {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            match target {
+                ActiveInputTarget::Url => {
+                    tab.request.url = text;
+                    tab.mark_dirty(true);
+                    Self::sync_url_to_params(&mut tab.request);
+                }
+                ActiveInputTarget::ParamKey(idx) => {
+                    if let Some(p) = tab.request.params.get_mut(idx) {
+                        p.key = text;
+                        tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
+                    }
+                }
+                ActiveInputTarget::ParamValue(idx) => {
+                    if let Some(p) = tab.request.params.get_mut(idx) {
+                        p.value = text;
+                        tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
+                    }
+                }
+                ActiveInputTarget::HeaderKey(idx) => {
+                    if let Some(h) = tab.request.headers.get_mut(idx) {
+                        h.key = text;
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::HeaderValue(idx) => {
+                    if let Some(h) = tab.request.headers.get_mut(idx) {
+                        h.value = text;
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::FormParamKey(idx) => {
+                    if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
+                        if let Some(item) = items.get_mut(idx) {
+                            item.key = text;
+                            tab.mark_dirty(true);
+                        }
+                    }
+                }
+                ActiveInputTarget::FormParamValue(idx) => {
+                    if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
+                        if let Some(item) = items.get_mut(idx) {
+                            item.value = text;
+                            tab.mark_dirty(true);
+                        }
+                    }
+                }
+                ActiveInputTarget::AuthBearerToken => {
+                    tab.request.auth = aura_core::model::AuthConfig::Bearer { token: text };
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthBasicUsername => {
+                    let pwd = match &tab.request.auth {
+                        aura_core::model::AuthConfig::Basic { password, .. } => password.clone(),
+                        _ => String::new(),
+                    };
+                    tab.request.auth = aura_core::model::AuthConfig::Basic { username: text, password: pwd };
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthBasicPassword => {
+                    let user = match &tab.request.auth {
+                        aura_core::model::AuthConfig::Basic { username, .. } => username.clone(),
+                        _ => String::new(),
+                    };
+                    tab.request.auth = aura_core::model::AuthConfig::Basic { username: user, password: text };
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthApiKeyName => {
+                    let (val, in_hdr) = match &tab.request.auth {
+                        aura_core::model::AuthConfig::ApiKey { value, in_header, .. } => (value.clone(), *in_header),
+                        _ => (String::new(), true),
+                    };
+                    tab.request.auth = aura_core::model::AuthConfig::ApiKey { key: text, value: val, in_header: in_hdr };
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthApiKeyValue => {
+                    let (k, in_hdr) = match &tab.request.auth {
+                        aura_core::model::AuthConfig::ApiKey { key, in_header, .. } => (key.clone(), *in_header),
+                        _ => (String::new(), true),
+                    };
+                    tab.request.auth = aura_core::model::AuthConfig::ApiKey { key: k, value: text, in_header: in_hdr };
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthAwsField(field_idx) => {
+                    if let aura_core::model::AuthConfig::AwsSigV4 {
+                        access_key,
+                        secret_key,
+                        region,
+                        service,
+                        session_token,
+                    } = &mut tab.request.auth
+                    {
+                        match field_idx {
+                            0 => *access_key = text,
+                            1 => *secret_key = text,
+                            2 => *region = text,
+                            3 => *service = text,
+                            _ => *session_token = if text.is_empty() { None } else { Some(text) },
+                        }
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AuthOAuth2Field(field_idx) => {
+                    if let aura_core::model::AuthConfig::OAuth2 {
+                        grant_type,
+                        access_token,
+                        token_url,
+                        client_id,
+                        client_secret,
+                    } = &mut tab.request.auth
+                    {
+                        match field_idx {
+                            0 => *access_token = text,
+                            1 => *grant_type = text,
+                            2 => *token_url = if text.is_empty() { None } else { Some(text) },
+                            3 => *client_id = if text.is_empty() { None } else { Some(text) },
+                            _ => *client_secret = if text.is_empty() { None } else { Some(text) },
+                        }
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::BodyText => {
+                    match &mut tab.request.body {
+                        aura_core::model::BodyType::Json(s)
+                        | aura_core::model::BodyType::Xml(s)
+                        | aura_core::model::BodyType::Text(s) => {
+                            *s = text;
+                        }
+                        aura_core::model::BodyType::Raw { content: s, .. } => {
+                            *s = text;
+                        }
+                        _ => {
+                            tab.request.body = aura_core::model::BodyType::Json(text);
+                        }
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::PreRequestScript => {
+                    tab.request.scripts.pre_request = text;
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::PostResponseScript => {
+                    tab.request.scripts.post_response = text;
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::TestScript => {
+                    tab.request.scripts.tests = text;
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SpecText => {
+                    tab.update_spec_buffer(text);
+                }
+            }
+        }
+    }
+
+    /// Pastes a text string (such as from system clipboard) into the currently active input target
+    pub fn paste_text_into_active(&mut self, text: &str) {
+        let target = match &self.active_input_target {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            match target {
+                ActiveInputTarget::Url => {
+                    tab.request.url.push_str(text);
+                    tab.mark_dirty(true);
+                    Self::sync_url_to_params(&mut tab.request);
+                }
+                ActiveInputTarget::ParamKey(idx) => {
+                    if let Some(p) = tab.request.params.get_mut(idx) {
+                        p.key.push_str(text);
+                        tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
+                    }
+                }
+                ActiveInputTarget::ParamValue(idx) => {
+                    if let Some(p) = tab.request.params.get_mut(idx) {
+                        p.value.push_str(text);
+                        tab.mark_dirty(true);
+                        Self::sync_params_to_url(&mut tab.request);
+                    }
+                }
+                ActiveInputTarget::HeaderKey(idx) => {
+                    if let Some(h) = tab.request.headers.get_mut(idx) {
+                        h.key.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::HeaderValue(idx) => {
+                    if let Some(h) = tab.request.headers.get_mut(idx) {
+                        h.value.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::FormParamKey(idx) => {
+                    if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
+                        if let Some(item) = items.get_mut(idx) {
+                            item.key.push_str(text);
+                            tab.mark_dirty(true);
+                        }
+                    }
+                }
+                ActiveInputTarget::FormParamValue(idx) => {
+                    if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
+                        if let Some(item) = items.get_mut(idx) {
+                            item.value.push_str(text);
+                            tab.mark_dirty(true);
+                        }
+                    }
+                }
+                ActiveInputTarget::AuthBearerToken => {
+                    match &mut tab.request.auth {
+                        aura_core::model::AuthConfig::Bearer { token } => token.push_str(text),
+                        _ => tab.request.auth = aura_core::model::AuthConfig::Bearer { token: text.to_string() },
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthBasicUsername => {
+                    match &mut tab.request.auth {
+                        aura_core::model::AuthConfig::Basic { username, .. } => username.push_str(text),
+                        _ => tab.request.auth = aura_core::model::AuthConfig::Basic { username: text.to_string(), password: String::new() },
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthBasicPassword => {
+                    match &mut tab.request.auth {
+                        aura_core::model::AuthConfig::Basic { password, .. } => password.push_str(text),
+                        _ => tab.request.auth = aura_core::model::AuthConfig::Basic { username: String::new(), password: text.to_string() },
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthApiKeyName => {
+                    match &mut tab.request.auth {
+                        aura_core::model::AuthConfig::ApiKey { key, .. } => key.push_str(text),
+                        _ => tab.request.auth = aura_core::model::AuthConfig::ApiKey { key: text.to_string(), value: String::new(), in_header: true },
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthApiKeyValue => {
+                    match &mut tab.request.auth {
+                        aura_core::model::AuthConfig::ApiKey { value, .. } => value.push_str(text),
+                        _ => tab.request.auth = aura_core::model::AuthConfig::ApiKey { key: String::new(), value: text.to_string(), in_header: true },
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::AuthAwsField(field_idx) => {
+                    if let aura_core::model::AuthConfig::AwsSigV4 {
+                        access_key,
+                        secret_key,
+                        region,
+                        service,
+                        session_token,
+                    } = &mut tab.request.auth
+                    {
+                        match field_idx {
+                            0 => access_key.push_str(text),
+                            1 => secret_key.push_str(text),
+                            2 => region.push_str(text),
+                            3 => service.push_str(text),
+                            _ => {
+                                if let Some(st) = session_token {
+                                    st.push_str(text);
+                                } else {
+                                    *session_token = Some(text.to_string());
+                                }
+                            }
+                        }
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AuthOAuth2Field(field_idx) => {
+                    if let aura_core::model::AuthConfig::OAuth2 {
+                        grant_type,
+                        access_token,
+                        token_url,
+                        client_id,
+                        client_secret,
+                    } = &mut tab.request.auth
+                    {
+                        match field_idx {
+                            0 => access_token.push_str(text),
+                            1 => grant_type.push_str(text),
+                            2 => {
+                                if let Some(tu) = token_url {
+                                    tu.push_str(text);
+                                } else {
+                                    *token_url = Some(text.to_string());
+                                }
+                            }
+                            3 => {
+                                if let Some(ci) = client_id {
+                                    ci.push_str(text);
+                                } else {
+                                    *client_id = Some(text.to_string());
+                                }
+                            }
+                            _ => {
+                                if let Some(cs) = client_secret {
+                                    cs.push_str(text);
+                                } else {
+                                    *client_secret = Some(text.to_string());
+                                }
+                            }
+                        }
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::BodyText => {
+                    match &mut tab.request.body {
+                        aura_core::model::BodyType::Json(s)
+                        | aura_core::model::BodyType::Xml(s)
+                        | aura_core::model::BodyType::Text(s) => {
+                            s.push_str(text);
+                        }
+                        aura_core::model::BodyType::Raw { content: s, .. } => {
+                            s.push_str(text);
+                        }
+                        _ => {
+                            tab.request.body = aura_core::model::BodyType::Json(text.to_string());
+                        }
+                    }
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::PreRequestScript => {
+                    tab.request.scripts.pre_request.push_str(text);
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::PostResponseScript => {
+                    tab.request.scripts.post_response.push_str(text);
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::TestScript => {
+                    tab.request.scripts.tests.push_str(text);
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SpecText => {
+                    tab.ensure_spec_buffer();
+                    let mut curr = tab.spec_buffer.clone().unwrap_or_default();
+                    curr.push_str(text);
+                    tab.update_spec_buffer(curr);
+                }
+            }
+        }
+    }
+
     pub fn tab_next_input(&mut self, shift: bool) {
         let target = match &self.active_input_target {
             Some(t) => t.clone(),
@@ -1968,6 +2417,185 @@ impl AuraAppState {
         }
     }
 
+    /// Retrieves the current text of active dialog field for clipboard copy
+    pub fn dialog_get_text(&self) -> Option<String> {
+        let dialog = self.editor_dialog.as_ref()?;
+        match dialog {
+            EditorDialogState::AddHeader { key, value, is_value_focused }
+            | EditorDialogState::EditHeader { key, value, is_value_focused, .. }
+            | EditorDialogState::AddParam { key, value, is_value_focused }
+            | EditorDialogState::EditParam { key, value, is_value_focused, .. }
+            | EditorDialogState::AddFormParam { key, value, is_value_focused } => {
+                if *is_value_focused {
+                    Some(value.clone())
+                } else {
+                    Some(key.clone())
+                }
+            }
+            EditorDialogState::EditBody { content } => Some(content.clone()),
+            EditorDialogState::EditBearerAuth { token } => Some(token.clone()),
+            EditorDialogState::EditBasicAuth { username, password, is_password_focused } => {
+                if *is_password_focused {
+                    Some(password.clone())
+                } else {
+                    Some(username.clone())
+                }
+            }
+            EditorDialogState::EditApiKeyAuth { key, value, is_value_focused, .. } => {
+                if *is_value_focused {
+                    Some(value.clone())
+                } else {
+                    Some(key.clone())
+                }
+            }
+            EditorDialogState::EditAwsSigV4 { access_key, secret_key, region, service, session_token, active_field } => {
+                match active_field {
+                    0 => Some(access_key.clone()),
+                    1 => Some(secret_key.clone()),
+                    2 => Some(region.clone()),
+                    3 => Some(service.clone()),
+                    _ => Some(session_token.clone()),
+                }
+            }
+            EditorDialogState::EditOAuth2 { grant_type, access_token, token_url, client_id, client_secret, active_field } => {
+                match active_field {
+                    0 => Some(access_token.clone()),
+                    1 => Some(grant_type.clone()),
+                    2 => Some(token_url.clone()),
+                    3 => Some(client_id.clone()),
+                    _ => Some(client_secret.clone()),
+                }
+            }
+            EditorDialogState::AddMultipartField { name, value, file_path, active_field, .. } => {
+                match active_field {
+                    0 => Some(name.clone()),
+                    1 => Some(value.clone()),
+                    _ => Some(file_path.clone()),
+                }
+            }
+        }
+    }
+
+    /// Sets the text of active dialog field completely (used by cut / paste / replace)
+    pub fn dialog_set_text(&mut self, text: String) {
+        if let Some(ref mut dialog) = self.editor_dialog {
+            match dialog {
+                EditorDialogState::AddHeader { key, value, is_value_focused }
+                | EditorDialogState::EditHeader { key, value, is_value_focused, .. }
+                | EditorDialogState::AddParam { key, value, is_value_focused }
+                | EditorDialogState::EditParam { key, value, is_value_focused, .. }
+                | EditorDialogState::AddFormParam { key, value, is_value_focused } => {
+                    if *is_value_focused {
+                        *value = text;
+                    } else {
+                        *key = text;
+                    }
+                }
+                EditorDialogState::EditBody { content } => *content = text,
+                EditorDialogState::EditBearerAuth { token } => *token = text,
+                EditorDialogState::EditBasicAuth { username, password, is_password_focused } => {
+                    if *is_password_focused {
+                        *password = text;
+                    } else {
+                        *username = text;
+                    }
+                }
+                EditorDialogState::EditApiKeyAuth { key, value, is_value_focused, .. } => {
+                    if *is_value_focused {
+                        *value = text;
+                    } else {
+                        *key = text;
+                    }
+                }
+                EditorDialogState::EditAwsSigV4 { access_key, secret_key, region, service, session_token, active_field } => {
+                    match active_field {
+                        0 => *access_key = text,
+                        1 => *secret_key = text,
+                        2 => *region = text,
+                        3 => *service = text,
+                        _ => *session_token = text,
+                    }
+                }
+                EditorDialogState::EditOAuth2 { grant_type, access_token, token_url, client_id, client_secret, active_field } => {
+                    match active_field {
+                        0 => *access_token = text,
+                        1 => *grant_type = text,
+                        2 => *token_url = text,
+                        3 => *client_id = text,
+                        _ => *client_secret = text,
+                    }
+                }
+                EditorDialogState::AddMultipartField { name, value, file_path, active_field, .. } => {
+                    match active_field {
+                        0 => *name = text,
+                        1 => *value = text,
+                        _ => *file_path = text,
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pastes text into the currently active dialog field
+    pub fn dialog_paste_text(&mut self, text: &str) {
+        if let Some(ref mut dialog) = self.editor_dialog {
+            match dialog {
+                EditorDialogState::AddHeader { key, value, is_value_focused }
+                | EditorDialogState::EditHeader { key, value, is_value_focused, .. }
+                | EditorDialogState::AddParam { key, value, is_value_focused }
+                | EditorDialogState::EditParam { key, value, is_value_focused, .. }
+                | EditorDialogState::AddFormParam { key, value, is_value_focused } => {
+                    if *is_value_focused {
+                        value.push_str(text);
+                    } else {
+                        key.push_str(text);
+                    }
+                }
+                EditorDialogState::EditBody { content } => content.push_str(text),
+                EditorDialogState::EditBearerAuth { token } => token.push_str(text),
+                EditorDialogState::EditBasicAuth { username, password, is_password_focused } => {
+                    if *is_password_focused {
+                        password.push_str(text);
+                    } else {
+                        username.push_str(text);
+                    }
+                }
+                EditorDialogState::EditApiKeyAuth { key, value, is_value_focused, .. } => {
+                    if *is_value_focused {
+                        value.push_str(text);
+                    } else {
+                        key.push_str(text);
+                    }
+                }
+                EditorDialogState::EditAwsSigV4 { access_key, secret_key, region, service, session_token, active_field } => {
+                    match active_field {
+                        0 => access_key.push_str(text),
+                        1 => secret_key.push_str(text),
+                        2 => region.push_str(text),
+                        3 => service.push_str(text),
+                        _ => session_token.push_str(text),
+                    }
+                }
+                EditorDialogState::EditOAuth2 { grant_type, access_token, token_url, client_id, client_secret, active_field } => {
+                    match active_field {
+                        0 => access_token.push_str(text),
+                        1 => grant_type.push_str(text),
+                        2 => token_url.push_str(text),
+                        3 => client_id.push_str(text),
+                        _ => client_secret.push_str(text),
+                    }
+                }
+                EditorDialogState::AddMultipartField { name, value, file_path, active_field, .. } => {
+                    match active_field {
+                        0 => name.push_str(text),
+                        1 => value.push_str(text),
+                        _ => file_path.push_str(text),
+                    }
+                }
+            }
+        }
+    }
+
     pub fn dialog_tab_next_field(&mut self) {
         if let Some(ref mut dialog) = self.editor_dialog {
             match dialog {
@@ -2107,6 +2735,18 @@ impl AuraAppState {
         }
     }
 
+    /// Gets current text in active rename dialog for clipboard copy
+    pub fn rename_get_text(&self) -> Option<String> {
+        self.rename_dialog.as_ref().map(|d| d.current_name.clone())
+    }
+
+    /// Pastes text into active rename dialog
+    pub fn rename_paste_text(&mut self, text: &str) {
+        if let Some(ref mut d) = self.rename_dialog {
+            d.current_name.push_str(text);
+        }
+    }
+
     /// Opens the Move To dialog for the given source item.
     pub fn open_move_to_dialog(&mut self, source_path: PathBuf) {
         if let Some(root) = self.workspace_store.workspace_root.clone() {
@@ -2140,6 +2780,19 @@ impl AuraAppState {
     pub fn backspace_move_to_search(&mut self) {
         if let Some(ref mut d) = self.move_to_dialog {
             d.search_query.pop();
+            d.selected_index = 0;
+        }
+    }
+
+    /// Gets current search text in active Move To dialog for clipboard copy
+    pub fn move_to_get_text(&self) -> Option<String> {
+        self.move_to_dialog.as_ref().map(|d| d.search_query.clone())
+    }
+
+    /// Pastes text into active Move To dialog search query
+    pub fn move_to_paste_text(&mut self, text: &str) {
+        if let Some(ref mut d) = self.move_to_dialog {
+            d.search_query.push_str(text);
             d.selected_index = 0;
         }
     }
