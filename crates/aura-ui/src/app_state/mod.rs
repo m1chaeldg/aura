@@ -285,6 +285,26 @@ pub struct AuraAppState {
     pub active_editor_tab: EditorTab,
     pub active_response_tab: ResponseTab,
     pub active_body_mode: ResponseBodyMode,
+    #[serde(skip)]
+    pub response_language_override: Option<crate::services::ResponseLanguage>,
+    #[serde(default = "default_true")]
+    pub response_soft_wrap: bool,
+    #[serde(skip)]
+    pub response_tree_collapsed: std::collections::HashSet<String>,
+    #[serde(skip)]
+    pub response_table_search: String,
+    #[serde(skip)]
+    pub response_table_sort_col: Option<usize>,
+    #[serde(skip)]
+    pub response_table_sort_asc: bool,
+    #[serde(skip)]
+    pub response_bi_chart_type: crate::services::ChartType,
+    #[serde(skip)]
+    pub response_bi_agg_op: crate::services::AggregationOp,
+    #[serde(skip)]
+    pub response_bi_x_col: Option<String>,
+    #[serde(skip)]
+    pub response_bi_y_col: Option<String>,
     pub is_code_mode: bool, // Dual-mode: Visual vs Code Editor (TOML)
     pub is_command_palette_open: bool,
     #[serde(skip)]
@@ -332,6 +352,10 @@ pub struct AuraAppState {
     pub execution_service: std::sync::Arc<crate::services::ExecutionService>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_auto_save_enabled() -> bool {
     true
 }
@@ -358,6 +382,16 @@ impl Default for AuraAppState {
             active_editor_tab: EditorTab::Params,
             active_response_tab: ResponseTab::Body,
             active_body_mode: ResponseBodyMode::Pretty,
+            response_language_override: None,
+            response_soft_wrap: true,
+            response_tree_collapsed: std::collections::HashSet::new(),
+            response_table_search: String::new(),
+            response_table_sort_col: None,
+            response_table_sort_asc: true,
+            response_bi_chart_type: crate::services::ChartType::Bar,
+            response_bi_agg_op: crate::services::AggregationOp::Count,
+            response_bi_x_col: None,
+            response_bi_y_col: None,
             is_code_mode: false,
             is_command_palette_open: false,
             is_method_dropdown_open: false,
@@ -441,11 +475,84 @@ impl AuraAppState {
         self.active_response_tab = tab;
     }
 
+    pub fn set_response_body_mode(&mut self, mode: ResponseBodyMode) {
+        self.active_body_mode = mode;
+    }
+
     pub fn toggle_response_body_mode(&mut self) {
         self.active_body_mode = match self.active_body_mode {
-            ResponseBodyMode::Pretty => ResponseBodyMode::Raw,
+            ResponseBodyMode::Pretty => ResponseBodyMode::Compress,
+            ResponseBodyMode::Compress => ResponseBodyMode::Raw,
             ResponseBodyMode::Raw => ResponseBodyMode::Pretty,
         };
+    }
+
+    pub fn cycle_response_language(&mut self, current_effective: crate::services::ResponseLanguage) {
+        self.response_language_override = Some(current_effective.next());
+    }
+
+    pub fn toggle_response_soft_wrap(&mut self) {
+        self.response_soft_wrap = !self.response_soft_wrap;
+    }
+
+    pub fn toggle_response_tree_node(&mut self, id: &str) {
+        if !self.response_tree_collapsed.remove(id) {
+            self.response_tree_collapsed.insert(id.to_string());
+        }
+    }
+
+    pub fn expand_all_response_tree(&mut self) {
+        self.response_tree_collapsed.clear();
+    }
+
+    pub fn set_response_table_search(&mut self, query: String) {
+        self.response_table_search = query;
+    }
+
+    pub fn toggle_response_table_sort(&mut self, col: usize) {
+        if self.response_table_sort_col == Some(col) {
+            self.response_table_sort_asc = !self.response_table_sort_asc;
+        } else {
+            self.response_table_sort_col = Some(col);
+            self.response_table_sort_asc = true;
+        }
+    }
+
+    pub fn set_response_bi_chart_type(&mut self, chart_type: crate::services::ChartType) {
+        self.response_bi_chart_type = chart_type;
+    }
+
+    pub fn cycle_response_bi_agg_op(&mut self) {
+        self.response_bi_agg_op = self.response_bi_agg_op.next();
+    }
+
+    pub fn cycle_response_bi_x_col(&mut self, columns: &[String]) {
+        if columns.is_empty() {
+            return;
+        }
+        let next = match &self.response_bi_x_col {
+            Some(cur) => {
+                let idx = columns.iter().position(|c| c == cur).unwrap_or(0);
+                columns[(idx + 1) % columns.len()].clone()
+            }
+            None => columns[0].clone(),
+        };
+        self.response_bi_x_col = Some(next);
+    }
+
+    pub fn cycle_response_bi_y_col(&mut self, numeric_columns: &[String]) {
+        if numeric_columns.is_empty() {
+            self.response_bi_y_col = None;
+            return;
+        }
+        let next = match &self.response_bi_y_col {
+            Some(cur) => {
+                let idx = numeric_columns.iter().position(|c| c == cur).unwrap_or(0);
+                numeric_columns[(idx + 1) % numeric_columns.len()].clone()
+            }
+            None => numeric_columns[0].clone(),
+        };
+        self.response_bi_y_col = Some(next);
     }
 
     pub fn cancel_active_request(&self) {

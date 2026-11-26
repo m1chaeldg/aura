@@ -38,6 +38,9 @@ impl AuraWorkspaceView {
                         InputKey::EditorDialogField(idx) => {
                             Self::set_editor_dialog_field(&mut self.state.editor_dialog, *idx, val);
                         }
+                        InputKey::ResponseTableSearch => {
+                            self.state.set_response_table_search(val);
+                        }
                         _ => {}
                     }
                 }

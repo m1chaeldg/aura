@@ -48,6 +48,7 @@ pub enum InputKey {
     ResponseBody,
     ResponseRaw,
     ResponseJson,
+    ResponseTableSearch,
     LogViewerText,
 }
 
@@ -98,6 +99,7 @@ impl InputKey {
             | InputKey::ResponseBody
             | InputKey::ResponseRaw
             | InputKey::ResponseJson
+            | InputKey::ResponseTableSearch
             | InputKey::LogViewerText => None,
         }
     }
@@ -109,6 +111,7 @@ pub struct InputRegistry {
     inputs: HashMap<InputKey, Entity<InputState>>,
     textareas: HashMap<InputKey, Entity<TextareaState>>,
     editors: HashMap<InputKey, Entity<EditorState>>,
+    editor_configs: HashMap<InputKey, (String, bool)>,
     editor_context: Rc<RefCell<EditorContextData>>,
     subscriptions: Vec<Subscription>,
 }
@@ -125,6 +128,7 @@ impl InputRegistry {
             inputs: HashMap::new(),
             textareas: HashMap::new(),
             editors: HashMap::new(),
+            editor_configs: HashMap::new(),
             editor_context: Rc::new(RefCell::new(EditorContextData::default())),
             subscriptions: Vec::new(),
         }
@@ -278,6 +282,49 @@ impl InputRegistry {
             on_event(this, &key_clone, &state, event, cx);
         });
         self.subscriptions.push(sub);
+        self.editors.insert(key, entity.clone());
+        entity
+    }
+
+    /// Ensures a read-only code `EditorState` exists for `key` with the given `language`
+    /// and `soft_wrap`, recreating it if `language` or `soft_wrap` changed.
+    pub fn ensure_readonly_editor<V: 'static>(
+        &mut self,
+        key: InputKey,
+        value: &str,
+        placeholder: &str,
+        language: &str,
+        soft_wrap: bool,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<EditorState> {
+        let desired_cfg = (language.to_string(), soft_wrap);
+        if self.editor_configs.get(&key) == Some(&desired_cfg) {
+            if let Some(entity) = self.editors.get(&key) {
+                let entity = entity.clone();
+                let current = entity.read(cx).value();
+                if current.as_ref() != value {
+                    let val_owned = value.to_string();
+                    entity.update(cx, |state, cx| {
+                        state.set_value(val_owned, window, cx);
+                    });
+                }
+                return entity;
+            }
+        }
+
+        let placeholder_owned = placeholder.to_string();
+        let value_owned = value.to_string();
+        let language_owned = language.to_string();
+        let entity = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .language(language_owned)
+                .line_number(true)
+                .soft_wrap(soft_wrap)
+                .placeholder(placeholder_owned)
+                .default_value(value_owned)
+        });
+        self.editor_configs.insert(key.clone(), desired_cfg);
         self.editors.insert(key, entity.clone());
         entity
     }

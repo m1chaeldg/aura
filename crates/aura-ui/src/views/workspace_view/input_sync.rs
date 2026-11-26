@@ -2,7 +2,7 @@ use super::AuraWorkspaceView;
 use crate::app_state::EditorDialogState;
 use crate::input_registry::InputKey;
 use crate::views::{
-    ResponsePaneView, SidebarView,
+    SidebarView,
 };
 use aura_core::model::{AuthConfig, BodyType};
 use gpui::*;
@@ -488,20 +488,32 @@ impl AuraWorkspaceView {
             );
 
             if let Some(ref resp) = tab.response {
-                let body_formatted =
-                    ResponsePaneView::format_body(&resp.body, self.state.active_body_mode);
+                let content_type = resp
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                    .map(|(_, v)| v.as_str());
+                let detected_lang =
+                    crate::services::FormatService::detect_language(&resp.body, content_type);
+                let effective_lang = self.state.response_language_override.unwrap_or(detected_lang);
+                let body_formatted = crate::services::FormatService::format_response_body(
+                    &resp.body,
+                    effective_lang,
+                    self.state.active_body_mode,
+                );
                 let body_display = if body_formatted.is_empty() {
                     "// Response body is empty".to_string()
                 } else {
                     body_formatted
                 };
-                inputs.ensure_textarea(
+                inputs.ensure_readonly_editor(
                     InputKey::ResponseBody,
                     &body_display,
                     "",
+                    effective_lang.tree_sitter_language(),
+                    self.state.response_soft_wrap,
                     window,
                     cx,
-                    Self::handle_textarea_event,
                 );
 
                 let mut raw_http = format!("HTTP/1.1 {} {}\n", resp.status, resp.status_text);
@@ -512,30 +524,24 @@ impl AuraWorkspaceView {
                 }
                 raw_http.push('\n');
                 raw_http.push_str(&resp.body);
-                inputs.ensure_textarea(
+                inputs.ensure_readonly_editor(
                     InputKey::ResponseRaw,
                     &raw_http,
                     "",
+                    "text",
+                    self.state.response_soft_wrap,
                     window,
                     cx,
-                    Self::handle_textarea_event,
                 );
 
-                let json_pretty = match serde_json::from_str::<serde_json::Value>(&resp.body) {
-                    Ok(val) => {
-                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| resp.body.clone())
-                    }
-                    Err(_) => {
-                        "/* Response body is not valid JSON */\n\n".to_string() + &resp.body
-                    }
-                };
-                inputs.ensure_textarea(
-                    InputKey::ResponseJson,
-                    &json_pretty,
-                    "",
+                inputs.ensure_input(
+                    InputKey::ResponseTableSearch,
+                    &self.state.response_table_search,
+                    "Filter rows...",
+                    false,
                     window,
                     cx,
-                    Self::handle_textarea_event,
+                    Self::handle_input_event,
                 );
             }
         }

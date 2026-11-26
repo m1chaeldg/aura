@@ -16,7 +16,7 @@ pub use context_menu_view::{ContextMenuView, SidebarMenuAction};
 pub use log_viewer_view::LogViewerView;
 pub use request_editor_view::{RequestEditorAction, RequestEditorView};
 pub use request_header_view::RequestHeaderView;
-pub use response_pane_view::ResponsePaneView;
+pub use response_pane_view::{ResponsePaneAction, ResponsePaneView};
 pub use sidebar_view::SidebarView;
 pub use split_resizer_view::SplitResizerView;
 pub use tab_bar_view::TabBarView;

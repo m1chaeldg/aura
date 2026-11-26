@@ -2,7 +2,9 @@ use super::AuraWorkspaceView;
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::InputKey;
 use crate::stores::WorkspaceTab;
-use crate::views::{RequestEditorView, RequestHeaderView, ResponsePaneView, TabBarView};
+use crate::views::{
+    RequestEditorView, RequestHeaderView, ResponsePaneAction, ResponsePaneView, TabBarView,
+};
 use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -179,16 +181,90 @@ impl AuraWorkspaceView {
                 active_tab.and_then(|t| t.response.as_ref()),
                 self.state.active_response_tab,
                 self.state.active_body_mode,
-                self.inputs.get_textarea(&InputKey::ResponseBody),
-                self.inputs.get_textarea(&InputKey::ResponseRaw),
-                self.inputs.get_textarea(&InputKey::ResponseJson),
+                self.state.response_language_override,
+                self.state.response_soft_wrap,
+                &self.state.response_tree_collapsed,
+                &self.state.response_table_search,
+                self.state.response_table_sort_col,
+                self.state.response_table_sort_asc,
+                self.state.response_bi_chart_type,
+                self.state.response_bi_agg_op,
+                self.state.response_bi_x_col.as_deref(),
+                self.state.response_bi_y_col.as_deref(),
+                self.inputs.get_editor(&InputKey::ResponseBody),
+                self.inputs.get_editor(&InputKey::ResponseRaw),
+                self.inputs.get_input(&InputKey::ResponseTableSearch),
                 cx,
-                |this, tab, _window, cx| {
-                    this.state.set_response_tab(tab);
-                    cx.notify();
-                },
-                |this, _window, cx| {
-                    this.state.toggle_response_body_mode();
+                |this, action, _window, cx| {
+                    match action {
+                        ResponsePaneAction::SelectTab(tab) => this.state.set_response_tab(tab),
+                        ResponsePaneAction::SetBodyMode(mode) => {
+                            this.state.set_response_body_mode(mode)
+                        }
+                        ResponsePaneAction::ToggleBodyMode => {
+                            this.state.toggle_response_body_mode()
+                        }
+                        ResponsePaneAction::CycleLanguage(current) => {
+                            this.state.cycle_response_language(current)
+                        }
+                        ResponsePaneAction::ToggleSoftWrap => {
+                            this.state.toggle_response_soft_wrap()
+                        }
+                        ResponsePaneAction::CopyBody => {
+                            if let Some(resp) = this
+                                .state
+                                .active_tab()
+                                .and_then(|t| t.response.as_ref())
+                            {
+                                let content_type = resp
+                                    .headers
+                                    .iter()
+                                    .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                                    .map(|(_, v)| v.as_str());
+                                let detected = crate::services::FormatService::detect_language(
+                                    &resp.body,
+                                    content_type,
+                                );
+                                let lang =
+                                    this.state.response_language_override.unwrap_or(detected);
+                                let formatted =
+                                    crate::services::FormatService::format_response_body(
+                                        &resp.body,
+                                        lang,
+                                        this.state.active_body_mode,
+                                    );
+                                cx.write_to_clipboard(ClipboardItem::new_string(formatted));
+                                this.state.status_message =
+                                    Some("Response body copied to clipboard".to_string());
+                            }
+                        }
+                        ResponsePaneAction::CopyText { label, text } => {
+                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                            this.state.status_message =
+                                Some(format!("{label} copied to clipboard"));
+                        }
+                        ResponsePaneAction::ToggleTreeNode(id) => {
+                            this.state.toggle_response_tree_node(&id);
+                        }
+                        ResponsePaneAction::ExpandAllTree => {
+                            this.state.expand_all_response_tree();
+                        }
+                        ResponsePaneAction::ToggleTableSort(col) => {
+                            this.state.toggle_response_table_sort(col);
+                        }
+                        ResponsePaneAction::SetBiChartType(ct) => {
+                            this.state.set_response_bi_chart_type(ct);
+                        }
+                        ResponsePaneAction::CycleBiAggOp => {
+                            this.state.cycle_response_bi_agg_op();
+                        }
+                        ResponsePaneAction::CycleBiXCol(cols) => {
+                            this.state.cycle_response_bi_x_col(&cols);
+                        }
+                        ResponsePaneAction::CycleBiYCol(num_cols) => {
+                            this.state.cycle_response_bi_y_col(&num_cols);
+                        }
+                    }
                     cx.notify();
                 },
             ));

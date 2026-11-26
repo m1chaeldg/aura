@@ -31,12 +31,15 @@ pub enum ResponseTab {
     Raw,
     Json,
     Table,
+    Tree,
+    Visualize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ResponseBodyMode {
     #[default]
     Pretty,
+    Compress,
     Raw,
 }
 
