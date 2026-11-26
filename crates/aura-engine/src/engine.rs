@@ -211,18 +211,44 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
 
     if !req.scripts.post_response.is_empty() || !req.scripts.tests.is_empty() {
         let mut script_rt = AuraScriptRuntime::new(working_vars)?;
-        script_rt.inject_response_context(status, &body_str, &resp_headers)?;
+        script_rt.inject_response_context_with_duration(
+            status,
+            &body_str,
+            &resp_headers,
+            duration_ms,
+        )?;
 
         if !req.scripts.post_response.is_empty() {
-            if let Ok(res) = script_rt.run(&req.scripts.post_response) {
-                all_console_logs.extend(res.console_logs);
+            match script_rt.run(&req.scripts.post_response) {
+                Ok(res) => all_console_logs.extend(res.console_logs),
+                Err(e) => all_console_logs.push(aura_core::model::ConsoleMessage {
+                    level: "ERROR".to_string(),
+                    message: format!("Post-response script error: {e}"),
+                    timestamp: chrono::Utc::now(),
+                }),
             }
         }
 
         if !req.scripts.tests.is_empty() {
-            if let Ok(test_res) = script_rt.run(&req.scripts.tests) {
-                all_console_logs.extend(test_res.console_logs);
-                assertions = test_res.test_assertions;
+            match script_rt.run(&req.scripts.tests) {
+                Ok(test_res) => {
+                    all_console_logs.extend(test_res.console_logs);
+                    assertions = test_res.test_assertions;
+                }
+                Err(e) => {
+                    let msg = format!("Test script error: {e}");
+                    all_console_logs.push(aura_core::model::ConsoleMessage {
+                        level: "ERROR".to_string(),
+                        message: msg.clone(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                    assertions.push(aura_core::model::TestAssertion {
+                        name: "Test Script Execution".to_string(),
+                        passed: false,
+                        message: Some(msg),
+                        duration_ms: 0,
+                    });
+                }
             }
         }
     }

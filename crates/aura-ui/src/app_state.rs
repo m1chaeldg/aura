@@ -25,6 +25,10 @@ pub enum ActiveInputTarget {
     ParamValue(usize),
     HeaderKey(usize),
     HeaderValue(usize),
+    VariableKey(usize),
+    VariableValue(usize),
+    SettingTimeout,
+    SettingMaxRedirects,
     FormParamKey(usize),
     FormParamValue(usize),
     AuthBearerToken,
@@ -275,6 +279,8 @@ pub struct AuraAppState {
     pub active_body_mode: ResponseBodyMode,
     pub is_code_mode: bool, // Dual-mode: Visual vs Code Editor (TOML)
     pub is_command_palette_open: bool,
+    #[serde(skip)]
+    pub is_method_dropdown_open: bool,
     pub is_log_viewer_open: bool,
     pub log_filter_level: Option<aura_engine::LogLevel>,
     pub log_filter_subsystem: Option<String>,
@@ -294,6 +300,14 @@ pub struct AuraAppState {
     pub editor_dialog: Option<EditorDialogState>,
     pub active_input_target: Option<ActiveInputTarget>,
     pub active_script_sub_tab: ScriptSubTab,
+    #[serde(skip)]
+    pub setting_timeout_draft: Option<String>,
+    #[serde(skip)]
+    pub setting_timeout_error: Option<String>,
+    #[serde(skip)]
+    pub setting_max_redirects_draft: Option<String>,
+    #[serde(skip)]
+    pub setting_max_redirects_error: Option<String>,
     #[serde(default = "default_auto_save_enabled")]
     pub auto_save_enabled: bool,
     #[serde(default = "default_auto_save_delay_ms")]
@@ -332,6 +346,7 @@ impl Default for AuraAppState {
             active_body_mode: ResponseBodyMode::Pretty,
             is_code_mode: false,
             is_command_palette_open: false,
+            is_method_dropdown_open: false,
             is_log_viewer_open: false,
             log_filter_level: None,
             log_filter_subsystem: None,
@@ -351,6 +366,10 @@ impl Default for AuraAppState {
             editor_dialog: None,
             active_input_target: None,
             active_script_sub_tab: ScriptSubTab::PreRequest,
+            setting_timeout_draft: None,
+            setting_timeout_error: None,
+            setting_max_redirects_draft: None,
+            setting_max_redirects_error: None,
             auto_save_enabled: true,
             auto_save_delay_ms: 1000,
             workspace_service: default_workspace_service(),
@@ -429,6 +448,25 @@ impl AuraAppState {
             tab.request.method = tab.method;
             tab.mark_dirty(true);
         }
+    }
+
+    pub fn set_active_method(&mut self, method: HttpMethod) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if tab.method != method {
+                tab.method = method;
+                tab.request.method = method;
+                tab.mark_dirty(true);
+            }
+        }
+        self.is_method_dropdown_open = false;
+    }
+
+    pub fn toggle_method_dropdown(&mut self) {
+        self.is_method_dropdown_open = !self.is_method_dropdown_open;
+    }
+
+    pub fn close_method_dropdown(&mut self) {
+        self.is_method_dropdown_open = false;
     }
 
     // =========================================================================
@@ -671,6 +709,21 @@ impl AuraAppState {
                     curr.push(c);
                     tab.update_spec_buffer(curr);
                 }
+                ActiveInputTarget::VariableKey(idx) => {
+                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                        k.push(c);
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::VariableValue(idx) => {
+                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                        v.push(c);
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingTimeout | ActiveInputTarget::SettingMaxRedirects => {}
             }
         }
     }
@@ -867,6 +920,21 @@ impl AuraAppState {
                     curr.pop();
                     tab.update_spec_buffer(curr);
                 }
+                ActiveInputTarget::VariableKey(idx) => {
+                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                        k.pop();
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::VariableValue(idx) => {
+                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                        v.pop();
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingTimeout | ActiveInputTarget::SettingMaxRedirects => {}
             }
         }
     }
@@ -961,6 +1029,22 @@ impl AuraAppState {
             ActiveInputTarget::SpecText => {
                 Some(tab.spec_buffer.clone().unwrap_or_else(|| aura_parser::request_to_spec(&tab.request)))
             }
+            ActiveInputTarget::VariableKey(idx) => {
+                tab.variable_rows.get(*idx).map(|(k, _)| k.clone())
+            }
+            ActiveInputTarget::VariableValue(idx) => {
+                tab.variable_rows.get(*idx).map(|(_, v)| v.clone())
+            }
+            ActiveInputTarget::SettingTimeout => Some(
+                self.setting_timeout_draft
+                    .clone()
+                    .unwrap_or_else(|| tab.request.settings.timeout_ms.to_string()),
+            ),
+            ActiveInputTarget::SettingMaxRedirects => Some(
+                self.setting_max_redirects_draft
+                    .clone()
+                    .unwrap_or_else(|| tab.request.settings.max_redirects.to_string()),
+            ),
         }
     }
 
@@ -1132,6 +1216,26 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::SpecText => {
                     tab.update_spec_buffer(text);
+                }
+                ActiveInputTarget::VariableKey(idx) => {
+                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                        *k = text;
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::VariableValue(idx) => {
+                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                        *v = text;
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingTimeout => {
+                    self.update_setting_timeout(&text);
+                }
+                ActiveInputTarget::SettingMaxRedirects => {
+                    self.update_setting_max_redirects(&text);
                 }
             }
         }
@@ -1324,6 +1428,21 @@ impl AuraAppState {
                     curr.push_str(text);
                     tab.update_spec_buffer(curr);
                 }
+                ActiveInputTarget::VariableKey(idx) => {
+                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                        k.push_str(text);
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::VariableValue(idx) => {
+                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                        v.push_str(text);
+                        tab.sync_variables_from_rows();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingTimeout | ActiveInputTarget::SettingMaxRedirects => {}
             }
         }
     }
@@ -1564,16 +1683,21 @@ impl AuraAppState {
     }
 
     pub fn run_active_tests(&mut self) -> Result<usize, String> {
-        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+        let result = if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             if tab.request.scripts.tests.trim().is_empty() {
                 return Err("No test script defined".to_string());
             }
             if let Some(ref mut resp) = tab.response {
-                let working_vars = std::collections::HashMap::new();
+                let working_vars = tab.request.variables.clone();
                 let mut script_rt = aura_scripting::AuraScriptRuntime::new(working_vars)
                     .map_err(|e| format!("Script runtime error: {e}"))?;
                 script_rt
-                    .inject_response_context(resp.status, &resp.body, &resp.headers)
+                    .inject_response_context_with_duration(
+                        resp.status,
+                        &resp.body,
+                        &resp.headers,
+                        resp.duration_ms,
+                    )
                     .map_err(|e| format!("Response injection error: {e}"))?;
                 let test_res = script_rt
                     .run(&tab.request.scripts.tests)
@@ -1587,6 +1711,118 @@ impl AuraAppState {
             }
         } else {
             Err("No active tab".to_string())
+        };
+        if result.is_ok() {
+            self.active_response_tab = crate::stores::ResponseTab::Tests;
+        }
+        result
+    }
+
+    // =========================================================================
+    // Request Settings & Variables Operations
+    // =========================================================================
+
+    pub fn clear_setting_drafts(&mut self) {
+        self.setting_timeout_draft = None;
+        self.setting_timeout_error = None;
+        self.setting_max_redirects_draft = None;
+        self.setting_max_redirects_error = None;
+    }
+
+    pub fn update_setting_timeout(&mut self, text: &str) -> bool {
+        self.setting_timeout_draft = Some(text.to_string());
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            self.setting_timeout_error = Some("Timeout is required (100 - 300000 ms)".to_string());
+            return false;
+        }
+        match trimmed.parse::<u64>() {
+            Ok(v) if (100..=300_000).contains(&v) => {
+                self.setting_timeout_error = None;
+                if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+                    if tab.request.settings.timeout_ms != v {
+                        tab.request.settings.timeout_ms = v;
+                        tab.mark_dirty(true);
+                    }
+                }
+                true
+            }
+            Ok(_) => {
+                self.setting_timeout_error = Some("Timeout must be between 100 and 300000 ms".to_string());
+                false
+            }
+            Err(_) => {
+                self.setting_timeout_error = Some("Timeout must be a valid integer (100 - 300000)".to_string());
+                false
+            }
+        }
+    }
+
+    pub fn update_setting_max_redirects(&mut self, text: &str) -> bool {
+        self.setting_max_redirects_draft = Some(text.to_string());
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            self.setting_max_redirects_error = Some("Max redirects is required (0 - 50)".to_string());
+            return false;
+        }
+        match trimmed.parse::<usize>() {
+            Ok(v) if v <= 50 => {
+                self.setting_max_redirects_error = None;
+                if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+                    if tab.request.settings.max_redirects != v {
+                        tab.request.settings.max_redirects = v;
+                        tab.mark_dirty(true);
+                    }
+                }
+                true
+            }
+            Ok(_) => {
+                self.setting_max_redirects_error = Some("Max redirects must be between 0 and 50".to_string());
+                false
+            }
+            Err(_) => {
+                self.setting_max_redirects_error = Some("Max redirects must be a valid integer (0 - 50)".to_string());
+                false
+            }
+        }
+    }
+
+    pub fn toggle_setting_follow_redirects(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request.settings.follow_redirects = !tab.request.settings.follow_redirects;
+            tab.mark_dirty(true);
+        }
+    }
+
+    pub fn toggle_setting_verify_ssl(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request.settings.verify_ssl = !tab.request.settings.verify_ssl;
+            tab.mark_dirty(true);
+        }
+    }
+
+    pub fn toggle_setting_inherit_auth(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request.settings.inherit_auth = !tab.request.settings.inherit_auth;
+            tab.mark_dirty(true);
+        }
+    }
+
+    pub fn add_variable_row(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.variable_rows.push((String::new(), String::new()));
+            tab.sync_variables_from_rows();
+            tab.mark_dirty(true);
+        }
+    }
+
+    pub fn remove_variable_row(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if index < tab.variable_rows.len() {
+                tab.variable_rows.remove(index);
+                tab.sync_variables_from_rows();
+                tab.mark_dirty(true);
+            }
         }
     }
 
@@ -3102,6 +3338,7 @@ impl AuraAppState {
             }
             self.tabs[index].is_active = true;
             self.active_tab_index = index;
+            self.clear_setting_drafts();
         }
     }
 
@@ -3567,4 +3804,112 @@ fn build_tree_from_metadata(
         }
     }
     Ok(tree)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aura_core::model::AuraResponse;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_method_dropdown_and_selection() {
+        let mut state = AuraAppState::new();
+        state.new_request();
+        assert!(!state.is_method_dropdown_open);
+        state.toggle_method_dropdown();
+        assert!(state.is_method_dropdown_open);
+        state.set_active_method(HttpMethod::POST);
+        assert!(!state.is_method_dropdown_open);
+        assert_eq!(state.tabs[0].method, HttpMethod::POST);
+        assert_eq!(state.tabs[0].request.method, HttpMethod::POST);
+        assert!(state.tabs[0].is_dirty);
+    }
+
+    #[test]
+    fn test_settings_validation_rejects_invalid_and_accepts_valid() {
+        let mut state = AuraAppState::new();
+        state.new_request();
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+
+        assert!(!state.update_setting_timeout("abc"));
+        assert!(state.setting_timeout_error.is_some());
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+
+        assert!(!state.update_setting_timeout("50"));
+        assert!(state.setting_timeout_error.is_some());
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+
+        assert!(state.update_setting_timeout("5000"));
+        assert!(state.setting_timeout_error.is_none());
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 5000);
+
+        assert!(!state.update_setting_max_redirects("99"));
+        assert!(state.setting_max_redirects_error.is_some());
+        assert_eq!(state.tabs[0].request.settings.max_redirects, 10);
+
+        assert!(state.update_setting_max_redirects("5"));
+        assert!(state.setting_max_redirects_error.is_none());
+        assert_eq!(state.tabs[0].request.settings.max_redirects, 5);
+    }
+
+    #[test]
+    fn test_variables_editing_syncs_to_request_map() {
+        let mut state = AuraAppState::new();
+        state.new_request();
+        state.add_variable_row();
+        assert_eq!(state.tabs[0].variable_rows.len(), 1);
+
+        state.set_input_text_for(ActiveInputTarget::VariableKey(0), "base_url".to_string());
+        state.set_input_text_for(
+            ActiveInputTarget::VariableValue(0),
+            "https://example.com".to_string(),
+        );
+        assert_eq!(
+            state.tabs[0].request.variables.get("base_url").map(String::as_str),
+            Some("https://example.com")
+        );
+
+        state.remove_variable_row(0);
+        assert!(state.tabs[0].variable_rows.is_empty());
+        assert!(state.tabs[0].request.variables.is_empty());
+    }
+
+    #[test]
+    fn test_run_active_tests_uses_duration_and_variables() {
+        let mut state = AuraAppState::new();
+        state.new_request();
+        state.tabs[0]
+            .request
+            .variables
+            .insert("expected_status".to_string(), "200".to_string());
+        state.tabs[0].request.scripts.tests = r#"
+            describe('Response', () => {
+                it('status matches variable', () => {
+                    expect(response.status).toBe(Number(aura.variables.get('expected_status')));
+                });
+                it('duration_ms is available', () => {
+                    expect(response.duration_ms).toBeLessThan(500);
+                });
+            });
+        "#
+        .to_string();
+        state.tabs[0].response = Some(AuraResponse {
+            status: 200,
+            status_text: "OK".to_string(),
+            duration_ms: 42,
+            size_bytes: 2,
+            headers: HashMap::new(),
+            body: "{}".to_string(),
+            timestamp: chrono::Utc::now(),
+            assertions: Vec::new(),
+            console_logs: Vec::new(),
+        });
+
+        let count = state.run_active_tests().expect("tests should run");
+        assert_eq!(count, 2);
+        let assertions = &state.tabs[0].response.as_ref().unwrap().assertions;
+        assert!(assertions.iter().all(|a| a.passed));
+        assert_eq!(state.active_response_tab, crate::stores::ResponseTab::Tests);
+    }
 }

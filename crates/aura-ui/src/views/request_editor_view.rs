@@ -63,6 +63,13 @@ pub enum RequestEditorAction {
     FocusTests,
     InsertTestSnippet(&'static str),
     RunTests,
+    // Variables
+    AddVariableDirect,
+    RemoveVariable(usize),
+    // Settings
+    ToggleSettingFollowRedirects,
+    ToggleSettingVerifySsl,
+    ToggleSettingInheritAuth,
     // Spec
     FocusSpec,
     FormatSpec,
@@ -110,6 +117,9 @@ impl RequestEditorView {
         _active_method: HttpMethod,
         active_tab: EditorTab,
         request: Option<&AuraRequest>,
+        variable_rows: &[(String, String)],
+        setting_timeout_error: Option<&str>,
+        setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
@@ -130,6 +140,7 @@ impl RequestEditorView {
             .unwrap_or(0);
         let body_name = request.map(|r| r.body.type_name()).unwrap_or("None");
         let auth_name = request.map(|r| r.auth.type_name()).unwrap_or("Inherit");
+        let vars_count = variable_rows.len();
 
         div()
             .flex()
@@ -168,6 +179,9 @@ impl RequestEditorView {
                                 EditorTab::Auth if auth_name != "Inherit" && auth_name != "None" => {
                                     Some(format!(" ({auth_name})"))
                                 }
+                                EditorTab::Variables if vars_count > 0 => {
+                                    Some(format!(" ({vars_count})"))
+                                }
                                 _ => None,
                             };
                             let label = format!("{}{}", Self::tab_title(tab), badge.unwrap_or_default());
@@ -192,6 +206,9 @@ impl RequestEditorView {
                     .child(Self::render_panel_content(
                         active_tab,
                         request,
+                        variable_rows,
+                        setting_timeout_error,
+                        setting_max_redirects_error,
                         active_input,
                         inputs,
                         script_sub_tab,
@@ -278,6 +295,9 @@ impl RequestEditorView {
     fn render_panel_content<V: 'static>(
         tab: EditorTab,
         request: Option<&AuraRequest>,
+        variable_rows: &[(String, String)],
+        setting_timeout_error: Option<&str>,
+        setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
@@ -332,13 +352,15 @@ impl RequestEditorView {
                 cx,
                 on_action,
             ),
-            EditorTab::Variables => Self::render_box(
-                "ENVIRONMENT & REQUEST VARIABLES",
-                "Variables referenced with {{var_name}} in URL, headers, and body.",
-                false,
+            EditorTab::Variables => Self::render_variables_panel(
+                variable_rows,
+                active_input,
+                inputs,
                 border,
                 muted,
                 normal,
+                cx,
+                on_action,
             ),
             EditorTab::Scripts => Self::render_scripts_panel(
                 request,
@@ -362,7 +384,18 @@ impl RequestEditorView {
                 cx,
                 on_action,
             ),
-            EditorTab::Settings => Self::render_settings_panel(request, border, muted, normal),
+            EditorTab::Settings => Self::render_settings_panel(
+                request,
+                setting_timeout_error,
+                setting_max_redirects_error,
+                active_input,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            ),
             EditorTab::Spec => {
                 let default_spec;
                 let content = if let Some(buf) = spec_buffer {
@@ -2075,65 +2108,376 @@ impl RequestEditorView {
             }))
     }
 
-    fn render_box(
-        title: &'static str,
-        content: &str,
-        is_code: bool,
+    #[allow(clippy::too_many_arguments)]
+    fn render_variables_panel<V: 'static>(
+        variable_rows: &[(String, String)],
+        active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
         div()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap_3()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(muted)
+                                    .child("REQUEST VARIABLES"),
+                            )
+                            .child(
+                                Tag::secondary()
+                                    .xsmall()
+                                    .child(format!("{}", variable_rows.len())),
+                            ),
+                    )
+                    .child(
+                        Button::new("add-variable-btn")
+                            .label("+ Add Variable")
+                            .primary()
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                on_action(this, RequestEditorAction::AddVariableDirect, window, cx);
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Reference variables with {{var_name}} in URL, headers, params, and body."),
+            )
+            .when(variable_rows.is_empty(), |el| {
+                el.child(
+                    Empty::new()
+                        .header(EmptyHeader::new().description(
+                            EmptyDescription::new().child(
+                                "No request variables defined. Click '+ Add Variable' to add one.",
+                            ),
+                        ))
+                        .child(
+                            Button::new("btn-add-first-variable")
+                                .label("+ Add First Variable")
+                                .secondary()
+                                .small()
+                                .rounded(ButtonRounded::Medium)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_action(
+                                        this,
+                                        RequestEditorAction::AddVariableDirect,
+                                        window,
+                                        cx,
+                                    );
+                                })),
+                        ),
+                )
+            })
+            .children(variable_rows.iter().enumerate().map(|(idx, (key, val))| {
+                let is_key_focused =
+                    matches!(active_input, Some(ActiveInputTarget::VariableKey(i)) if *i == idx);
+                let is_val_focused =
+                    matches!(active_input, Some(ActiveInputTarget::VariableValue(i)) if *i == idx);
+
+                div()
+                    .id(ElementId::NamedInteger("variable-row".into(), idx as u64))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_1p5()
+                    .rounded_md()
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(if is_key_focused || is_val_focused {
+                        rgb(0x0066cc)
+                    } else {
+                        border
+                    })
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-var-key".into(), idx as u64),
+                        inputs.get_input(&InputKey::VariableKey(idx)),
+                        key,
+                        is_key_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_key_focused { rgb(0xffffff) } else { normal },
+                    ))
+                    .child(div().text_xs().text_color(muted).child("="))
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-var-val".into(), idx as u64),
+                        inputs.get_input(&InputKey::VariableValue(idx)),
+                        val,
+                        is_val_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_val_focused { rgb(0xffffff) } else { normal },
+                    ))
+                    .child(
+                        Button::new(ElementId::NamedInteger("remove-var".into(), idx as u64))
+                            .label("✕")
+                            .xsmall()
+                            .ghost()
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                on_action(
+                                    this,
+                                    RequestEditorAction::RemoveVariable(idx),
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+            }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_settings_panel<V: 'static>(
+        request: Option<&AuraRequest>,
+        timeout_error: Option<&str>,
+        max_redirects_error: Option<&str>,
+        active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
+        border: Rgba,
+        muted: Rgba,
+        normal: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> Div {
+        let timeout = request.map(|r| r.settings.timeout_ms).unwrap_or(30000);
+        let redirects = request.map(|r| r.settings.follow_redirects).unwrap_or(true);
+        let max_redirects = request.map(|r| r.settings.max_redirects).unwrap_or(10);
+        let ssl = request.map(|r| r.settings.verify_ssl).unwrap_or(true);
+        let inherit_auth = request.map(|r| r.settings.inherit_auth).unwrap_or(true);
+
+        let is_timeout_focused = matches!(active_input, Some(ActiveInputTarget::SettingTimeout));
+        let is_redirects_focused =
+            matches!(active_input, Some(ActiveInputTarget::SettingMaxRedirects));
+
+        let render_toggle_row =
+            |id: &'static str,
+             label: &'static str,
+             desc: &'static str,
+             enabled: bool,
+             action: RequestEditorAction| {
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .p_3()
+                    .rounded_md()
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(normal)
+                                    .child(label),
+                            )
+                            .child(div().text_xs().text_color(muted).child(desc)),
+                    )
+                    .child({
+                        let btn = Button::new(id)
+                            .label(if enabled { "Enabled" } else { "Disabled" })
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                on_action(this, action.clone(), window, cx);
+                            }));
+                        if enabled {
+                            btn.primary()
+                        } else {
+                            btn.secondary()
+                        }
+                    })
+            };
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
             .child(
                 div()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(muted)
-                    .child(title),
+                    .child("REQUEST EXECUTION SETTINGS"),
             )
+            // Timeout (ms)
             .child(
                 div()
+                    .flex()
+                    .flex_col()
+                    .gap_1p5()
                     .p_3()
                     .rounded_md()
-                    .bg(if is_code {
-                        rgb(0x18181a)
-                    } else {
-                        rgb(0x272729)
-                    })
+                    .bg(rgb(0x272729))
                     .border_1()
-                    .border_color(border)
-                    .when(is_code, |el| el.font_family("monospace"))
-                    .text_xs()
-                    .text_color(normal)
-                    .child(content.to_string()),
+                    .border_color(if timeout_error.is_some() {
+                        rgb(0xe74c3c)
+                    } else if is_timeout_focused {
+                        rgb(0x0066cc)
+                    } else {
+                        border
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(normal)
+                                            .child("Request Timeout (ms)"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .child("Valid range: 100 – 300000 ms"),
+                                    ),
+                            )
+                            .child(
+                                div().w(px(140.0)).child(Self::render_inline_input(
+                                    "setting-timeout-input",
+                                    inputs.get_input(&InputKey::SettingTimeout),
+                                    &timeout.to_string(),
+                                    is_timeout_focused,
+                                    false,
+                                    rgb(0x222224),
+                                    rgb(0x38383a),
+                                    normal,
+                                )),
+                            ),
+                    )
+                    .when_some(timeout_error, |el, err| {
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0xe74c3c))
+                                .child(err.to_string()),
+                        )
+                    }),
             )
-    }
-
-    fn render_settings_panel(
-        request: Option<&AuraRequest>,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
-    ) -> Div {
-        let timeout = request.map(|r| r.settings.timeout_ms).unwrap_or(30000);
-        let redirects = request.map(|r| r.settings.follow_redirects).unwrap_or(true);
-        let ssl = request.map(|r| r.settings.verify_ssl).unwrap_or(true);
-        let summary = format!(
-            "Timeout: {timeout} ms\nFollow Redirects: {}\nVerify SSL: {}",
-            if redirects { "Yes" } else { "No" },
-            if ssl { "Yes" } else { "No" }
-        );
-        Self::render_box(
-            "REQUEST EXECUTION SETTINGS",
-            &summary,
-            false,
-            border,
-            muted,
-            normal,
-        )
+            // Follow Redirects
+            .child(render_toggle_row(
+                "setting-follow-redirects-btn",
+                "Follow Redirects",
+                "Automatically follow HTTP 3xx redirect responses",
+                redirects,
+                RequestEditorAction::ToggleSettingFollowRedirects,
+            ))
+            // Max Redirects
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1p5()
+                    .p_3()
+                    .rounded_md()
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(if max_redirects_error.is_some() {
+                        rgb(0xe74c3c)
+                    } else if is_redirects_focused {
+                        rgb(0x0066cc)
+                    } else {
+                        border
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(normal)
+                                            .child("Max Redirects"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .child("Valid range: 0 – 50 hops"),
+                                    ),
+                            )
+                            .child(
+                                div().w(px(140.0)).child(Self::render_inline_input(
+                                    "setting-max-redirects-input",
+                                    inputs.get_input(&InputKey::SettingMaxRedirects),
+                                    &max_redirects.to_string(),
+                                    is_redirects_focused,
+                                    false,
+                                    rgb(0x222224),
+                                    rgb(0x38383a),
+                                    normal,
+                                )),
+                            ),
+                    )
+                    .when_some(max_redirects_error, |el, err| {
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0xe74c3c))
+                                .child(err.to_string()),
+                        )
+                    }),
+            )
+            // Verify SSL
+            .child(render_toggle_row(
+                "setting-verify-ssl-btn",
+                "Verify SSL Certificates",
+                "Validate TLS/SSL certificates on HTTPS requests",
+                ssl,
+                RequestEditorAction::ToggleSettingVerifySsl,
+            ))
+            // Inherit Auth
+            .child(render_toggle_row(
+                "setting-inherit-auth-btn",
+                "Inherit Collection Auth",
+                "Use parent folder or collection authentication when Auth is Inherit",
+                inherit_auth,
+                RequestEditorAction::ToggleSettingInheritAuth,
+            ))
     }
 
     #[allow(clippy::too_many_arguments)]

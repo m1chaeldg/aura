@@ -133,6 +133,17 @@ impl AuraScriptRuntime {
         body: &str,
         headers: &HashMap<String, String>,
     ) -> Result<()> {
+        self.inject_response_context_with_duration(status, body, headers, 0)
+    }
+
+    /// Set response context (including `duration_ms`) before post-response or test execution
+    pub fn inject_response_context_with_duration(
+        &mut self,
+        status: u16,
+        body: &str,
+        headers: &HashMap<String, String>,
+        duration_ms: u64,
+    ) -> Result<()> {
         let headers_json = serde_json::to_string(headers)?;
         let escaped_body = serde_json::to_string(body)?;
 
@@ -142,6 +153,7 @@ impl AuraScriptRuntime {
                 const _rawBody = {escaped_body};
                 globalThis.response = {{
                     status: {status},
+                    duration_ms: {duration_ms},
                     body: _rawBody,
                     headers: {headers_json},
                     json: function() {{

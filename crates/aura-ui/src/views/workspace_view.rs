@@ -19,7 +19,7 @@ use gpui_kit::component::separator::Separator;
 use gpui_kit::component::status_bar::StatusBar;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tree::TreeState;
-use gpui_kit::component::{Sizable, TitleBar};
+use gpui_kit::component::Sizable;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -137,7 +137,8 @@ impl AuraWorkspaceView {
         let execution_service = self.state.execution_service.clone();
         let tab_id = active_tab.id.clone();
         let request = active_tab.request.clone();
-        let context = aura_core::templating::TemplateContext::default();
+        let mut context = aura_core::templating::TemplateContext::default();
+        context.request_vars = request.variables.clone();
 
         self.state.status_message = Some(format!("Sending {} {}...", request.method, request.url));
         cx.notify();
@@ -149,12 +150,19 @@ impl AuraWorkspaceView {
                 let _ = this.update(&mut cx, |this, cx| {
                     match result {
                         Ok(resp) => {
+                            let test_summary = if resp.assertions.is_empty() {
+                                String::new()
+                            } else {
+                                let passed = resp.assertions.iter().filter(|a| a.passed).count();
+                                format!(" • {passed}/{} Tests Passed", resp.assertions.len())
+                            };
                             this.state.status_message = Some(format!(
-                                "Response: {} {} ({} ms, {})",
+                                "Response: {} {} ({} ms, {}){}",
                                 resp.status,
                                 resp.status_text,
                                 resp.duration_ms,
-                                resp.formatted_size()
+                                resp.formatted_size(),
+                                test_summary
                             ));
                             if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
                                 tab.response = Some(resp);
@@ -755,6 +763,30 @@ impl AuraWorkspaceView {
                 if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
                     tab.revert_spec_buffer();
                 }
+            }
+            RequestEditorAction::AddVariableDirect => {
+                self.state.add_variable_row();
+                let new_idx = self
+                    .state
+                    .tabs
+                    .get(self.state.active_tab_index)
+                    .map(|t| t.variable_rows.len().saturating_sub(1))
+                    .unwrap_or(0);
+                self.state.set_active_input(Some(
+                    crate::app_state::ActiveInputTarget::VariableKey(new_idx),
+                ));
+            }
+            RequestEditorAction::RemoveVariable(idx) => {
+                self.state.remove_variable_row(idx);
+            }
+            RequestEditorAction::ToggleSettingFollowRedirects => {
+                self.state.toggle_setting_follow_redirects();
+            }
+            RequestEditorAction::ToggleSettingVerifySsl => {
+                self.state.toggle_setting_verify_ssl();
+            }
+            RequestEditorAction::ToggleSettingInheritAuth => {
+                self.state.toggle_setting_inherit_auth();
             }
         }
         if self.state.is_active_tab_dirty() {
@@ -1742,6 +1774,57 @@ impl AuraWorkspaceView {
                 );
             }
 
+            for (idx, (k, v)) in tab.variable_rows.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::VariableKey(idx),
+                    k,
+                    "Variable Name",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::VariableValue(idx),
+                    v,
+                    "Variable Value",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
+            let timeout_str = self
+                .state
+                .setting_timeout_draft
+                .clone()
+                .unwrap_or_else(|| tab.request.settings.timeout_ms.to_string());
+            inputs.ensure_input(
+                InputKey::SettingTimeout,
+                &timeout_str,
+                "30000",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+
+            let max_redirects_str = self
+                .state
+                .setting_max_redirects_draft
+                .clone()
+                .unwrap_or_else(|| tab.request.settings.max_redirects.to_string());
+            inputs.ensure_input(
+                InputKey::SettingMaxRedirects,
+                &max_redirects_str,
+                "10",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+
             match &tab.request.body {
                 BodyType::Json(s) | BodyType::Xml(s) | BodyType::Text(s) => {
                     inputs.ensure_textarea(
@@ -2171,105 +2254,117 @@ impl Render for AuraWorkspaceView {
                     }
                 }
             }))
-            // Title Bar
+            // Top Toolbar (standard GPUI container instead of TitleBar so WindowControlArea::Drag does not swallow clicks)
             .child(
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .w_full()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_3()
-                                .child(
-                                    Tag::primary()
-                                        .small()
-                                        .child("A"),
-                                )
-                                .child(div().text_sm().child("Aura REST API Client v0.1.0"))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(text_muted)
-                                        .child("(GPUI + deno_core)"),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(
-                                    Button::new("cmd-palette-btn")
-                                        .label("⌘ Command Palette")
-                                        .small()
-                                        .rounded(ButtonRounded::Medium)
-                                        .on_click(cx.listener(|this, _, _window, cx| {
-                                            this.state.toggle_command_palette();
-                                            cx.notify();
-                                        })),
-                                )
-                                .child(
-                                    Button::new("toggle-layout-btn")
-                                        .label(if is_horizontal {
-                                            "◫ Side-by-Side"
-                                        } else {
-                                            "⬒ Stacked"
-                                        })
-                                        .small()
-                                        .rounded(ButtonRounded::Medium)
-                                        .on_click(cx.listener(|this, _, _window, cx| {
-                                            this.state.toggle_orientation();
-                                            this.save_preferences_sync();
-                                            cx.notify();
-                                        })),
-                                )
-                                .child(
-                                    Button::new("open-workspace-btn")
-                                        .label("📁 Open Workspace")
-                                        .small()
-                                        .rounded(ButtonRounded::Medium)
-                                        .on_click(cx.listener(|_this, _, _window, cx| {
-                                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-                                                let mut cx = cx.clone();
-                                                async move {
-                                                    if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
-                                                        this.update(&mut cx, |this, cx| {
-                                                            if let Ok(()) = this.state.open_workspace_sync(&folder) {
-                                                                this.start_workspace_watcher(folder, cx);
-                                                                cx.notify();
-                                                            }
-                                                        }).ok();
-                                                    }
-                                                }
-                                            }).detach();
-                                        })),
-                                )
-                                .child({
-                                    let btn = Button::new("toggle-logs-btn")
-                                        .label("🪵 Logs")
-                                        .small()
-                                        .rounded(ButtonRounded::Medium)
-                                        .on_click(cx.listener(|this, _, _window, cx| {
-                                            this.state.toggle_log_viewer();
-                                            cx.notify();
-                                        }));
-                                    if self.state.is_log_viewer_open {
-                                        btn.primary()
+                div()
+                    .id("workspace-top-toolbar")
+                    .h(px(38.))
+                    .w_full()
+                    .px_3()
+                    .bg(rgb(0x222224))
+                    .border_b_1()
+                    .border_color(rgb(0x333333))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .flex_shrink_0()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                Tag::primary()
+                                    .small()
+                                    .child("A"),
+                            )
+                            .child(div().text_sm().child("Aura REST API Client v0.1.0"))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(text_muted)
+                                    .child("(GPUI + deno_core)"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("cmd-palette-btn")
+                                    .label("⌘ Command Palette")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_command_palette();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("toggle-layout-btn")
+                                    .label(if is_horizontal {
+                                        "◫ Side-by-Side"
                                     } else {
-                                        btn
-                                    }
-                                })
-                                .child(
-                                    Tag::secondary()
-                                        .small()
-                                        .child("Zero Telemetry • Offline Sandboxed"),
-                                ),
-                        ),
-                ),
+                                        "⬒ Stacked"
+                                    })
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_orientation();
+                                        this.save_preferences_sync();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("open-workspace-btn")
+                                    .label("📁 Open Workspace")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|_this, _, _window, cx| {
+                                        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                            let mut cx = cx.clone();
+                                            async move {
+                                                if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
+                                                    this.update(&mut cx, |this, cx| {
+                                                        match this.state.open_workspace_sync(&folder) {
+                                                            Ok(()) => {
+                                                                this.start_workspace_watcher(folder.clone(), cx);
+                                                                this.save_preferences_sync();
+                                                                this.state.status_message = Some(format!("Opened workspace: {}", folder.display()));
+                                                            }
+                                                            Err(e) => {
+                                                                this.state.status_message = Some(format!("Failed to open workspace: {e}"));
+                                                            }
+                                                        }
+                                                        cx.notify();
+                                                    }).ok();
+                                                }
+                                            }
+                                        }).detach();
+                                    })),
+                            )
+                            .child({
+                                let btn = Button::new("toggle-logs-btn")
+                                    .label("🪵 Logs")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_log_viewer();
+                                        cx.notify();
+                                    }));
+                                if self.state.is_log_viewer_open {
+                                    btn.primary()
+                                } else {
+                                    btn
+                                }
+                            })
+                            .child(
+                                Tag::secondary()
+                                    .small()
+                                    .child("Zero Telemetry • Offline Sandboxed"),
+                            ),
+                    ),
             )
             // Body: Sidebar + Main Content Area
             .child(
@@ -2390,10 +2485,19 @@ impl Render for AuraWorkspaceView {
                                 is_in_flight,
                                 self.state.active_input_target == Some(crate::app_state::ActiveInputTarget::Url),
                                 self.state.is_active_tab_dirty(),
+                                self.state.is_method_dropdown_open,
                                 cx,
                                 |this, _window, cx| {
-                                    this.state.cycle_method();
+                                    this.state.toggle_method_dropdown();
+                                    cx.notify();
+                                },
+                                |this, method, _window, cx| {
+                                    this.state.set_active_method(method);
                                     this.schedule_auto_save(cx);
+                                    cx.notify();
+                                },
+                                |this, _window, cx| {
+                                    this.state.close_method_dropdown();
                                     cx.notify();
                                 },
                                 |this, _window, cx| {
@@ -2422,6 +2526,9 @@ impl Render for AuraWorkspaceView {
                                         active_method,
                                         self.state.active_editor_tab,
                                         active_tab.map(|t| &t.request),
+                                        active_tab.map(|t| t.variable_rows.as_slice()).unwrap_or(&[]),
+                                        self.state.setting_timeout_error.as_deref(),
+                                        self.state.setting_max_redirects_error.as_deref(),
                                         self.state.active_input_target.as_ref(),
                                         &self.inputs,
                                         self.state.active_script_sub_tab,
@@ -2499,7 +2606,20 @@ impl Render for AuraWorkspaceView {
                     .inputs
                     .get_input(&InputKey::CommandPaletteSearch)
                     .expect("Command palette search input initialized in sync_inputs");
-                el.child(CommandPaletteView::render(&self.state, search_input))
+                el.child(CommandPaletteView::render(
+                    &self.state,
+                    search_input,
+                    cx,
+                    |this, idx, _window, cx| {
+                        this.state.selected_palette_index = idx;
+                        let _ = this.state.execute_selected_palette_item();
+                        cx.notify();
+                    },
+                    |this, _window, cx| {
+                        this.state.close_command_palette();
+                        cx.notify();
+                    },
+                ))
             })
             .when(self.state.is_log_viewer_open, |el| {
                 el.child(LogViewerView::render(&self.state, cx))
