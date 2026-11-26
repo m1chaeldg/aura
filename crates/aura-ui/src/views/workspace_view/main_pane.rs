@@ -156,14 +156,15 @@ impl AuraWorkspaceView {
                 self.state.active_input_target.as_ref(),
                 &self.inputs,
                 self.state.active_script_sub_tab,
+                self.state.show_script_reference,
                 active_tab
                     .and_then(|t| t.response.as_ref())
                     .map(|r| r.assertions.as_slice()),
                 active_tab.and_then(|t| t.spec_buffer.as_deref()),
                 active_tab.and_then(|t| t.spec_error.as_deref()),
                 cx,
-                |this, action, _window, cx| {
-                    this.handle_request_editor_action(action, cx);
+                |this, action, window, cx| {
+                    this.handle_request_editor_action(action, window, cx);
                 },
             ));
         let response_panel = resizable_panel()

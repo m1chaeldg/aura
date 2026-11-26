@@ -1,6 +1,8 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use aura_core::model::AuraRequest;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 
 impl RequestEditorView {
@@ -8,6 +10,9 @@ impl RequestEditorView {
     pub(super) fn render_spec_panel<V: 'static>(
         spec_content: &str,
         spec_error: Option<&str>,
+        request: Option<&AuraRequest>,
+        variable_rows: &[(String, String, bool)],
+        show_script_reference: bool,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         border: Rgba,
@@ -80,6 +85,13 @@ impl RequestEditorView {
                             .flex()
                             .items_center()
                             .gap_2()
+                            .child(Self::render_editor_tools(
+                                InputKey::SpecText,
+                                show_script_reference,
+                                muted,
+                                cx,
+                                on_action,
+                            ))
                             .child(
                                 div()
                                     .id("format-spec-btn")
@@ -146,15 +158,29 @@ impl RequestEditorView {
                             ),
                     ),
             )
-            // Monospace Editor Textarea
-            .child(Self::render_inline_textarea(
+            // Monospace Code Editor
+            .child(Self::render_inline_editor(
                 "direct-spec-editor",
-                inputs.get_textarea(&InputKey::SpecText),
+                inputs.get_editor(&InputKey::SpecText),
                 spec_content,
                 px(320.0),
                 is_focused,
                 border,
                 if is_focused { rgb(0xffffff) } else { normal },
             ))
+            .when(show_script_reference, |el| {
+                el.child(Self::render_reference_panel(
+                    InputKey::SpecText,
+                    true,
+                    true,
+                    request,
+                    variable_rows,
+                    border,
+                    muted,
+                    normal,
+                    cx,
+                    on_action,
+                ))
+            })
     }
 }

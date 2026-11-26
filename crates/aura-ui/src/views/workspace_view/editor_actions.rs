@@ -6,6 +6,7 @@ impl AuraWorkspaceView {
     pub fn handle_request_editor_action(
         &mut self,
         action: RequestEditorAction,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match action {
@@ -136,6 +137,35 @@ impl AuraWorkspaceView {
             }
             RequestEditorAction::SelectScriptSubTab(sub) => {
                 self.state.set_script_sub_tab(sub);
+            }
+            RequestEditorAction::ToggleScriptReference => {
+                self.state.toggle_script_reference();
+            }
+            RequestEditorAction::SearchInEditor(key) => {
+                self.inputs.focus_editor(&key, window, cx);
+                window.dispatch_action(Box::new(gpui_kit::component::input::Search), cx);
+            }
+            RequestEditorAction::TriggerAutocomplete(key) => {
+                self.inputs.focus_editor(&key, window, cx);
+                window.dispatch_action(Box::new(gpui_kit::component::input::ShowCompletions), cx);
+            }
+            RequestEditorAction::InsertDynamicSnippet(key, snippet) => {
+                match key {
+                    crate::input_registry::InputKey::PreRequestScript => {
+                        self.state.append_script_snippet(true, &snippet);
+                    }
+                    crate::input_registry::InputKey::PostResponseScript => {
+                        self.state.append_script_snippet(false, &snippet);
+                    }
+                    crate::input_registry::InputKey::TestScript => {
+                        self.state.append_test_snippet(&snippet);
+                    }
+                    crate::input_registry::InputKey::SpecText => {
+                        self.state.append_spec_snippet(&snippet);
+                    }
+                    _ => {}
+                }
+                self.schedule_auto_save(cx);
             }
             RequestEditorAction::FocusScript(sub) => match sub {
                 crate::app_state::ScriptSubTab::PreRequest => {

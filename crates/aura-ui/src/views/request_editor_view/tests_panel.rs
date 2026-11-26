@@ -9,9 +9,11 @@ impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn render_tests_panel<V: 'static>(
         request: Option<&AuraRequest>,
+        variable_rows: &[(String, String, bool)],
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         assertions: Option<&[TestAssertion]>,
+        show_script_reference: bool,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -59,22 +61,35 @@ impl RequestEditorView {
                     )
                     .child(
                         div()
-                            .id("btn-run-tests")
                             .flex()
                             .items_center()
-                            .gap_1()
-                            .px_3()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(rgb(0x28a745))
-                            .hover(|s| s.bg(rgb(0x218838)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(rgb(0xffffff))
-                            .child("▶ Run Tests")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(this, RequestEditorAction::RunTests, window, cx);
-                            })),
+                            .gap_2()
+                            .child(Self::render_editor_tools(
+                                InputKey::TestScript,
+                                show_script_reference,
+                                muted,
+                                cx,
+                                on_action,
+                            ))
+                            .child(
+                                div()
+                                    .id("btn-run-tests")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .px_3()
+                                    .py_1()
+                                    .rounded_sm()
+                                    .bg(rgb(0x28a745))
+                                    .hover(|s| s.bg(rgb(0x218838)))
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .text_color(rgb(0xffffff))
+                                    .child("▶ Run Tests")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        on_action(this, RequestEditorAction::RunTests, window, cx);
+                                    })),
+                            ),
                     ),
             )
             // Snippets Row
@@ -107,15 +122,29 @@ impl RequestEditorView {
                     )),
             )
             // Full-Height Multiline Code Editor
-            .child(Self::render_inline_textarea(
+            .child(Self::render_inline_editor(
                 "direct-test-editor",
-                inputs.get_textarea(&InputKey::TestScript),
+                inputs.get_editor(&InputKey::TestScript),
                 tests,
                 px(260.0),
                 is_focused,
                 border,
                 if is_focused { rgb(0xffffff) } else { normal },
             ))
+            .when(show_script_reference, |el| {
+                el.child(Self::render_reference_panel(
+                    InputKey::TestScript,
+                    false,
+                    true,
+                    request,
+                    variable_rows,
+                    border,
+                    muted,
+                    normal,
+                    cx,
+                    on_action,
+                ))
+            })
     }
 
     pub(super) fn render_test_snippet_chip<V: 'static>(

@@ -26,6 +26,18 @@ impl AuraAppState {
         }
     }
 
+    pub fn append_spec_snippet(&mut self, snippet: &str) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.ensure_spec_buffer();
+            let mut next = tab.spec_buffer.clone().unwrap_or_default();
+            if !next.is_empty() && !next.ends_with('\n') {
+                next.push('\n');
+            }
+            next.push_str(snippet);
+            tab.update_spec_buffer(next);
+        }
+    }
+
     pub fn run_active_tests(&mut self) -> Result<usize, String> {
         let result = if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
             if tab.request.scripts.tests.trim().is_empty() {

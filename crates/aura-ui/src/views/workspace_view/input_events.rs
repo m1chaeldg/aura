@@ -2,7 +2,7 @@ use super::AuraWorkspaceView;
 use crate::app_state::EditorDialogState;
 use crate::input_registry::InputKey;
 use gpui::*;
-use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
+use gpui_kit::component::input::{EditorState, InputEvent, InputState, TextareaState};
 
 impl AuraWorkspaceView {
     pub(super) fn handle_input_event(
@@ -89,6 +89,40 @@ impl AuraWorkspaceView {
         &mut self,
         key: &InputKey,
         state: &Entity<TextareaState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            InputEvent::Change => {
+                let val = state.read(cx).value().to_string();
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_input_text_for(target, val);
+                    self.schedule_auto_save(cx);
+                    cx.notify();
+                }
+            }
+            InputEvent::Focus => {
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_active_input(Some(target));
+                    cx.notify();
+                }
+            }
+            InputEvent::Blur => {
+                if let Some(target) = key.to_active_target() {
+                    if self.state.active_input_target.as_ref() == Some(&target) {
+                        self.state.blur_active_input();
+                        cx.notify();
+                    }
+                }
+            }
+            InputEvent::PressEnter { .. } => {}
+        }
+    }
+
+    pub(super) fn handle_editor_event(
+        &mut self,
+        key: &InputKey,
+        state: &Entity<EditorState>,
         event: &InputEvent,
         cx: &mut Context<Self>,
     ) {

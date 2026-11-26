@@ -1,6 +1,7 @@
 //! GPUI Presentation Views, Domain Stores, and Ergonomics for Aura.
 
 pub mod app_state;
+pub mod editor_support;
 pub mod input_registry;
 pub mod keybindings;
 pub mod preferences;
@@ -26,4 +27,9 @@ pub use views::AuraWorkspaceView;
 pub fn init_kit(cx: &mut gpui::App) {
     gpui_kit::init(cx);
     gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
+    cx.bind_keys([gpui::KeyBinding::new(
+        "ctrl-space",
+        gpui_kit::component::input::ShowCompletions,
+        Some("Input"),
+    )]);
 }

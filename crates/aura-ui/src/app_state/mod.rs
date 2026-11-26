@@ -313,6 +313,8 @@ pub struct AuraAppState {
     pub active_input_target: Option<ActiveInputTarget>,
     pub active_script_sub_tab: ScriptSubTab,
     #[serde(skip)]
+    pub show_script_reference: bool,
+    #[serde(skip)]
     pub setting_timeout_draft: Option<String>,
     #[serde(skip)]
     pub setting_timeout_error: Option<String>,
@@ -380,6 +382,7 @@ impl Default for AuraAppState {
             editor_dialog: None,
             active_input_target: None,
             active_script_sub_tab: ScriptSubTab::PreRequest,
+            show_script_reference: false,
             setting_timeout_draft: None,
             setting_timeout_error: None,
             setting_max_redirects_draft: None,
@@ -489,6 +492,10 @@ impl AuraAppState {
 
     pub fn set_script_sub_tab(&mut self, tab: ScriptSubTab) {
         self.active_script_sub_tab = tab;
+    }
+
+    pub fn toggle_script_reference(&mut self) {
+        self.show_script_reference = !self.show_script_reference;
     }
 
     pub fn set_active_input(&mut self, target: Option<ActiveInputTarget>) {

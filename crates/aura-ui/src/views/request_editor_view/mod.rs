@@ -1,11 +1,11 @@
 //! RequestEditor View: Modal-free sub-tabs (Params, Headers, Auth, Body, Scripts, Tests, Settings) and content panels.
 
 use crate::app_state::{ActiveInputTarget, ScriptSubTab};
-use crate::input_registry::InputRegistry;
+use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::EditorTab;
 use aura_core::model::{AuraRequest, HttpMethod, TestAssertion};
 use gpui::*;
-use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
+use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{Selectable, Sizable};
 
@@ -15,6 +15,7 @@ mod body_panel;
 mod form_body_panel;
 mod headers_panel;
 mod params_panel;
+mod reference_panel;
 mod scripts_panel;
 mod settings_panel;
 mod spec_panel;
@@ -82,6 +83,11 @@ pub enum RequestEditorAction {
     CopySpec,
     PasteSpec,
     RevertSpec,
+    // Code Editor Intelligence (Search, Autocomplete, Reference)
+    SearchInEditor(InputKey),
+    TriggerAutocomplete(InputKey),
+    ToggleScriptReference,
+    InsertDynamicSnippet(InputKey, String),
 }
 
 pub struct RequestEditorView;
@@ -129,6 +135,7 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
+        show_script_reference: bool,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
@@ -218,6 +225,7 @@ impl RequestEditorView {
                         active_input,
                         inputs,
                         script_sub_tab,
+                        show_script_reference,
                         test_assertions,
                         spec_buffer,
                         spec_error,
@@ -297,6 +305,117 @@ impl RequestEditorView {
         }
     }
 
+    pub(super) fn render_inline_editor(
+        id: impl Into<ElementId>,
+        editor: Option<&Entity<EditorState>>,
+        fallback: &str,
+        height: Pixels,
+        _is_focused: bool,
+        border: Rgba,
+        text_color: Rgba,
+    ) -> AnyElement {
+        if let Some(state) = editor {
+            Editor::new(state)
+                .h(height)
+                .w_full()
+                .text_xs()
+                .into_any_element()
+        } else {
+            div()
+                .id(id)
+                .p_2()
+                .rounded_md()
+                .bg(rgb(0x18181a))
+                .border_1()
+                .border_color(border)
+                .min_h(height)
+                .font_family("monospace")
+                .text_xs()
+                .text_color(text_color)
+                .child(fallback.to_string())
+                .into_any_element()
+        }
+    }
+
+    pub(super) fn render_editor_tools<V: 'static>(
+        target_key: InputKey,
+        show_reference: bool,
+        muted: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> Div {
+        let search_key = target_key.clone();
+        let complete_key = target_key;
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(
+                div()
+                    .id("editor-find-btn")
+                    .px_2()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(rgb(0x333333))
+                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
+                    .cursor_pointer()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Find (Ctrl+F)")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_action(
+                            this,
+                            RequestEditorAction::SearchInEditor(search_key.clone()),
+                            window,
+                            cx,
+                        );
+                    })),
+            )
+            .child(
+                div()
+                    .id("editor-complete-btn")
+                    .px_2()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(rgb(0x272729))
+                    .border_1()
+                    .border_color(rgb(0x333333))
+                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
+                    .cursor_pointer()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Complete (Ctrl+Space)")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_action(
+                            this,
+                            RequestEditorAction::TriggerAutocomplete(complete_key.clone()),
+                            window,
+                            cx,
+                        );
+                    })),
+            )
+            .child(
+                div()
+                    .id("editor-reference-btn")
+                    .px_2()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(if show_reference { rgb(0x0066cc) } else { rgb(0x272729) })
+                    .border_1()
+                    .border_color(if show_reference { rgb(0x2997ff) } else { rgb(0x333333) })
+                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
+                    .cursor_pointer()
+                    .text_xs()
+                    .text_color(if show_reference { rgb(0xffffff) } else { muted })
+                    .child("Reference & Vars")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_action(this, RequestEditorAction::ToggleScriptReference, window, cx);
+                    })),
+            )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_panel_content<V: 'static>(
         tab: EditorTab,
@@ -307,6 +426,7 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
+        show_script_reference: bool,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
@@ -370,9 +490,11 @@ impl RequestEditorView {
             ),
             EditorTab::Scripts => Self::render_scripts_panel(
                 request,
+                variable_rows,
                 active_input,
                 inputs,
                 script_sub_tab,
+                show_script_reference,
                 border,
                 muted,
                 normal,
@@ -381,9 +503,11 @@ impl RequestEditorView {
             ),
             EditorTab::Tests => Self::render_tests_panel(
                 request,
+                variable_rows,
                 active_input,
                 inputs,
                 test_assertions,
+                show_script_reference,
                 border,
                 muted,
                 normal,
@@ -415,6 +539,9 @@ impl RequestEditorView {
                 Self::render_spec_panel(
                     content,
                     spec_error,
+                    request,
+                    variable_rows,
+                    show_script_reference,
                     active_input,
                     inputs,
                     border,

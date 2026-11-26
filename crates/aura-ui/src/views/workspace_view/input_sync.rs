@@ -161,6 +161,22 @@ impl AuraWorkspaceView {
         }
 
         if let Some(tab) = self.state.tabs.get(self.state.active_tab_index).cloned() {
+            inputs.set_editor_context(crate::editor_support::EditorContextData {
+                variables: tab.variable_rows.clone(),
+                query_params: tab
+                    .request
+                    .params
+                    .iter()
+                    .map(|p| (p.key.clone(), p.value.clone(), p.enabled))
+                    .collect(),
+                headers: tab
+                    .request
+                    .headers
+                    .iter()
+                    .map(|h| (h.key.clone(), h.value.clone(), h.enabled))
+                    .collect(),
+            });
+
             for (idx, p) in tab.request.params.iter().enumerate() {
                 inputs.ensure_input(
                     InputKey::ParamKey(idx),
@@ -429,42 +445,46 @@ impl AuraWorkspaceView {
                 AuthConfig::None | AuthConfig::Inherit => {}
             }
 
-            inputs.ensure_textarea(
+            inputs.ensure_editor(
                 InputKey::PreRequestScript,
                 &tab.request.scripts.pre_request,
                 "// Write pre-request script here...",
+                InputKey::PreRequestScript.editor_language().unwrap_or("javascript"),
                 window,
                 cx,
-                Self::handle_textarea_event,
+                Self::handle_editor_event,
             );
-            inputs.ensure_textarea(
+            inputs.ensure_editor(
                 InputKey::PostResponseScript,
                 &tab.request.scripts.post_response,
                 "// Write post-response script here...",
+                InputKey::PostResponseScript.editor_language().unwrap_or("javascript"),
                 window,
                 cx,
-                Self::handle_textarea_event,
+                Self::handle_editor_event,
             );
-            inputs.ensure_textarea(
+            inputs.ensure_editor(
                 InputKey::TestScript,
                 &tab.request.scripts.tests,
                 "// Write Jasmine/Chai assertions...",
+                InputKey::TestScript.editor_language().unwrap_or("javascript"),
                 window,
                 cx,
-                Self::handle_textarea_event,
+                Self::handle_editor_event,
             );
 
             let spec_val = tab
                 .spec_buffer
                 .clone()
                 .unwrap_or_else(|| aura_parser::request_to_spec(&tab.request));
-            inputs.ensure_textarea(
+            inputs.ensure_editor(
                 InputKey::SpecText,
                 &spec_val,
-                "// Empty .aura specification...",
+                "# Empty .aura specification...",
+                InputKey::SpecText.editor_language().unwrap_or("toml"),
                 window,
                 cx,
-                Self::handle_textarea_event,
+                Self::handle_editor_event,
             );
 
             if let Some(ref resp) = tab.response {
