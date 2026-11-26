@@ -8,13 +8,18 @@ use gpui_kit::base::SelectableText;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::separator::Separator;
+use gpui_kit::component::sheet::Sheet;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::Sizable;
 
 pub struct LogViewerView;
 
 impl LogViewerView {
-    pub fn render(state: &AuraAppState, cx: &mut Context<AuraWorkspaceView>) -> impl IntoElement {
+    pub fn render(
+        state: &AuraAppState,
+        window: &mut Window,
+        cx: &mut Context<AuraWorkspaceView>,
+    ) -> impl IntoElement {
         let accent_blue = rgb(0x0066cc);
         let surface_tile_1 = rgb(0x272729);
         let surface_tile_2 = rgb(0x2a2a2c);
@@ -31,85 +36,71 @@ impl LogViewerView {
             .display()
             .to_string();
 
-        div()
-            .id("log-viewer-modal")
-            .absolute()
-            .inset_0()
+        let view_for_close = cx.entity().clone();
+        let title_el = div()
             .flex()
             .items_center()
-            .justify_center()
-            .p_8()
-            .bg(rgba(0x0a0a0ccc))
+            .justify_between()
+            .w_full()
+            .pr_4()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().text_base().text_color(accent_blue).child("🪵"))
+                    .child("System Logs & Diagnostics")
+                    .child(div().text_xs().text_color(text_muted).child(format!(
+                        "({} / {})",
+                        filtered_logs.len(),
+                        total_count
+                    ))),
+            )
+            .child(
+                Button::new("clear-logs-btn")
+                    .label("🗑 Clear")
+                    .small()
+                    .rounded(ButtonRounded::Medium)
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.state.clear_logs();
+                        cx.notify();
+                    })),
+            );
+
+        let footer_el = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .w_full()
+            .text_xs()
+            .text_color(text_muted)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child("📁 Log Directory:")
+                    .child(div().text_color(text_color).child(log_dir_str)),
+            )
+            .child("Esc or Ctrl+Shift+L to close • Zero Telemetry");
+
+        Sheet::new(window, cx)
+            .size(px(640.0))
+            .resizable(true)
+            .title(title_el)
+            .footer(footer_el)
+            .on_close(move |_, _window, app| {
+                let _ = view_for_close.update(app, |this, cx| {
+                    this.state.is_log_viewer_open = false;
+                    cx.notify();
+                });
+            })
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .w_full()
-                    .h_full()
-                    .max_w(px(1100.0))
-                    .max_h(px(720.0))
-                    .rounded_lg()
+                    .size_full()
                     .bg(surface_tile_1)
-                    .border_1()
-                    .border_color(accent_blue)
-                    .shadow_lg()
-                    // Modal Header
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .px_5()
-                            .py_3()
-                            .bg(surface_tile_2)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(div().text_base().text_color(accent_blue).child("🪵"))
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(text_color)
-                                            .child("System Logs & Diagnostics"),
-                                    )
-                                    .child(div().text_xs().text_color(text_muted).child(format!(
-                                        "(Showing {} of {} entries)",
-                                        filtered_logs.len(),
-                                        total_count
-                                    ))),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        Button::new("clear-logs-btn")
-                                            .label("🗑 Clear")
-                                            .small()
-                                            .rounded(ButtonRounded::Medium)
-                                            .on_click(cx.listener(|this, _, _window, cx| {
-                                                this.state.clear_logs();
-                                                cx.notify();
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("close-log-viewer-btn")
-                                            .label("✕")
-                                            .small()
-                                            .danger()
-                                            .rounded(ButtonRounded::Medium)
-                                            .on_click(cx.listener(|this, _, _window, cx| {
-                                                this.state.toggle_log_viewer();
-                                                cx.notify();
-                                            })),
-                                    ),
-                            ),
-                    )
-                    .child(Separator::horizontal())
                     // Filter Toolbar
                     .child(
                         div()
@@ -295,28 +286,6 @@ impl LogViewerView {
                                     })
                                     .collect()
                             }),
-                    )
-                    .child(Separator::horizontal())
-                    // Modal Footer
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .px_5()
-                            .py_2()
-                            .bg(surface_tile_2)
-                            .text_xs()
-                            .text_color(text_muted)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child("📁 Log Directory:")
-                                    .child(div().text_color(text_color).child(log_dir_str)),
-                            )
-                            .child(div().child("Esc or Ctrl+Shift+L to close • Zero Telemetry")),
                     ),
             )
     }

@@ -8,58 +8,13 @@ use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::sidebar::{
-    Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem,
-};
+use gpui_kit::component::collapsible::Collapsible;
+use gpui_kit::component::sidebar::{SidebarFooter, SidebarHeader};
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::tree::{tree, TreeEntry, TreeItem, TreeState};
-use gpui_kit::component::{Collapsible, Sizable};
-use std::cell::RefCell;
+use gpui_kit::component::Sizable;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-#[derive(Clone)]
-pub struct SidebarCustomItem {
-    collapsed: bool,
-    element: Rc<RefCell<Option<AnyElement>>>,
-}
-
-impl SidebarCustomItem {
-    pub fn new(element: AnyElement) -> Self {
-        Self {
-            collapsed: false,
-            element: Rc::new(RefCell::new(Some(element))),
-        }
-    }
-}
-
-impl Collapsible for SidebarCustomItem {
-    fn is_collapsed(&self) -> bool {
-        self.collapsed
-    }
-    fn collapsed(mut self, collapsed: bool) -> Self {
-        self.collapsed = collapsed;
-        self
-    }
-}
-
-impl SidebarItem for SidebarCustomItem {
-    fn render(
-        self,
-        _id: impl Into<ElementId>,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .size_full()
-            .min_h(px(120.))
-            .overflow_hidden()
-            .children(self.element.borrow_mut().take())
-    }
-}
 
 #[derive(Clone)]
 pub enum SidebarNodeMeta {
@@ -528,23 +483,92 @@ impl SidebarView {
             .into_any_element()
         };
 
-        Sidebar::new("workspace-sidebar")
-            .w_full()
-            .header(SidebarHeader::new().child(header_div))
-            .child(SidebarGroup::new("COLLECTIONS").child(SidebarCustomItem::new(content_el)))
-            .footer(
-                SidebarFooter::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .px_3()
-                        .py_2()
-                        .text_xs()
-                        .text_color(text_muted)
-                        .child(div().text_color(green_color).child("✓"))
-                        .child("Workspace Synced"),
-                ),
+        if state.is_sidebar_collapsed {
+            return div()
+                .id("workspace-sidebar")
+                .flex()
+                .flex_col()
+                .items_center()
+                .size_full()
+                .py_3()
+                .bg(rgb(0x222224))
+                .border_r_1()
+                .border_color(rgb(0x333333))
+                .child(
+                    Button::new("sidebar-collapsed-new-btn")
+                        .label("+")
+                        .xsmall()
+                        .ghost()
+                        .rounded(ButtonRounded::Small)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_new(this, window, cx);
+                        })),
+                );
+        }
+
+        div()
+            .id("workspace-sidebar")
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(rgb(0x222224))
+            .border_r_1()
+            .border_color(rgb(0x333333))
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .px_3()
+                    .pt_3()
+                    .pb_2()
+                    .border_b_1()
+                    .border_color(rgb(0x333333))
+                    .child(SidebarHeader::new().child(header_div)),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .px_3()
+                    .pt_2()
+                    .pb_1()
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(text_muted)
+                    .child("COLLECTIONS"),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .overflow_hidden()
+                    .px_1()
+                    .child(
+                        Collapsible::new()
+                            .open(true)
+                            .size_full()
+                            .content(content_el),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .border_t_1()
+                    .border_color(rgb(0x333333))
+                    .child(
+                        SidebarFooter::new().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .px_3()
+                                .py_2()
+                                .text_xs()
+                                .text_color(text_muted)
+                                .child(div().text_color(green_color).child("✓"))
+                                .child("Workspace Synced"),
+                        ),
+                    ),
             )
     }
 }

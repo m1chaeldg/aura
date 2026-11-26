@@ -1,0 +1,203 @@
+use super::AuraWorkspaceView;
+use crate::app_state::ActiveInputTarget;
+use crate::input_registry::InputKey;
+use crate::stores::WorkspaceTab;
+use crate::views::{RequestEditorView, RequestHeaderView, ResponsePaneView, TabBarView};
+use aura_core::model::HttpMethod;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
+use gpui_kit::component::resizable::{h_resizable, resizable_panel, v_resizable, ResizablePanel};
+use gpui_kit::component::Sizable;
+
+impl AuraWorkspaceView {
+    pub(super) fn render_main_pane(
+        &self,
+        active_tab: Option<&WorkspaceTab>,
+        active_title: &str,
+        active_method: HttpMethod,
+        is_horizontal: bool,
+        is_in_flight: bool,
+        cx: &mut Context<Self>,
+    ) -> ResizablePanel {
+        resizable_panel().child(
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(TabBarView::render(
+                    &self.state,
+                    cx,
+                    |this, idx, _window, cx| {
+                        this.state.select_tab(idx);
+                        cx.notify();
+                    },
+                    |this, tab_id, _window, cx| {
+                        this.state.close_tab(tab_id);
+                        cx.notify();
+                    },
+                    |this, _window, cx| {
+                        this.state.new_request();
+                        cx.notify();
+                    },
+                ))
+                .when(active_tab.is_none(), |el| {
+                    el.child(Self::render_empty_tabs_state(cx))
+                })
+                .when(active_tab.is_some(), |el| {
+                    el.child(self.render_active_header(active_method, is_in_flight, cx))
+                        .child(self.render_editor_response_split(
+                            active_tab,
+                            active_title,
+                            active_method,
+                            is_horizontal,
+                            cx,
+                        ))
+                }),
+        )
+    }
+
+    fn render_empty_tabs_state(cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_3()
+            .bg(rgb(0x1d1d1f))
+            .child(
+                Empty::new().header(
+                    EmptyHeader::new()
+                        .description(EmptyDescription::new().child("No open requests")),
+                ),
+            )
+            .child(
+                Button::new("empty-new-request-btn")
+                    .label("+ New Request")
+                    .small()
+                    .primary()
+                    .rounded(ButtonRounded::Medium)
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.state.new_request();
+                        cx.notify();
+                    })),
+            )
+    }
+
+    fn render_active_header(
+        &self,
+        active_method: HttpMethod,
+        is_in_flight: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        RequestHeaderView::render(
+            active_method,
+            self.inputs
+                .get_input(&InputKey::Url)
+                .expect("URL input initialized in sync_inputs"),
+            is_in_flight,
+            self.state.active_input_target == Some(ActiveInputTarget::Url),
+            self.state.is_active_tab_dirty(),
+            self.state.is_method_dropdown_open,
+            cx,
+            |this, _window, cx| {
+                this.state.toggle_method_dropdown();
+                cx.notify();
+            },
+            |this, method, _window, cx| {
+                this.state.set_active_method(method);
+                this.schedule_auto_save(cx);
+                cx.notify();
+            },
+            |this, _window, cx| {
+                this.state.close_method_dropdown();
+                cx.notify();
+            },
+            |this, _window, cx| {
+                this.state.set_active_input(Some(ActiveInputTarget::Url));
+                cx.notify();
+            },
+            |this, _window, cx| {
+                this.dispatch_send_request(cx);
+            },
+            |this, _window, cx| {
+                this.state.execution_service.cancel();
+                this.state.status_message = Some("Request cancelled by user".to_string());
+                cx.notify();
+            },
+            |this, _window, cx| {
+                this.dispatch_save_active_tab(false, cx);
+            },
+        )
+    }
+
+    fn render_editor_response_split(
+        &self,
+        active_tab: Option<&WorkspaceTab>,
+        active_title: &str,
+        active_method: HttpMethod,
+        is_horizontal: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let editor_panel = resizable_panel()
+            .size_range(px(180.)..Pixels::MAX)
+            .child(RequestEditorView::render(
+                self.state.split_ratio,
+                is_horizontal,
+                active_title,
+                active_method,
+                self.state.active_editor_tab,
+                active_tab.map(|t| &t.request),
+                active_tab
+                    .map(|t| t.variable_rows.as_slice())
+                    .unwrap_or(&[]),
+                self.state.setting_timeout_error.as_deref(),
+                self.state.setting_max_redirects_error.as_deref(),
+                self.state.active_input_target.as_ref(),
+                &self.inputs,
+                self.state.active_script_sub_tab,
+                active_tab
+                    .and_then(|t| t.response.as_ref())
+                    .map(|r| r.assertions.as_slice()),
+                active_tab.and_then(|t| t.spec_buffer.as_deref()),
+                active_tab.and_then(|t| t.spec_error.as_deref()),
+                cx,
+                |this, action, _window, cx| {
+                    this.handle_request_editor_action(action, cx);
+                },
+            ));
+        let response_panel = resizable_panel()
+            .size_range(px(180.)..Pixels::MAX)
+            .child(ResponsePaneView::render(
+                self.state.split_ratio,
+                is_horizontal,
+                active_tab.and_then(|t| t.response.as_ref()),
+                self.state.active_response_tab,
+                self.state.active_body_mode,
+                self.inputs.get_textarea(&InputKey::ResponseBody),
+                self.inputs.get_textarea(&InputKey::ResponseRaw),
+                self.inputs.get_textarea(&InputKey::ResponseJson),
+                cx,
+                |this, tab, _window, cx| {
+                    this.state.set_response_tab(tab);
+                    cx.notify();
+                },
+                |this, _window, cx| {
+                    this.state.toggle_response_body_mode();
+                    cx.notify();
+                },
+            ));
+
+        if is_horizontal {
+            h_resizable("editor-response-split")
+                .child(editor_panel)
+                .child(response_panel)
+        } else {
+            v_resizable("editor-response-split")
+                .child(editor_panel)
+                .child(response_panel)
+        }
+    }
+}

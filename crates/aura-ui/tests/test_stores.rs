@@ -28,11 +28,11 @@ fn test_session_store_lifecycle() {
     assert_eq!(store.tabs.len(), 1);
     assert_eq!(store.active_tab_index, 0);
 
-    // Close remaining tab auto-spawns untitled
+    // Closing the remaining tab leaves 0 tabs
     let id1 = store.tabs[0].id.clone();
     store.close_tab(&id1);
-    assert_eq!(store.tabs.len(), 1);
-    assert_eq!(store.tabs[0].title, "Untitled Request");
+    assert_eq!(store.tabs.len(), 0);
+    assert_eq!(store.active_tab_index, 0);
 }
 
 #[test]

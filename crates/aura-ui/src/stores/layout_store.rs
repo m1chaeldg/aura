@@ -52,6 +52,8 @@ pub struct LayoutStore {
     pub command_palette_search: String,
     pub selected_palette_index: usize,
     pub is_dragging_divider: bool,
+    #[serde(default)]
+    pub is_sidebar_collapsed: bool,
     pub status_message: Option<String>,
 }
 
@@ -68,6 +70,7 @@ impl Default for LayoutStore {
             command_palette_search: String::new(),
             selected_palette_index: 0,
             is_dragging_divider: false,
+            is_sidebar_collapsed: false,
             status_message: None,
         }
     }
@@ -106,6 +109,10 @@ impl LayoutStore {
 
     pub fn toggle_log_viewer(&mut self) {
         self.is_log_viewer_open = !self.is_log_viewer_open;
+    }
+
+    pub fn toggle_sidebar(&mut self) {
+        self.is_sidebar_collapsed = !self.is_sidebar_collapsed;
     }
 
     pub fn toggle_code_mode(&mut self) {

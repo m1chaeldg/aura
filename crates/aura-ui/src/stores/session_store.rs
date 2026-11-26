@@ -217,7 +217,7 @@ impl SessionStore {
         if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
             self.tabs.remove(pos);
             if self.tabs.is_empty() {
-                self.new_request();
+                self.active_tab_index = 0;
             } else if self.active_tab_index >= self.tabs.len() {
                 self.active_tab_index = self.tabs.len() - 1;
                 self.tabs[self.active_tab_index].is_active = true;
