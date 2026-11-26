@@ -77,3 +77,23 @@ fn test_malformed_script_returns_err_gracefully() {
     let res = rt.run(script);
     assert!(res.is_err());
 }
+
+#[test]
+fn test_consecutive_runs_do_not_duplicate_logs_or_assertions() {
+    let mut rt = AuraScriptRuntime::new(HashMap::new()).expect("create runtime");
+
+    let first = rt
+        .run("console.log('post-response'); aura.test('post assertion', () => { expect(1).toBe(1); });")
+        .expect("first run");
+    assert_eq!(first.console_logs.len(), 1);
+    assert_eq!(first.console_logs[0].message, "post-response");
+    assert_eq!(first.test_assertions.len(), 1);
+
+    let second = rt
+        .run("console.log('test-script'); describe('suite', () => { it('passes', () => { expect(true).toBe(true); }); });")
+        .expect("second run");
+    assert_eq!(second.console_logs.len(), 1);
+    assert_eq!(second.console_logs[0].message, "test-script");
+    assert_eq!(second.test_assertions.len(), 1);
+    assert_eq!(second.test_assertions[0].name, "suite > passes");
+}

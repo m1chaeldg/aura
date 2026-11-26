@@ -199,13 +199,18 @@ impl AuraScriptRuntime {
             .execute_script("aura_drain.js", drain_script.to_string());
         let _ = futures::executor::block_on(self.runtime.run_event_loop(Default::default()));
 
-        // Extract mutated variables, console logs, and test assertions
+        // Extract mutated variables, console logs, and test assertions, then reset per-run buffers
         let extract_script = r#"
-            JSON.stringify({
-                vars: globalThis.__aura_internal.vars,
-                logs: globalThis.__aura_internal.logs,
-                assertions: globalThis.__aura_internal.assertions
-            })
+            (function() {
+                const payload = JSON.stringify({
+                    vars: globalThis.__aura_internal.vars,
+                    logs: globalThis.__aura_internal.logs,
+                    assertions: globalThis.__aura_internal.assertions
+                });
+                globalThis.__aura_internal.logs.length = 0;
+                globalThis.__aura_internal.assertions.length = 0;
+                return payload;
+            })()
         "#;
 
         let result_val = self

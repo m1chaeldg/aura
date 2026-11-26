@@ -220,7 +220,10 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
 
         if !req.scripts.post_response.is_empty() {
             match script_rt.run(&req.scripts.post_response) {
-                Ok(res) => all_console_logs.extend(res.console_logs),
+                Ok(res) => {
+                    all_console_logs.extend(res.console_logs);
+                    assertions.extend(res.test_assertions);
+                }
                 Err(e) => all_console_logs.push(aura_core::model::ConsoleMessage {
                     level: "ERROR".to_string(),
                     message: format!("Post-response script error: {e}"),
@@ -233,7 +236,7 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
             match script_rt.run(&req.scripts.tests) {
                 Ok(test_res) => {
                     all_console_logs.extend(test_res.console_logs);
-                    assertions = test_res.test_assertions;
+                    assertions.extend(test_res.test_assertions);
                 }
                 Err(e) => {
                     let msg = format!("Test script error: {e}");

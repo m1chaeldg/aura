@@ -48,16 +48,16 @@ impl TabBarView {
                 suffix_area = suffix_area.child(Badge::new().dot().color(amber_color));
             }
             suffix_area = suffix_area.child(
-                Button::new(ElementId::NamedInteger("close-tab".into(), idx as u64))
+                Button::new(ElementId::Name(format!("close-tab-{}", tab.id).into()))
                     .label("×")
                     .xsmall()
                     .ghost()
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
                         on_close_tab(this, &tab_id_close, window, cx);
                     })),
             );
 
-            let tab_id_right = tab.id.clone();
             let tab_item = Tab::new()
                 .label(tab.title.clone())
                 .selected(is_active)
@@ -65,13 +65,7 @@ impl TabBarView {
                 .suffix(suffix_area)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     on_select_tab(this, idx, window, cx);
-                }))
-                .on_mouse_down(
-                    gpui::MouseButton::Right,
-                    cx.listener(move |this, _, window, cx| {
-                        on_close_tab(this, &tab_id_right, window, cx);
-                    }),
-                );
+                }));
 
             tab_bar = tab_bar.child(tab_item);
         }
