@@ -33,3 +33,11 @@ workgittree/
 # Superpowers Visual Companion
 .superpowers/
 workspaces/
+build-activity.log
+craft.json
+usage.json
+feed.json
+capture/README.md
+inbox/build-progress.json
+investigation.cany/project.toml
+investigation.cany/journal/2026-11-26.jsonl

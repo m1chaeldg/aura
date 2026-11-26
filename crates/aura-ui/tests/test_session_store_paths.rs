@@ -63,10 +63,9 @@ fn test_handle_item_deleted_closes_tab_and_spawns_fallback_if_empty() {
     assert_eq!(store.tabs.len(), 1);
 
     store.handle_item_deleted(&path);
-    // Sole tab closed -> auto-spawns Untitled Request
-    assert_eq!(store.tabs.len(), 1);
-    assert_eq!(store.tabs[0].title, "Untitled Request");
-    assert_eq!(store.tabs[0].file_path, None);
+    // Sole tab closed -> empty tab list
+    assert!(store.tabs.is_empty());
+    assert_eq!(store.active_tab_index, 0);
 }
 
 #[tokio::test]
@@ -111,9 +110,8 @@ async fn test_app_state_delete_confirmation_and_tab_cleanup() {
     assert!(!folder.exists());
     assert!(state.pending_delete_path.is_none());
 
-    // Tabs closed and automatically replaced with fallback Untitled Request
-    assert_eq!(state.tabs.len(), 1);
-    assert_eq!(state.tabs[0].title, "Untitled Request");
+    // Both descendant tabs closed -> empty tab list
+    assert!(state.tabs.is_empty());
 
     let _ = std::fs::remove_dir_all(&temp_root);
 }

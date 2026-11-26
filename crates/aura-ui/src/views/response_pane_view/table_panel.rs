@@ -2,12 +2,14 @@
 
 use super::{ResponsePaneAction, ResponsePaneView};
 use crate::services::ResponseDataService;
+use crate::theme::icon;
 use aura_core::model::AuraResponse;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl ResponsePaneView {
     #[allow(clippy::too_many_arguments)]
@@ -17,8 +19,8 @@ impl ResponsePaneView {
         sort_col: Option<usize>,
         sort_asc: bool,
         search_input: Option<&Entity<InputState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -34,7 +36,7 @@ impl ResponsePaneView {
             Ok(dataset) if dataset.columns.is_empty() => div().child(
                 Empty::new().header(
                     EmptyHeader::new().description(
-                        EmptyDescription::new().child("JSON array is empty — no rows to display."),
+                        EmptyDescription::new().child("JSON array is empty - no rows to display."),
                     ),
                 ),
             ),
@@ -48,15 +50,19 @@ impl ResponsePaneView {
                 let total_rows = dataset.rows.len();
                 let shown_rows = rows.len();
 
-                div()
-                    .flex()
-                    .flex_col()
+                let table_bg = cx.theme().background;
+                let head_bg = cx.theme().list_head;
+                let even_bg = cx.theme().list_even;
+                let hover_bg = cx.theme().list_hover;
+                let primary_color = cx.theme().primary;
+                let fg_color = cx.theme().foreground;
+                let radius = cx.theme().radius;
+
+                v_flex()
                     .gap_2()
                     .min_w_0()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .justify_between()
                             .gap_2()
                             .child(
@@ -65,7 +71,7 @@ impl ResponsePaneView {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(muted)
                                     .child(format!(
-                                        "DATA TABLE ({} • {}/{} rows)",
+                                        "DATA TABLE ({} · {}/{} rows)",
                                         dataset.source_path, shown_rows, total_rows
                                     )),
                             )
@@ -73,49 +79,55 @@ impl ResponsePaneView {
                                 el.child(
                                     div()
                                         .w(px(220.0))
-                                        .child(Input::new(input).xsmall()),
+                                        .child(
+                                            Input::new(input)
+                                                .prefix(icon(IconName::Search).xsmall())
+                                                .xsmall(),
+                                        ),
                                 )
                             }),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .rounded_md()
+                        v_flex()
+                            .rounded(radius)
                             .border_1()
                             .border_color(border)
-                            .bg(rgb(0x222224))
+                            .bg(table_bg)
                             .overflow_hidden()
-                            // Column Header Row
                             .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .bg(rgb(0x2a2a2c))
+                                h_flex()
+                                    .bg(head_bg)
                                     .border_b_1()
                                     .border_color(border)
                                     .children(dataset.columns.iter().enumerate().map(
                                         |(col_idx, col_name)| {
-                                            let indicator = if sort_col == Some(col_idx) {
-                                                if sort_asc { " ▲" } else { " ▼" }
-                                            } else {
-                                                ""
-                                            };
-                                            div()
+                                            let is_sorted = sort_col == Some(col_idx);
+                                            h_flex()
                                                 .id(ElementId::NamedInteger(
                                                     "resp-tbl-hdr".into(),
                                                     col_idx as u64,
                                                 ))
                                                 .flex_1()
                                                 .min_w(px(90.0))
+                                                .gap_1()
                                                 .px_2()
                                                 .py_1p5()
                                                 .cursor_pointer()
                                                 .text_xs()
                                                 .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(rgb(0x2997ff))
-                                                .hover(|s| s.bg(rgb(0x333336)))
-                                                .child(format!("{col_name}{indicator}"))
+                                                .text_color(primary_color)
+                                                .hover(move |s| s.bg(hover_bg))
+                                                .child(col_name.clone())
+                                                .when(is_sorted, |el| {
+                                                    el.child(
+                                                        icon(if sort_asc {
+                                                            IconName::ChevronUp
+                                                        } else {
+                                                            IconName::ChevronDown
+                                                        })
+                                                        .xsmall(),
+                                                    )
+                                                })
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         on_action(
@@ -131,20 +143,13 @@ impl ResponsePaneView {
                                         },
                                     )),
                             )
-                            // Data Rows (capped at 250 for smooth 60fps rendering)
                             .children(rows.into_iter().take(250).enumerate().map(
                                 |(row_idx, row)| {
-                                    let bg = if row_idx % 2 == 0 {
-                                        rgb(0x222224)
-                                    } else {
-                                        rgb(0x262629)
-                                    };
-                                    div()
-                                        .flex()
-                                        .items_center()
+                                    let bg = if row_idx % 2 == 0 { table_bg } else { even_bg };
+                                    h_flex()
                                         .bg(bg)
                                         .border_b_1()
-                                        .border_color(rgb(0x2d2d30))
+                                        .border_color(border.opacity(0.5))
                                         .children(row.into_iter().map(|cell| {
                                             div()
                                                 .flex_1()
@@ -153,7 +158,7 @@ impl ResponsePaneView {
                                                 .py_1()
                                                 .font_family("monospace")
                                                 .text_xs()
-                                                .text_color(rgb(0xd4d4d4))
+                                                .text_color(fg_color)
                                                 .truncate()
                                                 .child(cell)
                                         }))

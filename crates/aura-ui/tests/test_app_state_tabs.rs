@@ -18,6 +18,8 @@ fn test_app_state_editor_and_response_tab_switching() {
     assert_eq!(state.active_response_tab, ResponseTab::Console);
 
     state.toggle_response_body_mode();
+    assert_eq!(state.active_body_mode, ResponseBodyMode::Compress);
+    state.toggle_response_body_mode();
     assert_eq!(state.active_body_mode, ResponseBodyMode::Raw);
 }
 

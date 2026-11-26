@@ -1,10 +1,16 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::templating_ui::render_templated_text;
+use crate::theme::{icon, subtle_surface};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -12,20 +18,21 @@ impl RequestEditorView {
         items: &[aura_core::model::ParamItem],
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
-        div()
-            .flex()
-            .flex_col()
+        let row_bg = subtle_surface(cx);
+        let focus_border = cx.theme().primary;
+        let field_bg = cx.theme().background;
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_2()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
                         div()
@@ -35,17 +42,12 @@ impl RequestEditorView {
                             .child("X-WWW-FORM-URLENCODED FIELDS"),
                     )
                     .child(
-                        div()
-                            .id("add-form-field-btn")
-                            .px_2()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x0066cc))
-                            .hover(|s| s.bg(rgb(0x0071e3)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(rgb(0xffffff))
-                            .child("+ Add Field")
+                        Button::new("add-form-field-btn")
+                            .icon(icon(IconName::Plus))
+                            .label("Add Field")
+                            .primary()
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -58,18 +60,10 @@ impl RequestEditorView {
             )
             .when(items.is_empty(), |el| {
                 el.child(
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("No form fields defined. Click '+ Add Field' to start."),
-                        ),
+                    Empty::new().header(EmptyHeader::new().description(
+                        EmptyDescription::new()
+                            .child("No form fields defined. Click 'Add Field' to start."),
+                    )),
                 )
             })
             .children(items.iter().enumerate().map(|(idx, item)| {
@@ -80,23 +74,21 @@ impl RequestEditorView {
                     matches!(active_input, Some(ActiveInputTarget::FormParamKey(i)) if *i == idx);
                 let is_val_focused =
                     matches!(active_input, Some(ActiveInputTarget::FormParamValue(i)) if *i == idx);
+                let view_entity = cx.entity().clone();
 
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .gap_2()
                     .px_3()
                     .py_1p5()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
+                    .rounded(radius)
+                    .bg(row_bg)
                     .border_1()
                     .border_color(if is_key_focused || is_val_focused {
-                        rgb(0x0066cc)
+                        focus_border
                     } else {
                         border
                     })
-                    .child({
-                        let view_entity = cx.entity().clone();
+                    .child(
                         Checkbox::new(ElementId::NamedInteger(
                             "toggle-form-param".into(),
                             idx as u64,
@@ -112,17 +104,17 @@ impl RequestEditorView {
                                     cx,
                                 );
                             });
-                        })
-                    })
+                        }),
+                    )
                     .child(Self::render_inline_input(
                         ElementId::NamedInteger("edit-form-key".into(), idx as u64),
                         inputs.get_input(&InputKey::FormParamKey(idx)),
                         &k,
                         is_key_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_key_focused { rgb(0xffffff) } else { normal },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
                     .child(div().text_xs().text_color(muted).child("="))
                     .child(Self::render_inline_input(
@@ -131,22 +123,16 @@ impl RequestEditorView {
                         &v,
                         is_val_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_val_focused { rgb(0xffffff) } else { normal },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
                     .child(
-                        div()
-                            .id(ElementId::NamedInteger("del-form-param".into(), idx as u64))
-                            .px_1p5()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x333333))
-                            .hover(|s| s.bg(rgb(0xe74c3c)).text_color(rgb(0xffffff)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("✕")
+                        Button::new(ElementId::NamedInteger("del-form-param".into(), idx as u64))
+                            .icon(icon(IconName::X))
+                            .xsmall()
+                            .ghost()
+                            .tooltip("Remove field")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -161,20 +147,21 @@ impl RequestEditorView {
 
     pub(super) fn render_multipart_editor<V: 'static>(
         parts: &[aura_core::model::MultipartPart],
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        inputs: &InputRegistry,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
-        div()
-            .flex()
-            .flex_col()
+        let tpl_ctx = inputs.template_context().borrow().clone();
+        let row_bg = subtle_surface(cx);
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_2()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
                         div()
@@ -184,17 +171,12 @@ impl RequestEditorView {
                             .child("MULTIPART/FORM-DATA FIELDS"),
                     )
                     .child(
-                        div()
-                            .id("add-multipart-field-btn")
-                            .px_2()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x0066cc))
-                            .hover(|s| s.bg(rgb(0x0071e3)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(rgb(0xffffff))
-                            .child("+ Add Part")
+                        Button::new("add-multipart-field-btn")
+                            .icon(icon(IconName::Plus))
+                            .label("Add Part")
+                            .primary()
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -207,18 +189,10 @@ impl RequestEditorView {
             )
             .when(parts.is_empty(), |el| {
                 el.child(
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("No multipart fields defined. Click '+ Add Part' to start."),
-                        ),
+                    Empty::new().header(EmptyHeader::new().description(
+                        EmptyDescription::new()
+                            .child("No multipart fields defined. Click 'Add Part' to start."),
+                    )),
                 )
             })
             .children(parts.iter().enumerate().map(|(idx, part)| {
@@ -230,57 +204,47 @@ impl RequestEditorView {
                     .or_else(|| part.file_path.clone())
                     .unwrap_or_default();
 
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .px_3()
                     .py_2()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
+                    .rounded(radius)
+                    .bg(row_bg)
                     .border_1()
                     .border_color(border)
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
-                            .child(
-                                div()
-                                    .px_1p5()
-                                    .py_0p5()
-                                    .rounded_sm()
-                                    .bg(if is_file {
-                                        rgb(0x8e44ad)
-                                    } else {
-                                        rgb(0x0066cc)
-                                    })
-                                    .text_xs()
-                                    .text_color(rgb(0xffffff))
-                                    .child(if is_file { "FILE" } else { "TEXT" }),
-                            )
+                            .min_w_0()
+                            .child(if is_file {
+                                Tag::warning().outline().xsmall().child("FILE")
+                            } else {
+                                Tag::info().outline().xsmall().child("TEXT")
+                            })
                             .child(
                                 div()
                                     .text_xs()
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(0xffffff))
+                                    .text_color(normal)
                                     .child(name),
                             )
                             .child(div().text_xs().text_color(muted).child("="))
-                            .child(div().text_xs().text_color(normal).child(display_val)),
+                            .child(
+                                div().text_xs().min_w_0().child(render_templated_text(
+                                    ElementId::NamedInteger("multipart-val".into(), idx as u64),
+                                    &display_val,
+                                    &tpl_ctx,
+                                    normal,
+                                    cx,
+                                )),
+                            ),
                     )
                     .child(
-                        div()
-                            .id(ElementId::NamedInteger("del-multipart".into(), idx as u64))
-                            .px_1p5()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x333333))
-                            .hover(|s| s.bg(rgb(0xe74c3c)).text_color(rgb(0xffffff)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("✕")
+                        Button::new(ElementId::NamedInteger("del-multipart".into(), idx as u64))
+                            .icon(icon(IconName::X))
+                            .xsmall()
+                            .ghost()
+                            .tooltip("Remove part")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -292,9 +256,4 @@ impl RequestEditorView {
                     )
             }))
     }
-
-    // =========================================================================
-    // Authentication Panel (Modal-Free Full Space Inputs + Previews)
-    // =========================================================================
-
 }

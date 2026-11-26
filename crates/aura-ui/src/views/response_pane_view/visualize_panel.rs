@@ -5,21 +5,24 @@ use crate::services::response_bi_service::PivotTable;
 use crate::services::{
     AggregationOp, ChartSeriesPoint, ChartType, ResponseBiService, ResponseDataService,
 };
+use crate::theme::subtle_surface;
 use aura_core::model::AuraResponse;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
-const SERIES_PALETTE: [u32; 6] = [
-    0x0066cc, // Action Blue
-    0x28a745, // Green
-    0xf5a623, // Amber
-    0x8e44ad, // Purple
-    0x2997ff, // Sky Blue
-    0xe74c3c, // Red
-];
+fn chart_palette(cx: &App) -> [Hsla; 6] {
+    [
+        cx.theme().blue,
+        cx.theme().green,
+        cx.theme().yellow,
+        cx.theme().magenta,
+        cx.theme().cyan,
+        cx.theme().red,
+    ]
+}
 
 impl ResponsePaneView {
     #[allow(clippy::too_many_arguments)]
@@ -30,8 +33,8 @@ impl ResponsePaneView {
         x_col_pref: Option<&str>,
         y_col_pref: Option<&str>,
         pivot_col_pref: Option<&str>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -232,6 +235,7 @@ impl ResponsePaneView {
                         &summary.source_path,
                         border,
                         muted,
+                        cx,
                     ))
                     .child(Self::kpi_card(
                         "COLUMNS",
@@ -243,6 +247,7 @@ impl ResponsePaneView {
                         ),
                         border,
                         muted,
+                        cx,
                     ))
                     .child(Self::kpi_card(
                         "GROUPS",
@@ -250,6 +255,7 @@ impl ResponsePaneView {
                         &format!("by {x_col}"),
                         border,
                         muted,
+                        cx,
                     ))
                     .child(Self::kpi_card(
                         "METRIC SUM / AVG",
@@ -263,38 +269,44 @@ impl ResponsePaneView {
                             .unwrap_or_else(|| "no numeric col".to_string()),
                         border,
                         muted,
+                        cx,
                     )),
             )
             // Chart Surface
             .child(
                 div()
                     .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x222224))
+                    .rounded(cx.theme().radius)
+                    .bg(subtle_surface(cx))
                     .border_1()
                     .border_color(border)
                     .child(match chart_type {
-                        ChartType::Bar => Self::render_bar_chart(&points, muted),
-                        ChartType::Line => Self::render_line_chart(&points, border, muted),
-                        ChartType::Donut => Self::render_donut_chart(&points, muted),
+                        ChartType::Bar => Self::render_bar_chart(&points, muted, cx),
+                        ChartType::Line => Self::render_line_chart(&points, border, muted, cx),
+                        ChartType::Donut => Self::render_donut_chart(&points, muted, cx),
                         ChartType::Pivot => {
-                            Self::render_pivot_table(pivot_data.as_ref().unwrap(), border, muted)
+                            Self::render_pivot_table(pivot_data.as_ref().unwrap(), border, muted, cx)
                         }
                     }),
             )
     }
 
-    fn kpi_card(title: &str, value: String, sub: &str, border: Rgba, muted: Rgba) -> Div {
-        div()
+    fn kpi_card(
+        title: &str,
+        value: String,
+        sub: &str,
+        border: Hsla,
+        muted: Hsla,
+        cx: &App,
+    ) -> Div {
+        v_flex()
             .flex_1()
             .min_w(px(120.0))
             .p_2p5()
-            .rounded_md()
-            .bg(rgb(0x272729))
+            .rounded(cx.theme().radius)
+            .bg(subtle_surface(cx))
             .border_1()
             .border_color(border)
-            .flex()
-            .flex_col()
             .gap_0p5()
             .child(
                 div()
@@ -307,22 +319,24 @@ impl ResponsePaneView {
                 div()
                     .text_sm()
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0xffffff))
+                    .text_color(cx.theme().foreground)
                     .child(value),
             )
             .child(div().text_xs().text_color(muted).child(sub.to_string()))
     }
 
-    fn render_bar_chart(points: &[ChartSeriesPoint], muted: Rgba) -> Div {
+    fn render_bar_chart(points: &[ChartSeriesPoint], muted: Hsla, cx: &App) -> Div {
         let max_val = points
             .iter()
             .map(|p| p.value.abs())
             .fold(0.0_f64, f64::max)
             .max(1e-9);
+        let palette = chart_palette(cx);
+        let fg = cx.theme().foreground;
+        let track_bg = cx.theme().background;
+        let radius = cx.theme().radius;
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_2()
             .child(
                 div()
@@ -333,16 +347,14 @@ impl ResponsePaneView {
             )
             .children(points.iter().take(20).enumerate().map(|(idx, pt)| {
                 let ratio = (pt.value.abs() / max_val).clamp(0.02, 1.0) as f32;
-                let color = rgb(SERIES_PALETTE[idx % SERIES_PALETTE.len()]);
-                div()
-                    .flex()
-                    .items_center()
+                let color = palette[idx % palette.len()];
+                h_flex()
                     .gap_2()
                     .text_xs()
                     .child(
                         div()
                             .w(px(110.0))
-                            .text_color(rgb(0xd4d4d4))
+                            .text_color(fg)
                             .truncate()
                             .child(pt.label.clone()),
                     )
@@ -350,23 +362,23 @@ impl ResponsePaneView {
                         div()
                             .flex_1()
                             .h(px(14.0))
-                            .rounded_sm()
-                            .bg(rgb(0x1b1b1d))
+                            .rounded(radius)
+                            .bg(track_bg)
                             .overflow_hidden()
-                            .child(div().h_full().w(relative(ratio)).bg(color).rounded_sm()),
+                            .child(div().h_full().w(relative(ratio)).bg(color).rounded(radius)),
                     )
                     .child(
                         div()
                             .w(px(95.0))
                             .font_family("monospace")
-                            .text_color(rgb(0xffffff))
+                            .text_color(fg)
                             .text_right()
                             .child(format!("{} ({:.1}%)", format_num(pt.value), pt.share_pct)),
                     )
             }))
     }
 
-    fn render_line_chart(points: &[ChartSeriesPoint], border: Rgba, muted: Rgba) -> Div {
+    fn render_line_chart(points: &[ChartSeriesPoint], border: Hsla, muted: Hsla, cx: &App) -> Div {
         let max_val = points
             .iter()
             .map(|p| p.value)
@@ -374,21 +386,19 @@ impl ResponsePaneView {
         let min_val = points.iter().map(|p| p.value).fold(f64::INFINITY, f64::min);
         let span = (max_val - min_val).abs().max(1e-9);
         let chart_h = 150.0_f32;
+        let dot_color = cx.theme().blue;
+        let stem_color = cx.theme().primary;
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_2()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .text_xs()
                     .text_color(muted)
                     .child(div().font_weight(FontWeight::SEMIBOLD).child("SERIES TREND"))
                     .child(div().child(format!(
-                        "Min: {}  •  Max: {}",
+                        "Min: {}  ·  Max: {}",
                         format_num(min_val),
                         format_num(max_val)
                     ))),
@@ -422,9 +432,9 @@ impl ResponsePaneView {
                                     .w(px(8.0))
                                     .h(px(8.0))
                                     .rounded_full()
-                                    .bg(rgb(0x2997ff)),
+                                    .bg(dot_color),
                             )
-                            .child(div().w(px(2.0)).h(px(col_h)).bg(rgb(0x0066cc)))
+                            .child(div().w(px(2.0)).h(px(col_h)).bg(stem_color))
                     })),
             )
             .child(
@@ -444,10 +454,13 @@ impl ResponsePaneView {
             )
     }
 
-    fn render_donut_chart(points: &[ChartSeriesPoint], muted: Rgba) -> Div {
-        div()
-            .flex()
-            .flex_col()
+    fn render_donut_chart(points: &[ChartSeriesPoint], muted: Hsla, cx: &App) -> Div {
+        let palette = chart_palette(cx);
+        let fg = cx.theme().foreground;
+        let track_bg = cx.theme().background;
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_3()
             .child(
                 div()
@@ -461,39 +474,33 @@ impl ResponsePaneView {
                     .flex()
                     .w_full()
                     .h(px(22.0))
-                    .rounded_md()
+                    .rounded(radius)
                     .overflow_hidden()
-                    .bg(rgb(0x1b1b1d))
+                    .bg(track_bg)
                     .children(points.iter().take(12).enumerate().map(|(idx, pt)| {
                         let ratio = (pt.share_pct / 100.0).clamp(0.01, 1.0) as f32;
-                        let color = rgb(SERIES_PALETTE[idx % SERIES_PALETTE.len()]);
+                        let color = palette[idx % palette.len()];
                         div().h_full().w(relative(ratio)).bg(color)
                     })),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1()
                     .children(points.iter().take(12).enumerate().map(|(idx, pt)| {
-                        let color = rgb(SERIES_PALETTE[idx % SERIES_PALETTE.len()]);
-                        div()
-                            .flex()
-                            .items_center()
+                        let color = palette[idx % palette.len()];
+                        h_flex()
                             .justify_between()
                             .text_xs()
                             .child(
-                                div()
-                                    .flex()
-                                    .items_center()
+                                h_flex()
                                     .gap_2()
                                     .child(div().w(px(10.0)).h(px(10.0)).rounded_sm().bg(color))
-                                    .child(div().text_color(rgb(0xd4d4d4)).child(pt.label.clone())),
+                                    .child(div().text_color(fg).child(pt.label.clone())),
                             )
                             .child(
                                 div()
                                     .font_family("monospace")
-                                    .text_color(rgb(0xffffff))
+                                    .text_color(fg)
                                     .child(format!(
                                         "{} ({:.1}%)",
                                         format_num(pt.value),
@@ -504,7 +511,7 @@ impl ResponsePaneView {
             )
     }
 
-    fn render_pivot_table(pivot: &PivotTable, border: Rgba, muted: Rgba) -> Div {
+    fn render_pivot_table(pivot: &PivotTable, border: Hsla, muted: Hsla, cx: &App) -> Div {
         if pivot.rows.is_empty() || pivot.col_headers.is_empty() {
             return div()
                 .text_xs()
@@ -512,9 +519,15 @@ impl ResponsePaneView {
                 .child("No data to pivot.");
         }
 
-        div()
-            .flex()
-            .flex_col()
+        let head_bg = cx.theme().list_head;
+        let list_bg = cx.theme().background;
+        let even_bg = cx.theme().list_even;
+        let fg = cx.theme().foreground;
+        let primary = cx.theme().primary;
+        let total_color = cx.theme().warning;
+        let grand_total_color = cx.theme().success;
+
+        v_flex()
             .gap_1()
             .overflow_x_hidden()
             .child(
@@ -530,12 +543,9 @@ impl ResponsePaneView {
                         pivot.col_headers.len()
                     )),
             )
-            // Header row
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .bg(rgb(0x2a2a2c))
+                h_flex()
+                    .bg(head_bg)
                     .border_1()
                     .border_color(border)
                     .rounded_t_sm()
@@ -547,7 +557,7 @@ impl ResponsePaneView {
                             .flex_shrink_0()
                             .px_2()
                             .py_1()
-                            .text_color(rgb(0x2997ff))
+                            .text_color(primary)
                             .child(format!("{} \\ {}", pivot.row_field, pivot.col_field)),
                     )
                     .children(pivot.col_headers.iter().map(|ch| {
@@ -556,7 +566,7 @@ impl ResponsePaneView {
                             .min_w(px(72.0))
                             .px_2()
                             .py_1()
-                            .text_color(rgb(0xd4d4d4))
+                            .text_color(fg)
                             .truncate()
                             .child(ch.clone())
                     }))
@@ -566,20 +576,13 @@ impl ResponsePaneView {
                             .flex_shrink_0()
                             .px_2()
                             .py_1()
-                            .text_color(rgb(0xf5a623))
+                            .text_color(total_color)
                             .child("Total"),
                     ),
             )
-            // Data rows
             .children(pivot.rows.iter().enumerate().map(|(r_idx, (r_label, vals, r_tot))| {
-                let row_bg = if r_idx % 2 == 0 {
-                    rgb(0x222224)
-                } else {
-                    rgb(0x252528)
-                };
-                div()
-                    .flex()
-                    .items_center()
+                let row_bg = if r_idx % 2 == 0 { list_bg } else { even_bg };
+                h_flex()
                     .bg(row_bg)
                     .border_x_1()
                     .border_b_1()
@@ -591,7 +594,7 @@ impl ResponsePaneView {
                             .flex_shrink_0()
                             .px_2()
                             .py_1()
-                            .text_color(rgb(0xffffff))
+                            .text_color(fg)
                             .truncate()
                             .child(r_label.clone()),
                     )
@@ -602,11 +605,7 @@ impl ResponsePaneView {
                             .px_2()
                             .py_1()
                             .font_family("monospace")
-                            .text_color(if cell.is_some() {
-                                rgb(0xcccccc)
-                            } else {
-                                muted
-                            })
+                            .text_color(if cell.is_some() { fg } else { muted })
                             .child(cell.map(format_num).unwrap_or_else(|| "—".to_string()))
                     }))
                     .child(
@@ -617,16 +616,13 @@ impl ResponsePaneView {
                             .py_1()
                             .font_family("monospace")
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(0xf5a623))
+                            .text_color(total_color)
                             .child(format_num(*r_tot)),
                     )
             }))
-            // Totals row
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .bg(rgb(0x2a2a2c))
+                h_flex()
+                    .bg(head_bg)
                     .border_x_1()
                     .border_b_1()
                     .border_color(border)
@@ -639,7 +635,7 @@ impl ResponsePaneView {
                             .flex_shrink_0()
                             .px_2()
                             .py_1()
-                            .text_color(rgb(0xf5a623))
+                            .text_color(total_color)
                             .child("Total"),
                     )
                     .children(pivot.col_totals.iter().map(|ct| {
@@ -649,7 +645,7 @@ impl ResponsePaneView {
                             .px_2()
                             .py_1()
                             .font_family("monospace")
-                            .text_color(rgb(0xf5a623))
+                            .text_color(total_color)
                             .child(format_num(*ct))
                     }))
                     .child(
@@ -659,7 +655,7 @@ impl ResponsePaneView {
                             .px_2()
                             .py_1()
                             .font_family("monospace")
-                            .text_color(rgb(0x28a745))
+                            .text_color(grand_total_color)
                             .child(format_num(pivot.grand_total)),
                     ),
             )

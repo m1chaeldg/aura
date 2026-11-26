@@ -60,6 +60,7 @@ impl AuraWorkspaceView {
     }
 
     fn render_empty_tabs_state(cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::component::ActiveTheme as _;
         div()
             .flex_1()
             .flex()
@@ -67,7 +68,7 @@ impl AuraWorkspaceView {
             .items_center()
             .justify_center()
             .gap_3()
-            .bg(rgb(0x1d1d1f))
+            .bg(cx.theme().background)
             .child(
                 Empty::new().header(
                     EmptyHeader::new()
@@ -76,7 +77,8 @@ impl AuraWorkspaceView {
             )
             .child(
                 Button::new("empty-new-request-btn")
-                    .label("+ New Request")
+                    .icon(crate::theme::icon(gpui_kit::assets::IconName::Plus))
+                    .label("New Request")
                     .small()
                     .primary()
                     .rounded(ButtonRounded::Medium)

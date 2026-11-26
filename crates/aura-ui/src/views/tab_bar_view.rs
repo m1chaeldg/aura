@@ -1,13 +1,14 @@
 //! TabBar View: Renders open request document tabs, badges, dirty dots, and close buttons using gpui_kit.
 
 use crate::app_state::AuraAppState;
-use aura_core::model::HttpMethod;
+use crate::theme::{icon, method_tag_variant};
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::badge::Badge;
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{Selectable, Sizable};
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 
 pub struct TabBarView;
 
@@ -19,22 +20,23 @@ impl TabBarView {
         on_close_tab: impl Fn(&mut V, &str, &mut Window, &mut Context<V>) + 'static + Copy,
         on_new_request: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border_color = rgb(0x333333);
-        let amber_color = rgb(0xf5a623);
-
-        let mut tab_bar = TabBar::new("workspace-tab-bar");
+        let mut tab_bar = TabBar::new("workspace-tab-bar")
+            .small()
+            .menu(true)
+            .suffix(
+                Button::new("new-request-btn")
+                    .icon(icon(IconName::Plus))
+                    .xsmall()
+                    .ghost()
+                    .tooltip("New Request (Ctrl+N)")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_new_request(this, window, cx);
+                    })),
+            );
 
         for (idx, tab) in state.tabs.iter().enumerate() {
             let is_active = idx == state.active_tab_index;
-            let tag_variant = match tab.method {
-                HttpMethod::GET => TagVariant::Primary,
-                HttpMethod::POST => TagVariant::Success,
-                HttpMethod::PUT => TagVariant::Warning,
-                HttpMethod::PATCH => TagVariant::Info,
-                HttpMethod::DELETE => TagVariant::Danger,
-                _ => TagVariant::Secondary,
-            };
-
+            let tag_variant = method_tag_variant(&tab.method);
             let tab_id_close = tab.id.clone();
 
             let prefix_badge = Tag::new()
@@ -43,15 +45,16 @@ impl TabBarView {
                 .xsmall()
                 .child(tab.method.as_str());
 
-            let mut suffix_area = div().flex().items_center().gap_1();
+            let mut suffix_area = h_flex().gap_1();
             if tab.is_dirty {
-                suffix_area = suffix_area.child(Badge::new().dot().color(amber_color));
+                suffix_area = suffix_area.child(Badge::new().dot().color(cx.theme().warning));
             }
             suffix_area = suffix_area.child(
                 Button::new(ElementId::Name(format!("close-tab-{}", tab.id).into()))
-                    .label("×")
+                    .icon(icon(IconName::X))
                     .xsmall()
                     .ghost()
+                    .tooltip("Close tab")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
                         on_close_tab(this, &tab_id_close, window, cx);
@@ -70,25 +73,11 @@ impl TabBarView {
             tab_bar = tab_bar.child(tab_item);
         }
 
-        div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .px_3()
-            .py_1()
-            .bg(rgb(0x222224))
+        h_flex()
+            .w_full()
+            .bg(cx.theme().tab_bar)
             .border_b_1()
-            .border_color(border_color)
-            .child(tab_bar)
-            .child(
-                Button::new("new-request-btn")
-                    .label("+")
-                    .xsmall()
-                    .secondary()
-                    .rounded(ButtonRounded::Medium)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_new_request(this, window, cx);
-                    })),
-            )
+            .border_color(cx.theme().border)
+            .child(div().flex_1().min_w_0().child(tab_bar))
     }
 }

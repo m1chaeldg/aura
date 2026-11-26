@@ -1,14 +1,16 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::theme::icon;
 use aura_core::model::AuraRequest;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -16,28 +18,26 @@ impl RequestEditorView {
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
         let headers = request.map(|r| r.headers.as_slice()).unwrap_or(&[]);
+        let row_active_bg = cx.theme().secondary.opacity(0.35);
+        let row_disabled_bg = cx.theme().muted.opacity(0.2);
+        let focus_border = cx.theme().primary;
+        let field_bg = cx.theme().background;
+        let radius = cx.theme().radius;
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_3()
-            // Title + Action row
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
                             .child(
                                 div()
@@ -54,7 +54,8 @@ impl RequestEditorView {
                     )
                     .child(
                         Button::new("add-header-btn")
-                            .label("+ Add Header")
+                            .icon(icon(IconName::Plus))
+                            .label("Add Header")
                             .primary()
                             .xsmall()
                             .rounded(ButtonRounded::Small)
@@ -63,11 +64,8 @@ impl RequestEditorView {
                             })),
                     ),
             )
-            // Presets row
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .gap_2()
                     .flex_wrap()
                     .child(div().text_xs().text_color(muted).child("Presets:"))
@@ -93,18 +91,18 @@ impl RequestEditorView {
                         on_action,
                     )),
             )
-            // Empty state or table
             .when(headers.is_empty(), |el| {
                 el.child(
                     Empty::new()
                         .header(EmptyHeader::new().description(
                             EmptyDescription::new().child(
-                                "No custom headers defined. Click '+ Add Header' or pick a preset.",
+                                "No custom headers defined. Click 'Add Header' or pick a preset.",
                             ),
                         ))
                         .child(
                             Button::new("btn-add-first-header")
-                                .label("+ Add First Header")
+                                .icon(icon(IconName::Plus))
+                                .label("Add First Header")
                                 .secondary()
                                 .small()
                                 .rounded(ButtonRounded::Medium)
@@ -129,26 +127,23 @@ impl RequestEditorView {
                     matches!(active_input, Some(ActiveInputTarget::HeaderValue(i)) if *i == idx);
                 let view_entity = cx.entity().clone();
 
-                div()
+                h_flex()
                     .id(ElementId::NamedInteger("header-row".into(), idx as u64))
-                    .flex()
-                    .items_center()
                     .gap_2()
                     .px_3()
                     .py_1p5()
-                    .rounded_md()
+                    .rounded(radius)
                     .bg(if enabled {
-                        rgb(0x272729)
+                        row_active_bg
                     } else {
-                        rgb(0x202022)
+                        row_disabled_bg
                     })
                     .border_1()
                     .border_color(if is_key_focused || is_val_focused {
-                        rgb(0x0066cc)
+                        focus_border
                     } else {
                         border
                     })
-                    // Enabled Checkbox
                     .child(
                         Checkbox::new(ElementId::NamedInteger("toggle-header".into(), idx as u64))
                             .checked(enabled)
@@ -164,54 +159,33 @@ impl RequestEditorView {
                                 });
                             }),
                     )
-                    // Inline Editable Key Field
                     .child(Self::render_inline_input(
                         ElementId::NamedInteger("edit-header-key".into(), idx as u64),
                         inputs.get_input(&InputKey::HeaderKey(idx)),
                         &key,
                         is_key_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_key_focused {
-                            rgb(0xffffff)
-                        } else if enabled {
-                            normal
-                        } else {
-                            muted
-                        },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
                     .child(div().text_xs().text_color(muted).child(":"))
-                    // Inline Editable Value Field
                     .child(Self::render_inline_input(
                         ElementId::NamedInteger("edit-header-val".into(), idx as u64),
                         inputs.get_input(&InputKey::HeaderValue(idx)),
                         &val,
                         is_val_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_val_focused {
-                            rgb(0xffffff)
-                        } else if enabled {
-                            normal
-                        } else {
-                            muted
-                        },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
-                    // Delete Button
                     .child(
-                        div()
-                            .id(ElementId::NamedInteger("del-header-btn".into(), idx as u64))
-                            .px_1p5()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x333333))
-                            .hover(|s| s.bg(rgb(0xe74c3c)).text_color(rgb(0xffffff)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("✕")
+                        Button::new(ElementId::NamedInteger("del-header-btn".into(), idx as u64))
+                            .icon(icon(IconName::X))
+                            .xsmall()
+                            .ghost()
+                            .tooltip("Remove header")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(this, RequestEditorAction::RemoveHeader(idx), window, cx);
                             })),
@@ -229,7 +203,7 @@ impl RequestEditorView {
         Button::new(label)
             .label(label)
             .xsmall()
-            .secondary()
+            .outline()
             .rounded(ButtonRounded::Small)
             .on_click(cx.listener(move |this, _, window, cx| {
                 on_action(
@@ -240,9 +214,4 @@ impl RequestEditorView {
                 );
             }))
     }
-
-    // =========================================================================
-    // Query Parameters Panel (Modal-Free Interactive Key-Value Grid)
-    // =========================================================================
-
 }

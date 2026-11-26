@@ -11,6 +11,7 @@ use std::rc::Rc;
 impl AuraWorkspaceView {
     pub(super) fn sync_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut inputs = std::mem::take(&mut self.inputs);
+        inputs.set_template_context(self.state.active_template_context());
 
         let url_val = self
             .state
@@ -271,24 +272,48 @@ impl AuraWorkspaceView {
             );
 
             match &tab.request.body {
-                BodyType::Json(s) | BodyType::Xml(s) | BodyType::Text(s) => {
-                    inputs.ensure_textarea(
+                BodyType::Json(s) => {
+                    inputs.ensure_editor(
+                        InputKey::BodyText,
+                        s,
+                        "// Click or type to edit JSON body...",
+                        "json",
+                        window,
+                        cx,
+                        Self::handle_editor_event,
+                    );
+                }
+                BodyType::Xml(s) => {
+                    inputs.ensure_editor(
+                        InputKey::BodyText,
+                        s,
+                        "<!-- Click or type to edit XML body... -->",
+                        "html",
+                        window,
+                        cx,
+                        Self::handle_editor_event,
+                    );
+                }
+                BodyType::Text(s) => {
+                    inputs.ensure_editor(
                         InputKey::BodyText,
                         s,
                         "// Click or type to edit request body...",
+                        "plaintext",
                         window,
                         cx,
-                        Self::handle_textarea_event,
+                        Self::handle_editor_event,
                     );
                 }
                 BodyType::Raw { content, .. } => {
-                    inputs.ensure_textarea(
+                    inputs.ensure_editor(
                         InputKey::BodyText,
                         content,
-                        "// Click or type to edit request body...",
+                        "// Click or type to edit raw body...",
+                        "plaintext",
                         window,
                         cx,
-                        Self::handle_textarea_event,
+                        Self::handle_editor_event,
                     );
                 }
                 BodyType::FormUrlEncoded(items) => {
@@ -632,6 +657,7 @@ impl AuraWorkspaceView {
             }
         }
 
+        inputs.sync_all_template_highlights(cx);
         self.inputs = inputs;
         self.sync_sidebar_tree(cx);
     }

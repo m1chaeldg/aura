@@ -59,7 +59,6 @@ async fn test_e2e_workspace_loading_and_external_sync_cycle() {
         .await
         .expect("reconcile");
 
-    // Request tab should have been closed automatically, falling back to Untitled Request
-    assert_eq!(state.tabs.len(), 1);
-    assert_eq!(state.tabs[0].title, "Untitled Request");
+    // Request tab should have been closed automatically, leaving empty tabs
+    assert!(state.tabs.is_empty());
 }

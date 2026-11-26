@@ -3,11 +3,15 @@
 use crate::app_state::{ActiveInputTarget, ScriptSubTab};
 use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::EditorTab;
+use crate::templating_ui::render_template_token;
+use crate::theme::icon;
 use aura_core::model::{AuraRequest, HttpMethod, TestAssertion};
 use gpui::*;
-use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::input::{Editor, EditorState, Input, InputState};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::{Selectable, Sizable};
+use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 
 
 mod auth_panel;
@@ -146,8 +150,9 @@ impl RequestEditorView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border_color = rgb(0x333333);
-        let bg_surface = rgb(0x272729);
+        let border_color = cx.theme().border;
+        let bg_surface = cx.theme().tab_bar;
+        let canvas_bg = cx.theme().background;
 
         let headers_count = request
             .map(|r| r.headers.iter().filter(|h| h.enabled).count())
@@ -166,7 +171,7 @@ impl RequestEditorView {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .bg(rgb(0x1d1d1f))
+            .bg(canvas_bg)
             .border_r_1()
             .border_color(border_color)
             // Tabs Bar
@@ -246,16 +251,17 @@ impl RequestEditorView {
         fallback: &str,
         _is_focused: bool,
         mask_toggle: bool,
-        bg: Rgba,
-        border: Rgba,
-        text_color: Rgba,
+        bg: Hsla,
+        border: Hsla,
+        text_color: Hsla,
     ) -> AnyElement {
         if let Some(state) = input {
             let mut inp = Input::new(state)
                 .id(id)
                 .xsmall()
                 .flex_1()
-                .w_full();
+                .w_full()
+                .token(render_template_token);
             if mask_toggle {
                 inp = inp.mask_toggle();
             }
@@ -272,39 +278,7 @@ impl RequestEditorView {
                 .border_color(border)
                 .text_xs()
                 .text_color(text_color)
-                .child(fallback.to_string())
-                .into_any_element()
-        }
-    }
-
-    pub(super) fn render_inline_textarea(
-        id: impl Into<ElementId>,
-        ta: Option<&Entity<TextareaState>>,
-        fallback: &str,
-        height: Pixels,
-        _is_focused: bool,
-        border: Rgba,
-        text_color: Rgba,
-    ) -> AnyElement {
-        if let Some(state) = ta {
-            Textarea::new(state)
-                .h(height)
-                .w_full()
-                .font_family("monospace")
-                .text_xs()
-                .into_any_element()
-        } else {
-            div()
-                .id(id)
-                .p_2()
-                .rounded_md()
-                .bg(rgb(0x18181a))
-                .border_1()
-                .border_color(border)
-                .min_h(height)
-                .font_family("monospace")
-                .text_xs()
-                .text_color(text_color)
+                .truncate()
                 .child(fallback.to_string())
                 .into_any_element()
         }
@@ -316,8 +290,8 @@ impl RequestEditorView {
         fallback: &str,
         height: Pixels,
         _is_focused: bool,
-        border: Rgba,
-        text_color: Rgba,
+        border: Hsla,
+        text_color: Hsla,
     ) -> AnyElement {
         if let Some(state) = editor {
             Editor::new(state)
@@ -330,7 +304,6 @@ impl RequestEditorView {
                 .id(id)
                 .p_2()
                 .rounded_md()
-                .bg(rgb(0x18181a))
                 .border_1()
                 .border_color(border)
                 .min_h(height)
@@ -345,30 +318,21 @@ impl RequestEditorView {
     pub(super) fn render_editor_tools<V: 'static>(
         target_key: InputKey,
         show_reference: bool,
-        muted: Rgba,
+        _muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
         let search_key = target_key.clone();
         let complete_key = target_key;
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
+        h_flex()
+            .gap_1p5()
             .child(
-                div()
-                    .id("editor-find-btn")
-                    .px_2()
-                    .py_0p5()
-                    .rounded_sm()
-                    .bg(rgb(0x272729))
-                    .border_1()
-                    .border_color(rgb(0x333333))
-                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
-                    .cursor_pointer()
-                    .text_xs()
-                    .text_color(muted)
-                    .child("Find (Ctrl+F)")
+                Button::new("editor-find-btn")
+                    .icon(icon(IconName::Search))
+                    .label("Find (Ctrl+F)")
+                    .xsmall()
+                    .outline()
+                    .rounded(ButtonRounded::Small)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(
                             this,
@@ -379,19 +343,12 @@ impl RequestEditorView {
                     })),
             )
             .child(
-                div()
-                    .id("editor-complete-btn")
-                    .px_2()
-                    .py_0p5()
-                    .rounded_sm()
-                    .bg(rgb(0x272729))
-                    .border_1()
-                    .border_color(rgb(0x333333))
-                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
-                    .cursor_pointer()
-                    .text_xs()
-                    .text_color(muted)
-                    .child("Complete (Ctrl+Space)")
+                Button::new("editor-complete-btn")
+                    .icon(icon(IconName::Sparkles))
+                    .label("Complete (Ctrl+Space)")
+                    .xsmall()
+                    .outline()
+                    .rounded(ButtonRounded::Small)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(
                             this,
@@ -401,24 +358,21 @@ impl RequestEditorView {
                         );
                     })),
             )
-            .child(
-                div()
-                    .id("editor-reference-btn")
-                    .px_2()
-                    .py_0p5()
-                    .rounded_sm()
-                    .bg(if show_reference { rgb(0x0066cc) } else { rgb(0x272729) })
-                    .border_1()
-                    .border_color(if show_reference { rgb(0x2997ff) } else { rgb(0x333333) })
-                    .hover(|s| s.bg(rgb(0x333333)).text_color(rgb(0xffffff)))
-                    .cursor_pointer()
-                    .text_xs()
-                    .text_color(if show_reference { rgb(0xffffff) } else { muted })
-                    .child("Reference & Vars")
+            .child({
+                let btn = Button::new("editor-reference-btn")
+                    .icon(icon(IconName::BookOpen))
+                    .label("Reference & Vars")
+                    .xsmall()
+                    .rounded(ButtonRounded::Small)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(this, RequestEditorAction::ToggleScriptReference, window, cx);
-                    })),
-            )
+                    }));
+                if show_reference {
+                    btn.primary()
+                } else {
+                    btn.outline()
+                }
+            })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -439,9 +393,9 @@ impl RequestEditorView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border = rgb(0x333333);
-        let muted = rgb(0x7a7a7a);
-        let normal = rgb(0xcccccc);
+        let border = cx.theme().border;
+        let muted = cx.theme().muted_foreground;
+        let normal = cx.theme().foreground;
 
         match tab {
             EditorTab::Headers => Self::render_headers_panel(

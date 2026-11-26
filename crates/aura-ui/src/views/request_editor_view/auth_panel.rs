@@ -1,12 +1,14 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::theme::subtle_surface;
 use aura_core::model::{AuraRequest, AuthConfig};
 use base64::Engine;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -14,9 +16,9 @@ impl RequestEditorView {
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -32,67 +34,78 @@ impl RequestEditorView {
             "OAuth 2.0",
         ];
 
-        div()
-            .flex()
-            .flex_col()
+        let surface = subtle_surface(cx);
+        let field_bg = cx.theme().background;
+        let primary_color = cx.theme().primary;
+        let success_color = cx.theme().success;
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_3()
-            // Strategy Selector Bar
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
+                h_flex()
+                    .gap_1p5()
                     .flex_wrap()
                     .children(STRATEGIES.iter().copied().map(|strat| {
                         let is_active = active_auth_type == strat;
-                        div()
-                            .id(strat)
-                            .px_2p5()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_active { rgb(0x0066cc) } else { rgb(0x272729) })
-                            .border_1()
-                            .border_color(if is_active { rgb(0x0071e3) } else { border })
-                            .hover(|s| s.bg(rgb(0x333333)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(if is_active { rgb(0xffffff) } else { muted })
-                            .child(strat)
+                        let btn = Button::new(strat)
+                            .label(strat)
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(this, RequestEditorAction::SetAuthType(strat), window, cx);
-                            }))
+                            }));
+                        if is_active {
+                            btn.primary()
+                        } else {
+                            btn.outline()
+                        }
                     })),
             )
-            // Direct Inline Auth Configuration
             .child(match auth {
-                Some(AuthConfig::Inherit) | None => {
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xffffff)).child("Inherit Auth from Parent"))
-                        .child(div().text_xs().text_color(muted).child("This request will automatically use the authentication settings defined on its parent collection or folder."))
-                }
-                Some(AuthConfig::None) => {
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xffffff)).child("No Authentication"))
-                        .child(div().text_xs().text_color(muted).child("No Authorization headers or authentication query parameters will be included in the request."))
-                }
+                Some(AuthConfig::Inherit) | None => v_flex()
+                    .p_4()
+                    .rounded(radius)
+                    .bg(surface)
+                    .border_1()
+                    .border_color(border)
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(normal)
+                            .child("Inherit Auth from Parent"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("This request automatically uses authentication settings defined on its parent collection or folder."),
+                    ),
+                Some(AuthConfig::None) => v_flex()
+                    .p_4()
+                    .rounded(radius)
+                    .bg(surface)
+                    .border_1()
+                    .border_color(border)
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(normal)
+                            .child("No Authentication"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("No Authorization headers or authentication query parameters will be included in the request."),
+                    ),
                 Some(AuthConfig::Bearer { token }) => {
-                    let is_token_focused = matches!(active_input, Some(ActiveInputTarget::AuthBearerToken));
+                    let is_token_focused =
+                        matches!(active_input, Some(ActiveInputTarget::AuthBearerToken));
                     let is_jwt = token.split('.').count() == 3;
                     let decoded = if is_jwt {
                         aura_core::security::inspect_jwt(token).ok()
@@ -100,104 +113,121 @@ impl RequestEditorView {
                         None
                     };
 
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_3()
                         .child(
-                            div()
-                                .flex()
-                                .flex_col()
+                            v_flex()
                                 .gap_1()
-                                .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("BEARER TOKEN / JWT"))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(muted)
+                                        .child("BEARER TOKEN / JWT"),
+                                )
                                 .child(Self::render_inline_input(
                                     "input-bearer-token",
                                     inputs.get_input(&InputKey::AuthBearerToken),
                                     token,
                                     is_token_focused,
                                     false,
-                                    rgb(0x18181a),
+                                    field_bg,
                                     border,
-                                    if is_token_focused { rgb(0xffffff) } else { normal },
+                                    normal,
                                 )),
                         )
                         .when_some(decoded, |el, jwt| {
                             el.child(
-                                div()
+                                v_flex()
                                     .p_3()
-                                    .rounded_md()
-                                    .bg(rgb(0x222224))
+                                    .rounded(radius)
+                                    .bg(surface)
                                     .border_1()
-                                    .border_color(rgb(0x0066cc))
-                                    .flex()
-                                    .flex_col()
+                                    .border_color(primary_color)
                                     .gap_2()
                                     .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
+                                        h_flex()
                                             .justify_between()
                                             .child(
-                                                div()
-                                                    .flex()
-                                                    .items_center()
+                                                h_flex()
                                                     .gap_2()
-                                                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0x2997ff)).child("JWT INSPECTOR"))
-                                                    .child(div().px_1p5().py_0p5().rounded_sm().bg(rgb(0x333333)).text_xs().text_color(rgb(0xffffff)).child(format!("alg: {}", jwt.algorithm))),
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_weight(FontWeight::SEMIBOLD)
+                                                            .text_color(primary_color)
+                                                            .child("JWT INSPECTOR"),
+                                                    )
+                                                    .child(
+                                                        Tag::secondary()
+                                                            .xsmall()
+                                                            .child(format!("alg: {}", jwt.algorithm)),
+                                                    ),
                                             )
-                                            .child(
-                                                div()
-                                                    .px_2()
-                                                    .py_0p5()
-                                                    .rounded_sm()
-                                                    .bg(if jwt.is_expired { rgb(0xe74c3c) } else { rgb(0x28a745) })
-                                                    .text_xs()
-                                                    .text_color(rgb(0xffffff))
-                                                    .child(if jwt.is_expired { "EXPIRED" } else { "VALID" }),
-                                            ),
+                                            .child(if jwt.is_expired {
+                                                Tag::danger().xsmall().child("EXPIRED")
+                                            } else {
+                                                Tag::success().xsmall().child("VALID")
+                                            }),
                                     )
                                     .when_some(jwt.subject, |el, sub| {
-                                        el.child(div().text_xs().text_color(muted).child(format!("Subject (sub): {sub}")))
+                                        el.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!("Subject (sub): {sub}")),
+                                        )
                                     })
                                     .when_some(jwt.issuer, |el, iss| {
-                                        el.child(div().text_xs().text_color(muted).child(format!("Issuer (iss): {iss}")))
+                                        el.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!("Issuer (iss): {iss}")),
+                                        )
                                     })
                                     .child(
                                         div()
                                             .p_2()
-                                            .rounded_sm()
-                                            .bg(rgb(0x18181a))
+                                            .rounded(radius)
+                                            .bg(field_bg)
                                             .font_family("monospace")
                                             .text_xs()
-                                            .text_color(rgb(0xcccccc))
-                                            .child(serde_json::to_string_pretty(&jwt.payload).unwrap_or_default()),
+                                            .text_color(normal)
+                                            .child(
+                                                serde_json::to_string_pretty(&jwt.payload)
+                                                    .unwrap_or_default(),
+                                            ),
                                     ),
                             )
                         })
                 }
                 Some(AuthConfig::Basic { username, password }) => {
-                    let is_user_focused = matches!(active_input, Some(ActiveInputTarget::AuthBasicUsername));
-                    let is_pass_focused = matches!(active_input, Some(ActiveInputTarget::AuthBasicPassword));
+                    let is_user_focused =
+                        matches!(active_input, Some(ActiveInputTarget::AuthBasicUsername));
+                    let is_pass_focused =
+                        matches!(active_input, Some(ActiveInputTarget::AuthBasicPassword));
                     let preview = {
-                        let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
+                        let encoded = base64::engine::general_purpose::STANDARD
+                            .encode(format!("{username}:{password}"));
                         format!("Authorization: Basic {encoded}")
                     };
 
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_3()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("BASIC AUTHENTICATION"))
                         .child(
                             div()
-                                .flex()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(muted)
+                                .child("BASIC AUTHENTICATION"),
+                        )
+                        .child(
+                            h_flex()
                                 .gap_3()
-                                // Username input
                                 .child(
-                                    div()
+                                    v_flex()
                                         .flex_1()
-                                        .flex()
-                                        .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Username"))
                                         .child(Self::render_inline_input(
@@ -206,17 +236,14 @@ impl RequestEditorView {
                                             username,
                                             is_user_focused,
                                             false,
-                                            rgb(0x18181a),
+                                            field_bg,
                                             border,
-                                            if is_user_focused { rgb(0xffffff) } else { normal },
+                                            normal,
                                         )),
                                 )
-                                // Password input
                                 .child(
-                                    div()
+                                    v_flex()
                                         .flex_1()
-                                        .flex()
-                                        .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Password"))
                                         .child(Self::render_inline_input(
@@ -225,46 +252,51 @@ impl RequestEditorView {
                                             password,
                                             is_pass_focused,
                                             true,
-                                            rgb(0x18181a),
+                                            field_bg,
                                             border,
-                                            if is_pass_focused { rgb(0xffffff) } else { normal },
+                                            normal,
                                         )),
                                 ),
                         )
-                        // Live Base64 Preview
                         .child(
                             div()
                                 .p_2p5()
-                                .rounded_sm()
-                                .bg(rgb(0x18181a))
+                                .rounded(radius)
+                                .bg(field_bg)
                                 .border_1()
-                                .border_color(rgb(0x28a745))
+                                .border_color(success_color)
                                 .font_family("monospace")
                                 .text_xs()
-                                .text_color(rgb(0x28a745))
+                                .text_color(success_color)
                                 .child(preview),
                         )
                 }
-                Some(AuthConfig::ApiKey { key, value, in_header }) => {
+                Some(AuthConfig::ApiKey {
+                    key,
+                    value,
+                    in_header,
+                }) => {
                     let in_hdr = *in_header;
-                    let is_key_focused = matches!(active_input, Some(ActiveInputTarget::AuthApiKeyName));
-                    let is_val_focused = matches!(active_input, Some(ActiveInputTarget::AuthApiKeyValue));
+                    let is_key_focused =
+                        matches!(active_input, Some(ActiveInputTarget::AuthApiKeyName));
+                    let is_val_focused =
+                        matches!(active_input, Some(ActiveInputTarget::AuthApiKeyValue));
 
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_3()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("API KEY AUTHENTICATION"))
                         .child(
                             div()
-                                .flex()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(muted)
+                                .child("API KEY AUTHENTICATION"),
+                        )
+                        .child(
+                            h_flex()
                                 .gap_3()
-                                // Key Name
                                 .child(
-                                    div()
+                                    v_flex()
                                         .flex_1()
-                                        .flex()
-                                        .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Key Name"))
                                         .child(Self::render_inline_input(
@@ -273,17 +305,14 @@ impl RequestEditorView {
                                             key,
                                             is_key_focused,
                                             false,
-                                            rgb(0x18181a),
+                                            field_bg,
                                             border,
-                                            if is_key_focused { rgb(0xffffff) } else { normal },
+                                            normal,
                                         )),
                                 )
-                                // Key Value
                                 .child(
-                                    div()
+                                    v_flex()
                                         .flex_1()
-                                        .flex()
-                                        .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Key Value"))
                                         .child(Self::render_inline_input(
@@ -292,52 +321,55 @@ impl RequestEditorView {
                                             value,
                                             is_val_focused,
                                             false,
-                                            rgb(0x18181a),
+                                            field_bg,
                                             border,
-                                            if is_val_focused { rgb(0xffffff) } else { normal },
+                                            normal,
                                         )),
                                 ),
                         )
-                        // Placement Toggle
                         .child(
-                            div()
-                                .flex()
-                                .items_center()
+                            h_flex()
                                 .gap_2()
                                 .mt_1()
                                 .child(div().text_xs().text_color(muted).child("Send In:"))
-                                .child(
-                                    div()
-                                        .id("btn-apikey-hdr")
-                                        .px_2()
-                                        .py_0p5()
-                                        .rounded_sm()
-                                        .bg(if in_hdr { rgb(0x0066cc) } else { rgb(0x333333) })
-                                        .hover(|s| s.bg(rgb(0x444444)))
-                                        .cursor_pointer()
-                                        .text_xs()
-                                        .text_color(rgb(0xffffff))
-                                        .child("Header")
+                                .child({
+                                    let btn = Button::new("btn-apikey-hdr")
+                                        .label("Header")
+                                        .xsmall()
+                                        .rounded(ButtonRounded::Small)
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            on_action(this, RequestEditorAction::ToggleApiKeyPlacement(true), window, cx);
-                                        })),
-                                )
-                                .child(
-                                    div()
-                                        .id("btn-apikey-query")
-                                        .px_2()
-                                        .py_0p5()
-                                        .rounded_sm()
-                                        .bg(if !in_hdr { rgb(0x0066cc) } else { rgb(0x333333) })
-                                        .hover(|s| s.bg(rgb(0x444444)))
-                                        .cursor_pointer()
-                                        .text_xs()
-                                        .text_color(rgb(0xffffff))
-                                        .child("Query Params")
+                                            on_action(
+                                                this,
+                                                RequestEditorAction::ToggleApiKeyPlacement(true),
+                                                window,
+                                                cx,
+                                            );
+                                        }));
+                                    if in_hdr {
+                                        btn.primary()
+                                    } else {
+                                        btn.outline()
+                                    }
+                                })
+                                .child({
+                                    let btn = Button::new("btn-apikey-query")
+                                        .label("Query Params")
+                                        .xsmall()
+                                        .rounded(ButtonRounded::Small)
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            on_action(this, RequestEditorAction::ToggleApiKeyPlacement(false), window, cx);
-                                        })),
-                                ),
+                                            on_action(
+                                                this,
+                                                RequestEditorAction::ToggleApiKeyPlacement(false),
+                                                window,
+                                                cx,
+                                            );
+                                        }));
+                                    if !in_hdr {
+                                        btn.primary()
+                                    } else {
+                                        btn.outline()
+                                    }
+                                }),
                         )
                 }
                 Some(AuthConfig::AwsSigV4 {
@@ -372,14 +404,10 @@ impl RequestEditorView {
                         ]
                     };
 
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_3()
                         .child(
-                            div()
-                                .flex()
-                                .items_center()
+                            h_flex()
                                 .justify_between()
                                 .child(
                                     div()
@@ -389,9 +417,7 @@ impl RequestEditorView {
                                         .child("AWS SIGNATURE V4"),
                                 )
                                 .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
+                                    h_flex()
                                         .gap_1()
                                         .child(
                                             Button::new("aws-mode-profile")
@@ -399,7 +425,7 @@ impl RequestEditorView {
                                                 .xsmall()
                                                 .rounded(ButtonRounded::Small)
                                                 .when(use_prof, |b| b.primary())
-                                                .when(!use_prof, |b| b.secondary())
+                                                .when(!use_prof, |b| b.outline())
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(
                                                         this,
@@ -415,7 +441,7 @@ impl RequestEditorView {
                                                 .xsmall()
                                                 .rounded(ButtonRounded::Small)
                                                 .when(!use_prof, |b| b.primary())
-                                                .when(use_prof, |b| b.secondary())
+                                                .when(use_prof, |b| b.outline())
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     on_action(
                                                         this,
@@ -429,9 +455,7 @@ impl RequestEditorView {
                         )
                         .children(fields.into_iter().map(|(label, val, f_idx)| {
                             let is_f = matches!(active_input, Some(ActiveInputTarget::AuthAwsField(i)) if *i == f_idx);
-                            div()
-                                .flex()
-                                .flex_col()
+                            v_flex()
                                 .gap_1()
                                 .child(div().text_xs().text_color(muted).child(label))
                                 .child(Self::render_inline_input(
@@ -440,13 +464,19 @@ impl RequestEditorView {
                                     val,
                                     is_f,
                                     f_idx == 1,
-                                    rgb(0x18181a),
+                                    field_bg,
                                     border,
-                                    if is_f { rgb(0xffffff) } else { normal },
+                                    normal,
                                 ))
                         }))
                 }
-                Some(AuthConfig::OAuth2 { grant_type, access_token, token_url, client_id, client_secret }) => {
+                Some(AuthConfig::OAuth2 {
+                    grant_type,
+                    access_token,
+                    token_url,
+                    client_id,
+                    client_secret,
+                }) => {
                     let fields = [
                         ("Access Token", access_token.as_str(), 0),
                         ("Grant Type", grant_type.as_str(), 1),
@@ -455,35 +485,35 @@ impl RequestEditorView {
                         ("Client Secret", client_secret.as_deref().unwrap_or(""), 4),
                     ];
 
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_3()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("OAUTH 2.0"))
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(muted)
+                                .child("OAUTH 2.0"),
+                        )
                         .children(fields.into_iter().map(|(label, val, f_idx)| {
                             let is_f = matches!(active_input, Some(ActiveInputTarget::AuthOAuth2Field(i)) if *i == f_idx);
-                            div()
-                                .flex()
-                                .flex_col()
+                            v_flex()
                                 .gap_1()
                                 .child(div().text_xs().text_color(muted).child(label))
                                 .child(Self::render_inline_input(
-                                    ElementId::NamedInteger("input-oauth-field".into(), f_idx as u64),
+                                    ElementId::NamedInteger(
+                                        "input-oauth-field".into(),
+                                        f_idx as u64,
+                                    ),
                                     inputs.get_input(&InputKey::AuthOAuth2Field(f_idx)),
                                     val,
                                     is_f,
                                     false,
-                                    rgb(0x18181a),
+                                    field_bg,
                                     border,
-                                    if is_f { rgb(0xffffff) } else { normal },
+                                    normal,
                                 ))
                         }))
                 }
             })
     }
-
-    // =========================================================================
-    // Scripts Panel (Sub-tabs for Pre & Post Scripts + Quick Snippets)
-    // =========================================================================
-
 }

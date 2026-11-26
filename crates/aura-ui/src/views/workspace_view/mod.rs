@@ -9,6 +9,7 @@ use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::resizable::h_resizable;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::tree::TreeState;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -173,8 +174,8 @@ impl Render for AuraWorkspaceView {
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x1d1d1f))
-            .text_color(rgb(0xf5f5f7))
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
             .track_focus(&focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 this.handle_key_down(event, cx);

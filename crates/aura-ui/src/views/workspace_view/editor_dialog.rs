@@ -5,7 +5,7 @@ use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::dialog::{Dialog, DialogFooter};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable};
 
 struct DialogField<'a> {
     label: &'static str,
@@ -21,7 +21,7 @@ impl AuraWorkspaceView {
         inputs: &InputRegistry,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let (title, subtitle, width, body_el) = Self::dialog_content(dialog, inputs);
+        let (title, subtitle, width, body_el) = Self::dialog_content(dialog, inputs, cx);
         let view_for_close = cx.entity().clone();
 
         Dialog::new(cx)
@@ -38,7 +38,12 @@ impl AuraWorkspaceView {
                     .flex()
                     .flex_col()
                     .gap_3()
-                    .child(div().text_xs().text_color(rgb(0xaaaaaa)).child(subtitle))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(subtitle),
+                    )
                     .child(body_el),
             )
             .footer(
@@ -70,6 +75,7 @@ impl AuraWorkspaceView {
     fn dialog_content(
         dialog: &EditorDialogState,
         inputs: &InputRegistry,
+        cx: &App,
     ) -> (&'static str, &'static str, f32, Div) {
         let two_field = |k_lbl, k_val, k_ph, v_lbl, v_val, v_ph, is_val: bool| {
             Self::render_field_list(
@@ -79,6 +85,7 @@ impl AuraWorkspaceView {
                     DialogField { label: v_lbl, input_idx: 1, value: v_val, is_focused: is_val, placeholder: v_ph },
                 ],
                 true,
+                cx,
             )
         };
 
@@ -127,6 +134,7 @@ impl AuraWorkspaceView {
                     inputs,
                     &[DialogField { label: "Body Content", input_idx: 0, value: content, is_focused: true, placeholder: "{\n  \"key\": \"value\"\n}" }],
                     false,
+                    cx,
                 ),
             ),
             EditorDialogState::EditBearerAuth { token } => (
@@ -137,6 +145,7 @@ impl AuraWorkspaceView {
                     inputs,
                     &[DialogField { label: "Token", input_idx: 0, value: token, is_focused: true, placeholder: "eyJhbGciOi..." }],
                     false,
+                    cx,
                 ),
             ),
             EditorDialogState::EditApiKeyAuth { key, value, in_header, is_value_focused } => (
@@ -144,7 +153,7 @@ impl AuraWorkspaceView {
                 "Enter the API key header/query name and secret value.",
                 480.0,
                 two_field("Key Name", key, "e.g. X-API-Key", "Key Value", value, "secret_key_123", *is_value_focused)
-                    .child(Self::render_api_key_placement(*in_header)),
+                    .child(Self::render_api_key_placement(*in_header, cx)),
             ),
             EditorDialogState::EditAwsSigV4 { access_key, secret_key, region, service, session_token, active_field } => {
                 let af = *active_field;
@@ -162,6 +171,7 @@ impl AuraWorkspaceView {
                             DialogField { label: "Session Token (optional)", input_idx: 4, value: session_token, is_focused: af == 4, placeholder: "AQoDYXdz..." },
                         ],
                         false,
+                        cx,
                     ),
                 )
             }
@@ -181,6 +191,7 @@ impl AuraWorkspaceView {
                             DialogField { label: "Client Secret (optional)", input_idx: 4, value: client_secret, is_focused: af == 4, placeholder: "secret_456" },
                         ],
                         false,
+                        cx,
                     ),
                 )
             }
@@ -202,13 +213,14 @@ impl AuraWorkspaceView {
                             second,
                         ],
                         true,
+                        cx,
                     ),
                 )
             }
         }
     }
 
-    fn render_field_list(inputs: &InputRegistry, fields: &[DialogField<'_>], roomy: bool) -> Div {
+    fn render_field_list(inputs: &InputRegistry, fields: &[DialogField<'_>], roomy: bool, cx: &App) -> Div {
         let mut container = if roomy { div().flex().flex_col().gap_3() } else { div().flex().flex_col().gap_2() };
         for f in fields {
             container = container.child(Self::render_dialog_input_row(
@@ -217,27 +229,35 @@ impl AuraWorkspaceView {
                 f.value,
                 f.is_focused,
                 f.placeholder,
+                cx,
             ));
         }
         container
     }
 
-    fn render_api_key_placement(in_header: bool) -> Div {
+    fn render_api_key_placement(in_header: bool, cx: &App) -> Div {
+        let primary = cx.theme().primary;
+        let primary_fg = cx.theme().primary_foreground;
+        let secondary = cx.theme().secondary;
+        let secondary_fg = cx.theme().secondary_foreground;
+        let muted = cx.theme().muted_foreground;
+        let radius = cx.theme().radius;
+
         let chip = |label: &'static str, active: bool| {
             div()
                 .px_2()
                 .py_0p5()
-                .rounded_sm()
-                .bg(if active { rgb(0x0066cc) } else { rgb(0x333333) })
+                .rounded(radius)
+                .bg(if active { primary } else { secondary })
                 .text_xs()
-                .text_color(rgb(0xffffff))
+                .text_color(if active { primary_fg } else { secondary_fg })
                 .child(label)
         };
         div()
             .flex()
             .items_center()
             .gap_2()
-            .child(div().text_xs().text_color(rgb(0xaaaaaa)).child("Placement:"))
+            .child(div().text_xs().text_color(muted).child("Placement:"))
             .child(chip("In Header", in_header))
             .child(chip("In Query Params", !in_header))
     }
@@ -248,20 +268,33 @@ impl AuraWorkspaceView {
         val: &str,
         is_focused: bool,
         placeholder: &'static str,
+        cx: &App,
     ) -> Div {
         let field_el = if let Some(state) = input {
-            Input::new(state).small().w_full().into_any_element()
+            Input::new(state)
+                .small()
+                .w_full()
+                .token(crate::templating_ui::render_template_token)
+                .into_any_element()
         } else {
             div()
                 .px_2()
                 .py_1()
-                .bg(rgb(0x1d1d1f))
+                .bg(cx.theme().background)
                 .border_1()
-                .border_color(rgb(0x333333))
-                .rounded_sm()
+                .border_color(cx.theme().border)
+                .rounded(cx.theme().radius)
                 .text_xs()
-                .text_color(if val.is_empty() { rgb(0x666666) } else { rgb(0xffffff) })
-                .child(if val.is_empty() { placeholder.to_string() } else { val.to_string() })
+                .text_color(if val.is_empty() {
+                    cx.theme().muted_foreground
+                } else {
+                    cx.theme().foreground
+                })
+                .child(if val.is_empty() {
+                    placeholder.to_string()
+                } else {
+                    val.to_string()
+                })
                 .into_any_element()
         };
 
@@ -273,7 +306,11 @@ impl AuraWorkspaceView {
                 div()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(if is_focused { rgb(0x2997ff) } else { rgb(0xaaaaaa) })
+                    .text_color(if is_focused {
+                        cx.theme().primary
+                    } else {
+                        cx.theme().muted_foreground
+                    })
                     .child(label),
             )
             .child(field_el)

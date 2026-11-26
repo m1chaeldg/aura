@@ -1,0 +1,52 @@
+[2m2026-11-26T19:12:45.710361Z[0m [32m INFO[0m [2maura[0m[2m:[0m Aura REST API Client v0.1.0 starting up...
+[2m2026-11-26T19:12:45.710688Z[0m [32m INFO[0m [2maura[0m[2m:[0m Launching Desktop GUI Window...
+[2m2026-11-26T19:12:45.713609Z[0m [32m INFO[0m [2mgpui_windows::direct_write[0m[2m:[0m Use Segoe UI as UI font.
+[2m2026-11-26T19:12:45.930567Z[0m [31mERROR[0m [2m[0m[2m:[0m The application requested an operation that depends on an SDK component that is missing or mismatched. (0x887A002D)
+[2m2026-11-26T19:12:45.930968Z[0m [33m WARN[0m [2mgpui_windows::directx_devices[0m[2m:[0m Failed to get DXGI debug interface. DirectX debugging features will be disabled.
+[2m2026-11-26T19:12:45.938088Z[0m [32m INFO[0m [2mgpui_windows::directx_devices[0m[2m:[0m Using GPU: Intel(R) Iris(R) Xe Graphics
+[2m2026-11-26T19:12:45.976657Z[0m [32m INFO[0m [2mgpui_windows::directx_devices[0m[2m:[0m Created device with Direct3D 11.1 feature level.
+[2m2026-11-26T19:13:07.467135Z[0m [32m INFO[0m [2mgpui::window[0m[2m:[0m Accessibility activated
+[2m2026-11-26T19:13:16.790201Z[0m [32m INFO[0m [2maura_ui::execution[0m[2m:[0m UI dispatched request; Send button switched to Cancel [3mtab_id[0m[2m=[0m07a880eb-8759-4eb5-8742-8a062be2f5d9 [3mmethod[0m[2m=[0mPOST [3murl[0m[2m=[0mhttps://postman-echo.com/post?ky=value
+[2m2026-11-26T19:13:16.790959Z[0m [32m INFO[0m [2maura_ui::execution[0m[2m:[0m Dispatching async request in execution service [3mmethod[0m[2m=[0mPOST [3murl[0m[2m=[0mhttps://postman-echo.com/post?ky=value [3mtimeout_ms[0m[2m=[0m500 [3mhas_pre_script[0m[2m=[0mtrue [3mhas_post_script[0m[2m=[0mfalse [3mhas_tests[0m[2m=[0mtrue
+[2m2026-11-26T19:13:16.808517Z[0m [32m INFO[0m [2maura_engine::request[0m[2m:[0m Dispatching HTTP request [3mmethod[0m[2m=[0mPOST [3murl[0m[2m=[0mhttps://postman-echo.com/post?ky=value [3mquery_params[0m[2m=[0m[ky=value] [3mheaders[0m[2m=[0m[Accept=application/json, Content-Type=application/json] [3mpayload[0m[2m=[0mJSON (635 bytes): [
+  {
+    "id": 1,
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "role": "Software Engineer",
+    "isActive": true,
+    "skills": ["JavaScript", "TypeScript", "React", "Node.js"]
+  },
+  {
+    "id": 2,
+    "name": "John Smith",
+    "email": "john.smith@example.com",
+    "role": "Product Manager",
+    "isActive": false,
+    "skills": ["Agile", "Scrum", "Roadmapping", "User Research"]
+  },
+  {
+    "id": 3,
+    "name": "Alice Johnson",
+    "email": "alice.j@example.com",
+    "role": "UX Designer",
+    "isActive": true,
+    "skills": ["Figma", "Wireframing", "UI/UX", "Prototyping"]
+  }
+]
+
+[2m2026-11-26T19:13:17.046691Z[0m [32m INFO[0m [2maura_engine::response[0m[2m:[0m Received HTTP response [3mmethod[0m[2m=[0mPOST [3murl[0m[2m=[0mhttps://postman-echo.com/post?ky=value [3mstatus[0m[2m=[0m200 [3mstatus_text[0m[2m=[0mOK [3mduration_ms[0m[2m=[0m225 [3msize_bytes[0m[2m=[0m1250 [3mheaders[0m[2m=[0m[set-cookie=_cfuvid=dbZt_ArKXUA8xkIUVHr_ROcnkN_c5t5ljny0LyyqAPI-1795720398.2689354-1.0.1.1-1YfMYNVJ0EMqtHRHfzaCoZwmRHYdwzmfjvQGkWcrvS8; HttpOnly; SameSite=None; Secure; Path=/; Domain=postman-echo.com, cf-cache-status=DYNAMIC, vary=Accept-Encoding, etag=W/"4e2-VXry/d5WGIPuRlX0rrBIVOIO9R0", content-type=application/json; charset=utf-8, server=cloudflare, cf-ray=a60b35a92a7ca53d-PHL, connection=keep-alive, transfer-encoding=chunked, x-envoy-upstream-service-time=10, date=Thu, 26 Nov 2026 19:13:18 GMT] [3mbody[0m[2m=[0m{"args":{"ky":["value","value"]},"data":[{"id":1,"name":"Jane Doe","email":"jane.doe@example.com","role":"Software Engineer","isActive":true,"skills":["JavaScript","TypeScript","React","Node.js"]},{"id":2,"name":"John Smith","email":"john.smith@example.com","role":"Product Manager","isActive":false,"skills":["Agile","Scrum","Roadmapping","User Research"]},{"id":3,"name":"Alice Johnson","email":"alice.j@example.com","role":"UX Designer","isActive":true,"skills":["Figma","Wireframing","UI/UX","Prototyping"]}],"files":{},"form":{},"headers":{"host":"postman-echo.com","content-type":"application/json","accept":"application/json","accept-encoding":"gzip, br","x-forwarded-proto":"https","content-length":"635"},"json":[{"id":1,"name":"Jane Doe","email":"jane.doe@example.com","role":"Software Engineer","isActive":true,"skills":["JavaScript","TypeScript","React","Node.js"]},{"id":2,"name":"John Smith","email":"john.smith@example.com","role":"Product Manager","isActive":false,"skills":["Agile","Scrum","Roadmapping","User Research"]},{"id":3,"name":"Alice Johnson","email":"alice.j@example.com","role":"UX Designer","isActive":true,"skills":["Figma","Wireframing","UI/UX","Prototyping"]}],"url":"https://postman-echo.com/post?ky=value&ky=value"} [3massertions_count[0m[2m=[0m3 [3massertions_failed[0m[2m=[0m0 [3mscript_errors[0m[2m=[0m0
+[2m2026-11-26T19:13:17.046968Z[0m [32m INFO[0m [2maura_ui::execution[0m[2m:[0m Execution service completed request [3mmethod[0m[2m=[0mPOST [3murl[0m[2m=[0mhttps://postman-echo.com/post?ky=value [3mstatus[0m[2m=[0m200 [3mstatus_text[0m[2m=[0mOK [3mduration_ms[0m[2m=[0m225 [3msize_bytes[0m[2m=[0m1250 [3mscript_errors[0m[2m=[0m0
+[2m2026-11-26T19:13:22.361370Z[0m [32m INFO[0m [2mgpui::window::a11y[0m[2m:[0m a11y: focused element (FocusId(1v1)) has no accessibility node (it has no element id); assistive technology will announce the whole window instead. Give it both an `.id(...)` and a `.role(...)` to expose it.
+[2m2026-11-26T19:14:08.600942Z[0m [32m INFO[0m [2maura_ui::workspace[0m[2m:[0m Saved request file to disk [3mpath[0m[2m=[0mC:\repo\aura\workspaces\space1\Users & Accounts\Create User Account.aura
+[2m2026-11-26T19:14:13.801477Z[0m [32m INFO[0m [2maura_ui::workspace[0m[2m:[0m Saved request file to disk [3mpath[0m[2m=[0mC:\repo\aura\workspaces\space1\Users & Accounts\Create User Account.aura
+[2m2026-11-26T19:14:19.678014Z[0m [32m INFO[0m [2maura_ui::workspace[0m[2m:[0m Saved request file to disk [3mpath[0m[2m=[0mC:\repo\aura\workspaces\space1\Users & Accounts\Create User Account.aura
+[2m2026-11-26T19:14:21.636747Z[0m [32m INFO[0m [2mgpui::window::a11y[0m[2m:[0m a11y: focused element (FocusId(1v1)) has no accessibility node (it has no element id); assistive technology will announce the whole window instead. Give it both an `.id(...)` and a `.role(...)` to expose it.
+[2m2026-11-26T19:14:38.155862Z[0m [32m INFO[0m [2mgpui::window::a11y[0m[2m:[0m a11y: focused element (FocusId(1v1)) has no accessibility node (it has no element id); assistive technology will announce the whole window instead. Give it both an `.id(...)` and a `.role(...)` to expose it.
+[2m2026-11-26T19:15:08.306731Z[0m [32m INFO[0m [2maura_ui[0m[2m:[0m System log viewer opened
+[2m2026-11-26T19:15:08.380834Z[0m [33m WARN[0m [2mgpui::text_system[0m[2m:[0m failed to load font Font { family: "monospace", features: FontFeatures, fallbacks: None, weight: FontWeight(400.0), style: Normal }: Failed to select font: Font { family: "monospace", features: FontFeatures, fallbacks: None, weight: FontWeight(400.0), style: Normal }
+[2m2026-11-26T19:15:12.846800Z[0m [32m INFO[0m [2maura_ui[0m[2m:[0m System log viewer opened
+[2m2026-11-26T19:16:31.296029Z[0m [33m WARN[0m [2maura_ui::execution[0m[2m:[0m Request cancellation requested
+[2m2026-11-26T19:16:33.137581Z[0m [33m WARN[0m [2maura_ui::execution[0m[2m:[0m Request cancellation requested
+[2m2026-11-26T19:21:24.594747Z[0m [32m INFO[0m [2maura_ui[0m[2m:[0m System log viewer opened
+[2m2026-11-26T19:21:42.733542Z[0m [32m INFO[0m [2mgpui::window::a11y[0m[2m:[0m a11y: focused element (FocusId(1v1)) has no accessibility node (it has no element id); assistive technology will announce the whole window instead. Give it both an `.id(...)` and a `.role(...)` to expose it.

@@ -26,3 +26,6 @@ notify = "6.1"
 rfd = "0.15"
 tracing = "0.1"
 base64 = "0.22"
+
+[dev-dependencies]
+gpui-kit = { version = "0.11.0", features = ["test-support"] }

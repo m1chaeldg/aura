@@ -1,13 +1,16 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::theme::{icon, subtle_surface};
 use aura_core::model::{AuraRequest, BodyType};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{ActiveTheme as _, Sizable, ThemeStyled as _, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -16,9 +19,9 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         is_format_dropdown_open: bool,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -48,28 +51,28 @@ impl RequestEditorView {
             .relative()
             .child(
                 Button::new("body-format-dropdown-btn")
-                    .label(format!("Body: {} ▾", current_display))
+                    .label(format!("Body: {}", current_display))
+                    .dropdown_caret(true)
                     .xsmall()
-                    .secondary()
+                    .outline()
                     .rounded(ButtonRounded::Small)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_action(this, RequestEditorAction::ToggleBodyFormatDropdown, window, cx);
                     })),
             )
             .when(is_format_dropdown_open, |el| {
+                let primary_accent = cx.theme().primary;
+                let popover_fg = cx.theme().popover_foreground;
+                let radius = cx.theme().radius;
                 let menu = div()
                     .id("body-format-dropdown-menu")
+                    .popover_style(cx)
                     .absolute()
                     .top_full()
                     .left_0()
                     .mt_1()
-                    .w(px(190.0))
-                    .bg(rgb(0x252528))
-                    .border_1()
-                    .border_color(border)
-                    .rounded_md()
+                    .w(px(200.0))
                     .p_1()
-                    .shadow_lg()
                     .flex()
                     .flex_col()
                     .gap_0p5()
@@ -95,48 +98,39 @@ impl RequestEditorView {
                         .selected(is_selected)
                         .px_2()
                         .py_1()
-                        .rounded_sm()
+                        .rounded(radius)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             on_action(this, RequestEditorAction::SetBodyType(fmt), window, cx);
                         }))
                         .child(
-                            div()
-                                .flex()
-                                .items_center()
+                            h_flex()
                                 .justify_between()
                                 .w_full()
                                 .text_xs()
                                 .child(
                                     div()
                                         .text_color(if is_selected {
-                                            rgb(0xffffff)
+                                            popover_fg
                                         } else {
                                             normal
                                         })
                                         .child(format_display(fmt)),
                                 )
                                 .when(is_selected, |el| {
-                                    el.child(div().text_color(rgb(0x2997ff)).child("✓"))
+                                    el.child(
+                                        icon(IconName::Check)
+                                            .xsmall()
+                                            .text_color(primary_accent),
+                                    )
                                 }),
                         )
                     }));
                 el.child(deferred(menu).with_priority(1))
             });
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_3()
-            // Format Selector Bar (Dropdown)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .child(format_dropdown),
-            )
-            // Body Content based on Format
+            .child(h_flex().justify_between().gap_2().child(format_dropdown))
             .child(match body {
                 Some(BodyType::None) | None => div().child(
                     Empty::new().header(EmptyHeader::new().description(
@@ -227,7 +221,7 @@ impl RequestEditorView {
                     )
                 }
                 Some(BodyType::Multipart(parts)) => {
-                    Self::render_multipart_editor(parts, border, muted, normal, cx, on_action)
+                    Self::render_multipart_editor(parts, inputs, border, muted, normal, cx, on_action)
                 }
                 Some(BodyType::Binary {
                     file_path,
@@ -236,13 +230,11 @@ impl RequestEditorView {
                     let ct = content_type
                         .as_deref()
                         .unwrap_or("application/octet-stream");
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_2()
                         .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
+                        .rounded(cx.theme().radius)
+                        .bg(subtle_surface(cx))
                         .border_1()
                         .border_color(border)
                         .child(
@@ -253,15 +245,13 @@ impl RequestEditorView {
                                 .child(format!("BINARY FILE ({ct})")),
                         )
                         .child(
-                            div()
-                                .flex()
-                                .items_center()
+                            h_flex()
                                 .justify_between()
                                 .p_2()
-                                .bg(rgb(0x1d1d1f))
+                                .bg(cx.theme().background)
                                 .border_1()
                                 .border_color(border)
-                                .rounded_sm()
+                                .rounded(cx.theme().radius)
                                 .child(div().text_xs().text_color(normal).child(
                                     if file_path.is_empty() {
                                         "No binary file selected".to_string()
@@ -281,29 +271,22 @@ impl RequestEditorView {
         is_json: bool,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
         let is_focused = matches!(active_input, Some(ActiveInputTarget::BodyText));
         let byte_len = content.len();
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_2()
-            // Top Toolbar: Label + Format JSON + Clear + Size indicator
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
                             .child(
                                 div()
@@ -313,30 +296,22 @@ impl RequestEditorView {
                                     .child(label.to_string()),
                             )
                             .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(0x555555))
-                                    .child(format!("({byte_len} bytes)")),
+                                Tag::secondary()
+                                    .xsmall()
+                                    .child(format!("{byte_len} B")),
                             ),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
                             .when(is_json, |el| {
                                 el.child(
-                                    div()
-                                        .id("format-json-btn")
-                                        .px_2()
-                                        .py_0p5()
-                                        .rounded_sm()
-                                        .bg(rgb(0x28a745))
-                                        .hover(|s| s.bg(rgb(0x218838)))
-                                        .cursor_pointer()
-                                        .text_xs()
-                                        .text_color(rgb(0xffffff))
-                                        .child("⚡ Format / Pretty-Print")
+                                    Button::new("format-json-btn")
+                                        .icon(icon(IconName::Zap))
+                                        .label("Format")
+                                        .xsmall()
+                                        .success()
+                                        .rounded(ButtonRounded::Small)
                                         .on_click(cx.listener(move |this, _, window, cx| {
                                             on_action(
                                                 this,
@@ -348,33 +323,25 @@ impl RequestEditorView {
                                 )
                             })
                             .child(
-                                div()
-                                    .id("clear-body-btn")
-                                    .px_2()
-                                    .py_0p5()
-                                    .rounded_sm()
-                                    .bg(rgb(0x333333))
-                                    .hover(|s| s.bg(rgb(0xe74c3c)).text_color(rgb(0xffffff)))
-                                    .cursor_pointer()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child("Clear")
+                                Button::new("clear-body-btn")
+                                    .label("Clear")
+                                    .xsmall()
+                                    .ghost()
+                                    .rounded(ButtonRounded::Small)
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         on_action(this, RequestEditorAction::ClearBody, window, cx);
                                     })),
                             ),
                     ),
             )
-            // Full-Height Direct Monospace Textarea
-            .child(Self::render_inline_textarea(
+            .child(Self::render_inline_editor(
                 "direct-body-editor",
-                inputs.get_textarea(&InputKey::BodyText),
+                inputs.get_editor(&InputKey::BodyText),
                 content,
                 px(260.0),
                 is_focused,
                 border,
-                if is_focused { rgb(0xffffff) } else { normal },
+                normal,
             ))
     }
-
 }

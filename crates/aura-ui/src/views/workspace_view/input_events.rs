@@ -63,6 +63,9 @@ impl AuraWorkspaceView {
                         _ => {}
                     }
                 }
+                self.inputs
+                    .set_template_context(self.state.active_template_context());
+                self.inputs.sync_all_template_highlights(cx);
                 cx.notify();
             }
             InputEvent::PressEnter { .. } => match key {
@@ -157,9 +160,15 @@ impl AuraWorkspaceView {
                 if let Some(target) = key.to_active_target() {
                     self.state.set_input_text_for(target, val);
                     self.schedule_auto_save(cx);
+                    self.inputs
+                        .set_template_context(self.state.active_template_context());
+                    self.inputs.sync_all_template_highlights(cx);
                     cx.notify();
                 } else if matches!(key, InputKey::EnvCode) {
                     self.state.update_environment_code_buffer(val);
+                    self.inputs
+                        .set_template_context(self.state.active_template_context());
+                    self.inputs.sync_all_template_highlights(cx);
                     cx.notify();
                 }
             }

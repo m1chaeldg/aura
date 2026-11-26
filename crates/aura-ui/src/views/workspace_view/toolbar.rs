@@ -1,12 +1,15 @@
 use super::AuraWorkspaceView;
+use crate::theme::icon;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::list::ListItem;
+use gpui_kit::component::separator::Separator;
 use gpui_kit::component::sidebar::SidebarToggleButton;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::toolbar::{Toolbar, ToolbarGroup};
-use gpui_kit::component::{Side, Sizable};
+use gpui_kit::component::{ActiveTheme as _, Side, Sizable, ThemeStyled as _, h_flex};
 
 impl AuraWorkspaceView {
     pub(super) fn render_top_toolbar(
@@ -14,23 +17,20 @@ impl AuraWorkspaceView {
         is_horizontal: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let text_muted = rgb(0x7a7a7a);
         let view_entity = cx.entity().clone();
         let is_collapsed = self.state.is_sidebar_collapsed;
 
         Toolbar::new("workspace-top-toolbar")
             .small()
             .w_full()
-            .h(px(38.))
             .px_3()
-            .bg(rgb(0x222224))
+            .py_1()
+            .bg(cx.theme().title_bar)
             .border_b_1()
-            .border_color(rgb(0x333333))
+            .border_color(cx.theme().title_bar_border)
             .justify_between()
             .content(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .gap_2()
                     .child(
                         SidebarToggleButton::new()
@@ -44,13 +44,13 @@ impl AuraWorkspaceView {
                                 });
                             }),
                     )
-                    .child(Tag::primary().small().child("A"))
-                    .child(div().text_sm().child("Aura REST API Client v0.1.0"))
+                    .child(Tag::primary().small().child("Aura"))
                     .child(
                         div()
-                            .text_xs()
-                            .text_color(text_muted)
-                            .child("(GPUI + deno_core)"),
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(cx.theme().foreground)
+                            .child("REST API Client"),
                     ),
             )
             .content(
@@ -58,9 +58,12 @@ impl AuraWorkspaceView {
                     .small()
                     .child(
                         Button::new("cmd-palette-btn")
-                            .label("⌘ Command Palette")
+                            .icon(icon(IconName::Search))
+                            .label("Command Palette")
                             .small()
+                            .ghost()
                             .rounded(ButtonRounded::Medium)
+                            .tooltip("Search requests & commands (Ctrl+K)")
                             .on_click(cx.listener(|this, _, _window, cx| {
                                 this.state.toggle_command_palette();
                                 cx.notify();
@@ -68,13 +71,20 @@ impl AuraWorkspaceView {
                     )
                     .child(
                         Button::new("toggle-layout-btn")
-                            .label(if is_horizontal {
-                                "◫ Side-by-Side"
+                            .icon(icon(if is_horizontal {
+                                IconName::Columns2
                             } else {
-                                "⬒ Stacked"
+                                IconName::Rows2
+                            }))
+                            .label(if is_horizontal {
+                                "Side-by-Side"
+                            } else {
+                                "Stacked"
                             })
                             .small()
+                            .ghost()
                             .rounded(ButtonRounded::Medium)
+                            .tooltip("Toggle split orientation")
                             .on_click(cx.listener(|this, _, _window, cx| {
                                 this.state.toggle_orientation();
                                 this.save_preferences_sync();
@@ -83,18 +93,23 @@ impl AuraWorkspaceView {
                     )
                     .child(
                         Button::new("open-workspace-btn")
-                            .label("📁 Open Workspace")
+                            .icon(icon(IconName::FolderOpen))
+                            .label("Workspace")
                             .small()
+                            .ghost()
                             .rounded(ButtonRounded::Medium)
+                            .tooltip("Open workspace folder")
                             .on_click(cx.listener(|_this, _, _window, cx| {
                                 Self::spawn_open_workspace_picker(cx);
                             })),
                     )
                     .child({
                         let btn = Button::new("toggle-logs-btn")
-                            .label("🪵 Logs")
+                            .icon(icon(IconName::ScrollText))
+                            .label("Logs")
                             .small()
                             .rounded(ButtonRounded::Medium)
+                            .tooltip("Toggle diagnostic logs")
                             .on_click(cx.listener(|this, _, _window, cx| {
                                 this.state.toggle_log_viewer();
                                 cx.notify();
@@ -102,7 +117,7 @@ impl AuraWorkspaceView {
                         if self.state.is_log_viewer_open {
                             btn.primary()
                         } else {
-                            btn
+                            btn.ghost()
                         }
                     })
                     .content({
@@ -124,9 +139,13 @@ impl AuraWorkspaceView {
                             .relative()
                             .child(
                                 Button::new("env-selector-dropdown-btn")
-                                    .label(format!("🌐 {active_env_label} ▾"))
+                                    .icon(icon(IconName::Globe))
+                                    .label(active_env_label.to_string())
+                                    .dropdown_caret(true)
                                     .small()
+                                    .outline()
                                     .rounded(ButtonRounded::Medium)
+                                    .tooltip("Select active environment profile")
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.state.toggle_env_dropdown();
                                         cx.notify();
@@ -135,17 +154,13 @@ impl AuraWorkspaceView {
                             .when(is_env_open, |el| {
                                 let menu = div()
                                     .id("env-selector-dropdown-menu")
+                                    .popover_style(cx)
                                     .absolute()
                                     .top_full()
                                     .right_0()
                                     .mt_1()
-                                    .w(px(210.0))
-                                    .bg(rgb(0x252528))
-                                    .border_1()
-                                    .border_color(rgb(0x333333))
-                                    .rounded_md()
+                                    .w(px(220.0))
                                     .p_1()
-                                    .shadow_lg()
                                     .flex()
                                     .flex_col()
                                     .gap_0p5()
@@ -159,28 +174,26 @@ impl AuraWorkspaceView {
                                             .selected(is_none)
                                             .px_2()
                                             .py_1()
-                                            .rounded_sm()
+                                            .rounded(cx.theme().radius)
                                             .on_click(cx.listener(|this, _, _window, cx| {
                                                 this.state.set_active_environment(None);
                                                 cx.notify();
                                             }))
                                             .child(
-                                                div()
-                                                    .flex()
-                                                    .items_center()
+                                                h_flex()
                                                     .justify_between()
                                                     .w_full()
                                                     .text_xs()
                                                     .child(
                                                         div()
-                                                            .text_color(rgb(0xaaaaaa))
+                                                            .text_color(cx.theme().muted_foreground)
                                                             .child("No Environment"),
                                                     )
                                                     .when(is_none, |el| {
                                                         el.child(
-                                                            div()
-                                                                .text_color(rgb(0x2997ff))
-                                                                .child("✓"),
+                                                            icon(IconName::Check)
+                                                                .xsmall()
+                                                                .text_color(cx.theme().primary),
                                                         )
                                                     }),
                                             )
@@ -197,7 +210,7 @@ impl AuraWorkspaceView {
                                             .selected(is_sel)
                                             .px_2()
                                             .py_1()
-                                            .rounded_sm()
+                                            .rounded(cx.theme().radius)
                                             .on_click(cx.listener(
                                                 move |this, _, _window, cx| {
                                                     this.state.set_active_environment(Some(
@@ -207,57 +220,52 @@ impl AuraWorkspaceView {
                                                 },
                                             ))
                                             .child(
-                                                div()
-                                                    .flex()
-                                                    .items_center()
+                                                h_flex()
                                                     .justify_between()
                                                     .w_full()
                                                     .text_xs()
                                                     .child(
                                                         div()
                                                             .text_color(if is_sel {
-                                                                rgb(0xffffff)
+                                                                cx.theme().foreground
                                                             } else {
-                                                                rgb(0xcccccc)
+                                                                cx.theme().muted_foreground
                                                             })
                                                             .truncate()
                                                             .child(ename),
                                                     )
                                                     .when(is_sel, |el| {
                                                         el.child(
-                                                            div()
-                                                                .text_color(rgb(0x2997ff))
-                                                                .child("✓"),
+                                                            icon(IconName::Check)
+                                                                .xsmall()
+                                                                .text_color(cx.theme().primary),
                                                         )
                                                     }),
                                             )
                                         },
                                     ))
-                                    .child(div().h(px(1.0)).bg(rgb(0x333333)).my_1())
+                                    .child(Separator::horizontal().my_1())
                                     .child(
                                         ListItem::new("env-opt-new")
                                             .px_2()
                                             .py_1()
-                                            .rounded_sm()
+                                            .rounded(cx.theme().radius)
                                             .on_click(cx.listener(|this, _, _window, cx| {
                                                 this.state.open_new_environment_editor();
                                                 cx.notify();
                                             }))
                                             .child(
-                                                div()
+                                                h_flex()
+                                                    .gap_1p5()
                                                     .text_xs()
-                                                    .text_color(rgb(0x2997ff))
-                                                    .child("+ New Environment..."),
+                                                    .text_color(cx.theme().primary)
+                                                    .child(icon(IconName::Plus).xsmall())
+                                                    .child("New Environment..."),
                                             ),
                                     );
                                 el.child(deferred(menu).with_priority(1))
                             })
-                    })
-                    .content(
-                        Tag::secondary()
-                            .small()
-                            .child("Zero Telemetry • Offline Sandboxed"),
-                    ),
+                    }),
             )
     }
 

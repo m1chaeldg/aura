@@ -7,6 +7,8 @@ pub mod keybindings;
 pub mod preferences;
 pub mod services;
 pub mod stores;
+pub mod templating_ui;
+pub mod theme;
 pub mod views;
 
 pub use app_state::{

@@ -1,13 +1,15 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::theme::icon;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -15,25 +17,25 @@ impl RequestEditorView {
         variable_rows: &[(String, String, bool)],
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
-        div()
-            .flex()
-            .flex_col()
+        let row_active_bg = cx.theme().secondary.opacity(0.35);
+        let row_disabled_bg = cx.theme().muted.opacity(0.2);
+        let focus_border = cx.theme().primary;
+        let field_bg = cx.theme().background;
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_3()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
                             .child(
                                 div()
@@ -50,7 +52,8 @@ impl RequestEditorView {
                     )
                     .child(
                         Button::new("add-variable-btn")
-                            .label("+ Add Variable")
+                            .icon(icon(IconName::Plus))
+                            .label("Add Variable")
                             .primary()
                             .xsmall()
                             .rounded(ButtonRounded::Small)
@@ -70,12 +73,13 @@ impl RequestEditorView {
                     Empty::new()
                         .header(EmptyHeader::new().description(
                             EmptyDescription::new().child(
-                                "No request variables defined. Click '+ Add Variable' to add one.",
+                                "No request variables defined. Click 'Add Variable' to add one.",
                             ),
                         ))
                         .child(
                             Button::new("btn-add-first-variable")
-                                .label("+ Add First Variable")
+                                .icon(icon(IconName::Plus))
+                                .label("Add First Variable")
                                 .secondary()
                                 .small()
                                 .rounded(ButtonRounded::Medium)
@@ -98,26 +102,23 @@ impl RequestEditorView {
                     matches!(active_input, Some(ActiveInputTarget::VariableValue(i)) if *i == idx);
                 let view_entity = cx.entity().clone();
 
-                div()
+                h_flex()
                     .id(ElementId::NamedInteger("variable-row".into(), idx as u64))
-                    .flex()
-                    .items_center()
                     .gap_2()
                     .px_3()
                     .py_1p5()
-                    .rounded_md()
+                    .rounded(radius)
                     .bg(if enabled {
-                        rgb(0x272729)
+                        row_active_bg
                     } else {
-                        rgb(0x202022)
+                        row_disabled_bg
                     })
                     .border_1()
                     .border_color(if is_key_focused || is_val_focused {
-                        rgb(0x0066cc)
+                        focus_border
                     } else {
                         border
                     })
-                    // Enabled Checkbox
                     .child(
                         Checkbox::new(ElementId::NamedInteger("toggle-var".into(), idx as u64))
                             .checked(enabled)
@@ -139,15 +140,9 @@ impl RequestEditorView {
                         key,
                         is_key_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_key_focused {
-                            rgb(0xffffff)
-                        } else if enabled {
-                            normal
-                        } else {
-                            muted
-                        },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
                     .child(div().text_xs().text_color(muted).child("="))
                     .child(Self::render_inline_input(
@@ -156,21 +151,16 @@ impl RequestEditorView {
                         val,
                         is_val_focused,
                         false,
-                        rgb(0x222224),
-                        rgb(0x38383a),
-                        if is_val_focused {
-                            rgb(0xffffff)
-                        } else if enabled {
-                            normal
-                        } else {
-                            muted
-                        },
+                        field_bg,
+                        border,
+                        if enabled { normal } else { muted },
                     ))
                     .child(
                         Button::new(ElementId::NamedInteger("remove-var".into(), idx as u64))
-                            .label("✕")
+                            .icon(icon(IconName::X))
                             .xsmall()
                             .ghost()
+                            .tooltip("Remove variable")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(
                                     this,
@@ -182,5 +172,4 @@ impl RequestEditorView {
                     )
             }))
     }
-
 }

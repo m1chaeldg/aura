@@ -2,6 +2,7 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::ActiveTheme as _;
 
 pub struct SplitResizerView;
 
@@ -12,10 +13,11 @@ impl SplitResizerView {
         cx: &mut Context<V>,
         on_mouse_down: impl Fn(&mut V, &MouseDownEvent, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border_color = rgb(0x333333);
-        let surface_color = rgb(0x272729);
-        let divider_hover_color = rgb(0x0071e3);
-        let divider_active_color = rgb(0x2997ff);
+        let border_color = cx.theme().border;
+        let surface_color = cx.theme().secondary.opacity(0.4);
+        let divider_hover_color = cx.theme().primary_hover;
+        let divider_active_color = cx.theme().primary;
+        let grip_color = cx.theme().muted_foreground;
 
         div()
             .id("resizer-divider")
@@ -34,7 +36,14 @@ impl SplitResizerView {
                     } else {
                         surface_color
                     })
-                    .hover(|s| s.bg(divider_hover_color))
+                    .hover(move |s| s.bg(divider_hover_color))
+                    .child(
+                        div()
+                            .w(px(2.0))
+                            .h(px(28.0))
+                            .rounded_full()
+                            .bg(grip_color),
+                    )
             })
             .when(!is_horizontal, |el| {
                 el.h(px(6.0))
@@ -47,23 +56,20 @@ impl SplitResizerView {
                     } else {
                         surface_color
                     })
-                    .hover(|s| s.bg(divider_hover_color))
+                    .hover(move |s| s.bg(divider_hover_color))
+                    .child(
+                        div()
+                            .h(px(2.0))
+                            .w(px(28.0))
+                            .rounded_full()
+                            .bg(grip_color),
+                    )
             })
             .on_mouse_down(
-                gpui::MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                MouseButton::Left,
+                cx.listener(move |this, event, window, cx| {
                     on_mouse_down(this, event, window, cx);
                 }),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(if is_dragging {
-                        rgb(0xffffff)
-                    } else {
-                        divider_hover_color
-                    })
-                    .child(if is_horizontal { "⋮" } else { "···" }),
             )
     }
 }

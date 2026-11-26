@@ -1,9 +1,13 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::editor_support::{JS_REFERENCE_ENTRIES, SPEC_REFERENCE_ENTRIES};
 use crate::input_registry::InputKey;
+use crate::theme::subtle_surface;
 use aura_core::model::AuraRequest;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::button::{Button, ButtonRounded};
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -13,9 +17,9 @@ impl RequestEditorView {
         include_response: bool,
         request: Option<&AuraRequest>,
         variable_rows: &[(String, String, bool)],
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -54,20 +58,21 @@ impl RequestEditorView {
                 .collect()
         };
 
-        div()
-            .flex()
-            .flex_col()
+        let surface = subtle_surface(cx);
+        let card_bg = cx.theme().background;
+        let primary_color = cx.theme().primary;
+        let hover_bg = cx.theme().list_hover;
+        let radius = cx.theme().radius;
+
+        v_flex()
             .gap_3()
             .p_3()
-            .rounded_md()
-            .bg(rgb(0x222224))
+            .rounded(radius)
+            .bg(surface)
             .border_1()
             .border_color(border)
-            // Available Variables
             .child(
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1()
                     .child(
                         div()
@@ -83,7 +88,7 @@ impl RequestEditorView {
                             .child("No active variables. Add them in the Variables tab.")
                             .into_any_element()
                     } else {
-                        let mut row = div().flex().flex_wrap().gap_1();
+                        let mut row = h_flex().flex_wrap().gap_1p5();
                         for (idx, (k, v)) in vars.into_iter().enumerate() {
                             let insert = if is_spec {
                                 format!("{{{{{k}}}}}")
@@ -92,19 +97,11 @@ impl RequestEditorView {
                             };
                             let key_clone = target_key.clone();
                             row = row.child(
-                                div()
-                                    .id(("ref-var", idx))
-                                    .px_2()
-                                    .py_0p5()
-                                    .rounded_sm()
-                                    .bg(rgb(0x272729))
-                                    .border_1()
-                                    .border_color(border)
-                                    .hover(|s| s.border_color(rgb(0x0066cc)).bg(rgb(0x2d2d30)))
-                                    .cursor_pointer()
-                                    .text_xs()
-                                    .text_color(rgb(0x4cd964))
-                                    .child(format!("{k} = {v}"))
+                                Button::new(ElementId::NamedInteger("ref-var".into(), idx as u64))
+                                    .label(format!("{k} = {v}"))
+                                    .xsmall()
+                                    .outline()
+                                    .rounded(ButtonRounded::Small)
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         on_action(
                                             this,
@@ -121,41 +118,26 @@ impl RequestEditorView {
                         row.into_any_element()
                     }),
             )
-            // Query Parameters & Headers in Scope
             .when(!params.is_empty() || !headers.is_empty(), |el| {
-                let mut scope = div().flex().flex_wrap().gap_1();
+                let mut scope = h_flex().flex_wrap().gap_1p5();
                 for (k, v) in &params {
                     scope = scope.child(
-                        div()
-                            .px_2()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x1d1d1f))
-                            .border_1()
-                            .border_color(border)
-                            .text_xs()
-                            .text_color(rgb(0x2997ff))
+                        Tag::info()
+                            .outline()
+                            .xsmall()
                             .child(format!("param: {k}={v}")),
                     );
                 }
                 for (k, v) in &headers {
                     scope = scope.child(
-                        div()
-                            .px_2()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(rgb(0x1d1d1f))
-                            .border_1()
-                            .border_color(border)
-                            .text_xs()
-                            .text_color(muted)
+                        Tag::secondary()
+                            .outline()
+                            .xsmall()
                             .child(format!("header: {k}: {v}")),
                     );
                 }
                 el.child(
-                    div()
-                        .flex()
-                        .flex_col()
+                    v_flex()
                         .gap_1()
                         .child(
                             div()
@@ -167,11 +149,8 @@ impl RequestEditorView {
                         .child(scope),
                 )
             })
-            // Objects / Language Features Reference
             .child(
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1()
                     .child(
                         div()
@@ -185,44 +164,36 @@ impl RequestEditorView {
                             }),
                     )
                     .child({
-                        let mut grid = div().flex().flex_col().gap_1();
+                        let mut grid = v_flex().gap_1();
                         for (idx, entry) in entries.into_iter().enumerate() {
                             let key_clone = target_key.clone();
                             let insert = entry.insert_text.to_string();
                             grid = grid.child(
-                                div()
+                                h_flex()
                                     .id(("ref-entry", idx))
-                                    .flex()
-                                    .items_center()
                                     .justify_between()
                                     .gap_2()
                                     .px_2()
                                     .py_1()
-                                    .rounded_sm()
-                                    .bg(rgb(0x1d1d1f))
+                                    .rounded(radius)
+                                    .bg(card_bg)
                                     .border_1()
                                     .border_color(border)
-                                    .hover(|s| s.border_color(rgb(0x0066cc)).bg(rgb(0x272729)))
+                                    .hover(move |s| s.border_color(primary_color).bg(hover_bg))
                                     .cursor_pointer()
                                     .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
+                                        h_flex()
                                             .gap_2()
                                             .child(
-                                                div()
-                                                    .px_1()
-                                                    .rounded_sm()
-                                                    .bg(rgb(0x272729))
-                                                    .text_xs()
-                                                    .text_color(muted)
+                                                Tag::secondary()
+                                                    .xsmall()
                                                     .child(entry.category),
                                             )
                                             .child(
                                                 div()
                                                     .font_family("monospace")
                                                     .text_xs()
-                                                    .text_color(rgb(0x2997ff))
+                                                    .text_color(primary_color)
                                                     .child(entry.label),
                                             )
                                             .child(

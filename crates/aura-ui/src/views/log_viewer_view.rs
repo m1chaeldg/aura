@@ -1,9 +1,11 @@
 //! LogViewer View: Interactive diagnostic and structured logging modal overlay using gpui_kit.
 
 use crate::app_state::AuraAppState;
+use crate::theme::icon;
 use crate::views::workspace_view::AuraWorkspaceView;
 use aura_engine::LogLevel;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
@@ -11,7 +13,7 @@ use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::sheet::Sheet;
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex};
 
 pub struct LogViewerView;
 
@@ -22,12 +24,14 @@ impl LogViewerView {
         window: &mut Window,
         cx: &mut Context<AuraWorkspaceView>,
     ) -> impl IntoElement {
-        let accent_blue = rgb(0x0066cc);
-        let surface_tile_1 = rgb(0x272729);
-        let surface_tile_2 = rgb(0x2a2a2c);
-        let surface_tile_3 = rgb(0x222224);
-        let text_color = rgb(0xf5f5f7);
-        let text_muted = rgb(0x7a7a7a);
+        let accent_blue = cx.theme().primary;
+        let surface_tile_1 = cx.theme().background;
+        let surface_tile_2 = cx.theme().list_head;
+        let surface_tile_3 = cx.theme().secondary.opacity(0.35);
+        let text_color = cx.theme().foreground;
+        let text_muted = cx.theme().muted_foreground;
+        let border_color = cx.theme().border;
+        let row_hover = cx.theme().list_hover;
 
         let filtered_logs = state.get_filtered_logs();
         let total_count = aura_engine::LogBroadcaster::global().get_entries().len();
@@ -46,11 +50,9 @@ impl LogViewerView {
             .w_full()
             .pr_4()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .gap_2()
-                    .child(div().text_base().text_color(accent_blue).child("🪵"))
+                    .child(icon(IconName::ScrollText).text_color(accent_blue))
                     .child("System Logs & Diagnostics")
                     .child(div().text_xs().text_color(text_muted).child(format!(
                         "({} / {})",
@@ -101,7 +103,8 @@ impl LogViewerView {
                     )
                     .child(
                         Button::new("copy-logs-btn")
-                            .label("📋 Copy")
+                            .icon(icon(IconName::Copy))
+                            .label("Copy")
                             .small()
                             .rounded(ButtonRounded::Medium)
                             .on_click(cx.listener(|this, _, _window, cx| {
@@ -114,7 +117,8 @@ impl LogViewerView {
                     )
                     .child(
                         Button::new("clear-logs-btn")
-                            .label("🗑 Clear")
+                            .icon(icon(IconName::Trash))
+                            .label("Clear")
                             .small()
                             .rounded(ButtonRounded::Medium)
                             .on_click(cx.listener(|this, _, _window, cx| {
@@ -132,14 +136,13 @@ impl LogViewerView {
             .text_xs()
             .text_color(text_muted)
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .gap_2()
-                    .child("📁 Log Directory:")
+                    .child(icon(IconName::FolderOpen).xsmall())
+                    .child("Log Directory:")
                     .child(div().text_color(text_color).child(log_dir_str)),
             )
-            .child("Esc or Ctrl+Shift+L to close • Zero Telemetry");
+            .child("Esc or Ctrl+Shift+L to close");
 
         Sheet::new(window, cx)
             .size(px(640.0))
@@ -252,7 +255,13 @@ impl LogViewerView {
                     )
                     .child(Separator::horizontal())
                     .child(if state.is_log_viewer_text_mode {
-                        Self::render_text_body(state, &filtered_logs, log_textarea, surface_tile_3)
+                        Self::render_text_body(
+                            state,
+                            &filtered_logs,
+                            log_textarea,
+                            surface_tile_3,
+                            text_color,
+                        )
                     } else {
                         Self::render_table_body(
                             &filtered_logs,
@@ -261,6 +270,8 @@ impl LogViewerView {
                             accent_blue,
                             text_color,
                             text_muted,
+                            border_color,
+                            row_hover,
                         )
                     }),
             )
@@ -270,7 +281,8 @@ impl LogViewerView {
         state: &AuraAppState,
         filtered_logs: &[aura_engine::LogEntry],
         log_textarea: Option<&Entity<TextareaState>>,
-        surface_tile_3: Rgba,
+        surface_tile_3: Hsla,
+        text_color: Hsla,
     ) -> AnyElement {
         if filtered_logs.is_empty() {
             return div()
@@ -305,20 +317,23 @@ impl LogViewerView {
                     .p_2()
                     .font_family("monospace")
                     .text_xs()
-                    .text_color(rgb(0xf5f5f7))
+                    .text_color(text_color)
                     .child(state.format_filtered_logs_text())
                     .into_any_element()
             })
             .into_any_element()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_table_body(
         filtered_logs: &[aura_engine::LogEntry],
-        surface_tile_2: Rgba,
-        surface_tile_3: Rgba,
-        accent_blue: Rgba,
-        text_color: Rgba,
-        text_muted: Rgba,
+        surface_tile_2: Hsla,
+        surface_tile_3: Hsla,
+        accent_blue: Hsla,
+        text_color: Hsla,
+        text_muted: Hsla,
+        border_color: Hsla,
+        row_hover: Hsla,
     ) -> AnyElement {
         div()
             .flex()
@@ -390,8 +405,8 @@ impl LogViewerView {
                                     .px_3()
                                     .py_1()
                                     .border_b_1()
-                                    .border_color(rgb(0x2a2a2d))
-                                    .hover(|s| s.bg(rgb(0x27272b)))
+                                    .border_color(border_color)
+                                    .hover(move |s| s.bg(row_hover))
                                     .text_xs()
                                     .child(
                                         div()

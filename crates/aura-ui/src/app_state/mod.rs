@@ -64,28 +64,31 @@ impl gpui::Render for DragItemPayload {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        _cx: &mut gpui::Context<Self>,
+        cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
+        use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
         let name = self
             .path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("Item");
-        let icon = if self.is_folder { "📁" } else { "📄" };
-        gpui::div()
+        let icon_name = if self.is_folder {
+            gpui_kit::assets::IconName::Folder
+        } else {
+            gpui_kit::assets::IconName::FileText
+        };
+        h_flex()
+            .gap_1p5()
             .px_2()
             .py_1()
-            .bg(gpui::rgb(0x27374d))
+            .bg(cx.theme().popover)
             .border_1()
-            .border_color(gpui::rgb(0x0066cc))
-            .rounded_sm()
+            .border_color(cx.theme().primary)
+            .rounded(cx.theme().radius)
             .text_xs()
-            .text_color(gpui::rgb(0xffffff))
+            .text_color(cx.theme().popover_foreground)
             .shadow_md()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(icon)
+            .child(crate::theme::icon(icon_name).xsmall())
             .child(name.to_string())
     }
 }
@@ -710,6 +713,38 @@ impl AuraAppState {
             }
         }
         map
+    }
+
+    /// Builds the unified template resolution context for UI previews, inputs,
+    /// code editors, and request execution.
+    pub fn active_template_context(&self) -> aura_core::templating::TemplateContext {
+        let mut context = aura_core::templating::TemplateContext::default();
+        if let Some(tab) = self.active_tab() {
+            context.request_vars = tab.request.variables.clone();
+            for (raw_key, value, enabled) in &tab.variable_rows {
+                let key = raw_key.trim();
+                if key.is_empty() {
+                    continue;
+                }
+                if *enabled {
+                    context
+                        .request_vars
+                        .insert(key.to_string(), value.clone());
+                } else {
+                    context.request_vars.remove(key);
+                }
+            }
+        }
+        context.environment_vars = self.active_environment_vars();
+        for collection in &self.collections {
+            for (k, v) in &collection.variables {
+                context
+                    .collection_vars
+                    .entry(k.clone())
+                    .or_insert_with(|| v.clone());
+            }
+        }
+        context
     }
 
     pub fn set_active_environment(&mut self, id: Option<String>) {

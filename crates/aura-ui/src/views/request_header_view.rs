@@ -3,10 +3,14 @@
 use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::input::{Input, InputContentType, InputState};
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, ThemeStyled as _, h_flex};
+
+use crate::templating_ui::render_template_token;
+use crate::theme::{icon, method_color};
 
 const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::GET,
@@ -29,21 +33,9 @@ impl RequestHeaderView {
         }
     }
 
-    /// Determines whether the Save button should be visible in the request header
+    /// Determines whether the Save button should be visible in the request header.
     pub fn is_save_button_visible(is_dirty: bool) -> bool {
         is_dirty
-    }
-
-    fn method_color(method: HttpMethod) -> Rgba {
-        match method {
-            HttpMethod::GET => rgb(0x2997ff),
-            HttpMethod::POST => rgb(0x28a745),
-            HttpMethod::PUT => rgb(0xf5a623),
-            HttpMethod::PATCH => rgb(0x8e44ad),
-            HttpMethod::DELETE => rgb(0xe74c3c),
-            HttpMethod::HEAD => rgb(0x9e9ea4),
-            HttpMethod::OPTIONS => rgb(0x17a2b8),
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -63,12 +55,14 @@ impl RequestHeaderView {
         on_cancel: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_save: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border_color = rgb(0x333333);
-        let surface_color = rgb(0x272729);
-
         let btn_label = Self::button_label(is_in_flight);
         let send_btn = {
             let btn = Button::new("send-btn")
+                .icon(icon(if is_in_flight {
+                    IconName::Square
+                } else {
+                    IconName::Send
+                }))
                 .label(btn_label)
                 .small()
                 .rounded(ButtonRounded::Medium)
@@ -88,17 +82,18 @@ impl RequestHeaderView {
 
         let method_btn = {
             let btn = Button::new("method-selector-btn")
-                .label(format!("{} ▾", method.as_str()))
+                .label(method.as_str())
+                .dropdown_caret(true)
                 .small()
                 .rounded(ButtonRounded::Medium)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     on_toggle_dropdown(this, window, cx);
                 }));
             match method {
-                HttpMethod::GET => btn.primary(),
+                HttpMethod::GET => btn.info(),
                 HttpMethod::POST => btn.success(),
                 HttpMethod::PUT => btn.warning(),
-                HttpMethod::PATCH => btn.info(),
+                HttpMethod::PATCH => btn.primary(),
                 HttpMethod::DELETE => btn.danger(),
                 _ => btn.secondary(),
             }
@@ -110,17 +105,13 @@ impl RequestHeaderView {
             .when(is_method_dropdown_open, |el| {
                 let menu = div()
                     .id("method-dropdown-menu")
+                    .popover_style(cx)
                     .absolute()
                     .top_full()
                     .left_0()
                     .mt_1()
-                    .w(px(136.0))
-                    .bg(rgb(0x252528))
-                    .border_1()
-                    .border_color(rgb(0x333333))
-                    .rounded_md()
+                    .w(px(140.0))
                     .p_1()
-                    .shadow_lg()
                     .flex()
                     .flex_col()
                     .gap_0p5()
@@ -133,29 +124,26 @@ impl RequestHeaderView {
                             .selected(is_selected)
                             .px_2()
                             .py_1()
-                            .rounded_sm()
+                            .rounded(cx.theme().radius)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_select_method(this, m, window, cx);
                             }))
                             .child(
-                                div()
-                                    .flex()
-                                    .items_center()
+                                h_flex()
                                     .justify_between()
                                     .w_full()
                                     .child(
                                         div()
                                             .text_xs()
                                             .font_weight(FontWeight::BOLD)
-                                            .text_color(Self::method_color(m))
+                                            .text_color(method_color(&m, cx))
                                             .child(m.as_str()),
                                     )
                                     .when(is_selected, |el| {
                                         el.child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(rgb(0x2997ff))
-                                                .child("✓"),
+                                            icon(IconName::Check)
+                                                .xsmall()
+                                                .text_color(cx.theme().primary),
                                         )
                                     }),
                             )
@@ -163,34 +151,36 @@ impl RequestHeaderView {
                 el.child(deferred(menu).with_priority(2))
             });
 
-        let mut header = div()
+        let mut header = h_flex()
             .id("request-header-container")
-            .flex()
-            .items_center()
             .gap_3()
-            .px_4()
+            .px_3()
             .py_2()
-            .bg(surface_color)
+            .bg(cx.theme().background)
             .border_b_1()
-            .border_color(border_color)
+            .border_color(cx.theme().border)
             .flex_shrink_0()
             .child(method_selector)
             .child(
-                div().flex_1().child(
+                div().flex_1().min_w_0().child(
                     Input::new(url_input)
                         .id("url-text-input")
                         .content_type(InputContentType::Url)
                         .small()
                         .cleanable(true)
+                        .token(render_template_token)
                         .w_full(),
                 ),
             );
 
         if Self::is_save_button_visible(is_dirty) {
             let save_btn = Button::new("save-btn")
+                .icon(icon(IconName::Save))
                 .label("Save")
                 .small()
+                .outline()
                 .rounded(ButtonRounded::Medium)
+                .tooltip("Save Request (Ctrl+S)")
                 .on_click(cx.listener(move |this, _, window, cx| {
                     on_save(this, window, cx);
                 }));

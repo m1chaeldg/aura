@@ -2,21 +2,23 @@
 
 use super::{ResponsePaneAction, ResponsePaneView};
 use crate::services::{ResponseDataService, TreeNodeKind};
+use crate::theme::{icon, subtle_surface};
 use aura_core::model::AuraResponse;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonRounded};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 use std::collections::HashSet;
 
 impl ResponsePaneView {
     pub(super) fn render_tree_panel<V: 'static>(
         resp: &AuraResponse,
         collapsed_ids: &HashSet<String>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -32,15 +34,20 @@ impl ResponsePaneView {
             ),
             Ok(nodes) => {
                 let total_visible = nodes.len();
-                div()
-                    .flex()
-                    .flex_col()
+                let tree_bg = subtle_surface(cx);
+                let hover_bg = cx.theme().list_hover;
+                let key_color = cx.theme().blue;
+                let str_color = cx.theme().green;
+                let num_color = cx.theme().yellow;
+                let array_color = cx.theme().cyan;
+                let bool_color = cx.theme().magenta;
+                let radius = cx.theme().radius;
+
+                v_flex()
                     .gap_2()
                     .min_w_0()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .justify_between()
                             .child(
                                 div()
@@ -53,7 +60,7 @@ impl ResponsePaneView {
                                 Button::new("tree-expand-all-btn")
                                     .label("Expand All")
                                     .xsmall()
-                                    .secondary()
+                                    .outline()
                                     .rounded(ButtonRounded::Small)
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         on_action(
@@ -66,13 +73,11 @@ impl ResponsePaneView {
                             ),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
+                        v_flex()
                             .gap_0p5()
                             .p_2()
-                            .rounded_md()
-                            .bg(rgb(0x222224))
+                            .rounded(radius)
+                            .bg(tree_bg)
                             .border_1()
                             .border_color(border)
                             .children(nodes.into_iter().take(500).enumerate().map(|(idx, node)| {
@@ -82,29 +87,25 @@ impl ResponsePaneView {
                                 let copy_val = node.copy_value.clone();
                                 let indent_px = (node.depth as f32) * 16.0;
                                 let (badge_variant, val_color) = match node.kind {
-                                    TreeNodeKind::Object => (TagVariant::Primary, rgb(0x9cdcfe)),
-                                    TreeNodeKind::Array => (TagVariant::Info, rgb(0x4ec9b0)),
-                                    TreeNodeKind::String => (TagVariant::Success, rgb(0xce9178)),
-                                    TreeNodeKind::Number => (TagVariant::Warning, rgb(0xb5cea8)),
-                                    TreeNodeKind::Bool => (TagVariant::Secondary, rgb(0x569cd6)),
-                                    TreeNodeKind::Null => (TagVariant::Secondary, rgb(0x7a7a7a)),
-                                    TreeNodeKind::XmlElement => (TagVariant::Primary, rgb(0x4fc1ff)),
+                                    TreeNodeKind::Object => (TagVariant::Primary, key_color),
+                                    TreeNodeKind::Array => (TagVariant::Info, array_color),
+                                    TreeNodeKind::String => (TagVariant::Success, str_color),
+                                    TreeNodeKind::Number => (TagVariant::Warning, num_color),
+                                    TreeNodeKind::Bool => (TagVariant::Secondary, bool_color),
+                                    TreeNodeKind::Null => (TagVariant::Secondary, muted),
+                                    TreeNodeKind::XmlElement => (TagVariant::Primary, key_color),
                                 };
 
-                                div()
+                                h_flex()
                                     .id(ElementId::NamedInteger("resp-tree-row".into(), idx as u64))
-                                    .flex()
-                                    .items_center()
                                     .justify_between()
                                     .gap_2()
                                     .px_2()
                                     .py_0p5()
-                                    .rounded_sm()
-                                    .hover(|s| s.bg(rgb(0x2d2d30)))
+                                    .rounded(radius)
+                                    .hover(move |s| s.bg(hover_bg))
                                     .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
+                                        h_flex()
                                             .gap_1p5()
                                             .pl(px(indent_px))
                                             .min_w_0()
@@ -117,9 +118,15 @@ impl ResponsePaneView {
                                                             idx as u64,
                                                         ))
                                                         .cursor_pointer()
-                                                        .text_xs()
                                                         .text_color(muted)
-                                                        .child(if is_collapsed { "▶" } else { "▼" })
+                                                        .child(
+                                                            icon(if is_collapsed {
+                                                                IconName::ChevronRight
+                                                            } else {
+                                                                IconName::ChevronDown
+                                                            })
+                                                            .xsmall(),
+                                                        )
                                                         .on_click(cx.listener(
                                                             move |this, _, window, cx| {
                                                                 on_action(
@@ -135,14 +142,14 @@ impl ResponsePaneView {
                                                 )
                                             })
                                             .when(!node.has_children, |el| {
-                                                el.child(div().w(px(10.0)))
+                                                el.child(div().w(px(12.0)))
                                             })
                                             .child(
                                                 div()
                                                     .font_family("monospace")
                                                     .text_xs()
                                                     .font_weight(FontWeight::SEMIBOLD)
-                                                    .text_color(rgb(0x9cdcfe))
+                                                    .text_color(key_color)
                                                     .child(node.key),
                                             )
                                             .child(
@@ -161,9 +168,7 @@ impl ResponsePaneView {
                                             ),
                                     )
                                     .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
+                                        h_flex()
                                             .gap_1()
                                             .flex_shrink_0()
                                             .child(
@@ -173,7 +178,7 @@ impl ResponsePaneView {
                                                 ))
                                                 .label("Path")
                                                 .xsmall()
-                                                .secondary()
+                                                .outline()
                                                 .rounded(ButtonRounded::Small)
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
@@ -196,7 +201,7 @@ impl ResponsePaneView {
                                                 ))
                                                 .label("Val")
                                                 .xsmall()
-                                                .secondary()
+                                                .outline()
                                                 .rounded(ButtonRounded::Small)
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {

@@ -2,15 +2,18 @@ use super::AuraWorkspaceView;
 use crate::app_state::EnvironmentEditorMode;
 use crate::input_registry::InputKey;
 use crate::stores::workspace_store::DragPlacement;
+use crate::templating_ui::render_template_token;
+use crate::theme::icon;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::{Dialog, DialogFooter};
 use gpui_kit::component::input::{Editor, Input};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex};
 
 impl AuraWorkspaceView {
     pub(super) fn apply_workspace_modals(&self, el: Div, cx: &mut Context<Self>) -> Div {
@@ -33,7 +36,7 @@ impl AuraWorkspaceView {
                         });
                     })
                     .child(
-                        div().text_xs().text_color(rgb(0xaaaaaa)).child(format!(
+                        div().text_xs().text_color(cx.theme().muted_foreground).child(format!(
                             "Are you sure you want to delete '{}' from disk? This action cannot be undone.",
                             item_name
                         )),
@@ -83,7 +86,7 @@ impl AuraWorkspaceView {
                             .flex()
                             .flex_col()
                             .gap_3()
-                            .child(div().text_xs().text_color(rgb(0xaaaaaa)).child(format!(
+                            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(format!(
                                 "Enter new name for '{}':",
                                 rename_state.original_name
                             )))
@@ -100,7 +103,7 @@ impl AuraWorkspaceView {
                                         } else {
                                             div()
                                                 .text_sm()
-                                                .text_color(rgb(0xffffff))
+                                                .text_color(cx.theme().foreground)
                                                 .child(current_val.clone())
                                                 .into_any_element()
                                         },
@@ -171,7 +174,7 @@ impl AuraWorkspaceView {
                                 } else {
                                     div()
                                         .text_xs()
-                                        .text_color(rgb(0xffffff))
+                                        .text_color(cx.theme().foreground)
                                         .child(move_dialog.search_query.clone())
                                         .into_any_element()
                                 },
@@ -204,7 +207,11 @@ impl AuraWorkspaceView {
                                                     .items_center()
                                                     .gap_2()
                                                     .text_xs()
-                                                    .child(if dest.is_root { "🏠" } else { "📁" })
+                                                    .child(icon(if dest.is_root {
+                                                        IconName::House
+                                                    } else {
+                                                        IconName::Folder
+                                                    }).xsmall())
                                                     .child(dest.display_name.clone()),
                                             )
                                     })),
@@ -241,7 +248,14 @@ impl AuraWorkspaceView {
             let is_code_mode = env_ed.mode == EnvironmentEditorMode::Code;
             let has_code_error = env_ed.code_error.is_some();
             let view_close = cx.entity().clone();
-            let border = rgb(0x333333);
+            let border = cx.theme().border;
+            let danger_color = cx.theme().danger;
+            let danger_bg = cx.theme().danger.opacity(0.14);
+            let subtle_bg = cx.theme().secondary.opacity(0.35);
+            let muted_bg = cx.theme().muted.opacity(0.25);
+            let muted_fg = cx.theme().muted_foreground;
+            let fg_color = cx.theme().foreground;
+            let radius = cx.theme().radius;
 
             el.child(
                 Dialog::new(cx)
@@ -269,112 +283,62 @@ impl AuraWorkspaceView {
                                     .items_center()
                                     .justify_between()
                                     .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
+                                        h_flex()
                                             .gap_1()
                                             .p_0p5()
-                                            .rounded_md()
-                                            .bg(rgb(0x1d1d1f))
+                                            .rounded(radius)
+                                            .bg(subtle_bg)
                                             .border_1()
                                             .border_color(border)
-                                            .child(
-                                                div()
-                                                    .id("env-mode-ui-btn")
-                                                    .px_2p5()
-                                                    .py_1()
-                                                    .rounded_sm()
-                                                    .cursor_pointer()
-                                                    .text_xs()
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .bg(if !is_code_mode {
-                                                        rgb(0x0066cc)
-                                                    } else {
-                                                        rgba(0x00000000)
-                                                    })
-                                                    .text_color(if !is_code_mode {
-                                                        rgb(0xffffff)
-                                                    } else {
-                                                        rgb(0x9e9ea4)
-                                                    })
-                                                    .hover(|s| {
-                                                        if !is_code_mode {
-                                                            s
-                                                        } else {
-                                                            s.text_color(rgb(0xffffff))
-                                                        }
-                                                    })
-                                                    .child("UI Editor")
+                                            .child({
+                                                let btn = Button::new("env-mode-ui-btn")
+                                                    .label("UI Editor")
+                                                    .xsmall()
+                                                    .rounded(ButtonRounded::Small)
                                                     .on_click(cx.listener(|this, _, _, cx| {
                                                         this.state.set_environment_editor_mode(
                                                             EnvironmentEditorMode::Ui,
                                                         );
                                                         cx.notify();
-                                                    })),
-                                            )
-                                            .child(
-                                                div()
-                                                    .id("env-mode-code-btn")
-                                                    .px_2p5()
-                                                    .py_1()
-                                                    .rounded_sm()
-                                                    .cursor_pointer()
-                                                    .text_xs()
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .bg(if is_code_mode {
-                                                        rgb(0x0066cc)
-                                                    } else {
-                                                        rgba(0x00000000)
-                                                    })
-                                                    .text_color(if is_code_mode {
-                                                        rgb(0xffffff)
-                                                    } else {
-                                                        rgb(0x9e9ea4)
-                                                    })
-                                                    .hover(|s| {
-                                                        if is_code_mode {
-                                                            s
-                                                        } else {
-                                                            s.text_color(rgb(0xffffff))
-                                                        }
-                                                    })
-                                                    .child("Code Editor (TOML)")
+                                                    }));
+                                                if !is_code_mode {
+                                                    btn.primary()
+                                                } else {
+                                                    btn.ghost()
+                                                }
+                                            })
+                                            .child({
+                                                let btn = Button::new("env-mode-code-btn")
+                                                    .label("Code Editor (TOML)")
+                                                    .xsmall()
+                                                    .rounded(ButtonRounded::Small)
                                                     .on_click(cx.listener(|this, _, _, cx| {
                                                         this.state.set_environment_editor_mode(
                                                             EnvironmentEditorMode::Code,
                                                         );
                                                         cx.notify();
-                                                    })),
-                                            ),
+                                                    }));
+                                                if is_code_mode {
+                                                    btn.primary()
+                                                } else {
+                                                    btn.ghost()
+                                                }
+                                            }),
                                     )
                                     .when(is_code_mode, |bar| {
                                         bar.child(
-                                            div()
-                                                .flex()
-                                                .items_center()
+                                            h_flex()
                                                 .gap_2()
                                                 .child(if has_code_error {
-                                                    div()
-                                                        .px_2()
-                                                        .py_0p5()
-                                                        .rounded_sm()
-                                                        .bg(rgb(0x4a1d1d))
-                                                        .border_1()
-                                                        .border_color(rgb(0xe74c3c))
-                                                        .text_xs()
-                                                        .text_color(rgb(0xff6b6b))
-                                                        .child("⚠ Invalid TOML")
+                                                    Tag::danger()
+                                                        .outline()
+                                                        .xsmall()
+                                                        .child("Invalid TOML")
                                                 } else {
-                                                    div()
-                                                        .px_2()
-                                                        .py_0p5()
-                                                        .rounded_sm()
-                                                        .bg(rgb(0x1d3a24))
-                                                        .border_1()
-                                                        .border_color(rgb(0x28a745))
-                                                        .text_xs()
-                                                        .text_color(rgb(0x4cd964))
-                                                        .child("✓ Valid TOML")
+                                                    Tag::success()
+                                                        .outline()
+                                                        .xsmall()
+                                                        .child("Valid TOML")
                                                 })
                                                 .child(
                                                     Button::new("env-code-format-btn")
@@ -401,7 +365,7 @@ impl AuraWorkspaceView {
                                             div()
                                                 .text_xs()
                                                 .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(rgb(0x9e9ea4))
+                                                .text_color(muted_fg)
                                                 .child("ENVIRONMENT NAME"),
                                         )
                                         .child(
@@ -412,7 +376,7 @@ impl AuraWorkspaceView {
                                             } else {
                                                 div()
                                                     .text_xs()
-                                                    .text_color(rgb(0xffffff))
+                                                    .text_color(fg_color)
                                                     .child(env_ed.profile.name.clone())
                                                     .into_any_element()
                                             },
@@ -427,7 +391,7 @@ impl AuraWorkspaceView {
                                             div()
                                                 .text_xs()
                                                 .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(rgb(0x9e9ea4))
+                                                .text_color(muted_fg)
                                                 .child(format!(
                                                     "VARIABLES ({} • disabled keys save with ~)",
                                                     env_ed.profile.variables.len()
@@ -473,11 +437,11 @@ impl AuraWorkspaceView {
                                                     .items_center()
                                                     .gap_2()
                                                     .p_1p5()
-                                                    .rounded_sm()
+                                                    .rounded(radius)
                                                     .bg(if enabled {
-                                                        rgb(0x272729)
+                                                        subtle_bg
                                                     } else {
-                                                        rgb(0x202022)
+                                                        muted_bg
                                                     })
                                                     .border_1()
                                                     .border_color(border)
@@ -511,6 +475,7 @@ impl AuraWorkspaceView {
                                                         {
                                                             Input::new(inp)
                                                                 .xsmall()
+                                                                .token(render_template_token)
                                                                 .w_full()
                                                                 .into_any_element()
                                                         } else {
@@ -527,6 +492,7 @@ impl AuraWorkspaceView {
                                                         {
                                                             Input::new(inp)
                                                                 .xsmall()
+                                                                .token(render_template_token)
                                                                 .w_full()
                                                                 .into_any_element()
                                                         } else {
@@ -541,7 +507,7 @@ impl AuraWorkspaceView {
                                                             "env-var-del".into(),
                                                             idx as u64,
                                                         ))
-                                                        .label("×")
+                                                        .icon(icon(IconName::X))
                                                         .xsmall()
                                                         .ghost()
                                                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -562,10 +528,10 @@ impl AuraWorkspaceView {
                             .when(is_code_mode, |body| {
                                 body.child(
                                     div()
-                                        .rounded_md()
+                                        .rounded(radius)
                                         .border_1()
                                         .border_color(if has_code_error {
-                                            rgb(0xe74c3c)
+                                            danger_color
                                         } else {
                                             border
                                         })
@@ -583,10 +549,10 @@ impl AuraWorkspaceView {
                                                 div()
                                                     .p_2()
                                                     .h(px(300.0))
-                                                    .bg(rgb(0x18181a))
+                                                    .bg(muted_bg)
                                                     .font_family("monospace")
                                                     .text_xs()
-                                                    .text_color(rgb(0xd4d4d8))
+                                                    .text_color(fg_color)
                                                     .child(env_ed.code_buffer.clone())
                                                     .into_any_element()
                                             },
@@ -597,12 +563,12 @@ impl AuraWorkspaceView {
                                         div()
                                             .px_2p5()
                                             .py_1p5()
-                                            .rounded_sm()
-                                            .bg(rgb(0x4a1d1d))
+                                            .rounded(radius)
+                                            .bg(danger_bg)
                                             .border_1()
-                                            .border_color(rgb(0xe74c3c))
+                                            .border_color(danger_color)
                                             .text_xs()
-                                            .text_color(rgb(0xff6b6b))
+                                            .text_color(danger_color)
                                             .child(err),
                                     )
                                 })

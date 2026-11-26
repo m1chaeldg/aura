@@ -2,18 +2,20 @@
 
 use crate::app_state::AuraAppState;
 use crate::stores::workspace_store::{DragPlacement, WorkspaceTreeNode};
+use crate::theme::icon;
 use aura_core::model::HttpMethod;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::collapsible::Collapsible;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::collapsible::Collapsible;
 use gpui_kit::component::sidebar::{SidebarFooter, SidebarHeader};
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::tree::{tree, TreeEntry, TreeItem, TreeState};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -126,8 +128,14 @@ impl SidebarView {
             + Copy,
         on_env_action: impl Fn(&mut V, SidebarEnvAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let text_muted = rgb(0x7a7a7a);
-        let green_color = rgb(0x28a745);
+        let sidebar_bg = cx.theme().sidebar;
+        let sidebar_border = cx.theme().sidebar_border;
+        let sidebar_fg = cx.theme().sidebar_foreground;
+        let text_muted = cx.theme().muted_foreground;
+        let green_color = cx.theme().success;
+        let active_bg = cx.theme().list_active;
+        let hover_bg = cx.theme().list_hover;
+        let primary_color = cx.theme().primary;
 
         let is_empty = state.workspace_store.tree.is_empty() && state.collections.is_empty();
 
@@ -223,7 +231,6 @@ impl SidebarView {
                                     && d.placement == DragPlacement::Inside
                             })
                             .unwrap_or(false);
-                        let chevron = if is_expanded { "▾" } else { "▸" };
 
                         let path_click = path.clone();
                         let path_ctx = path.clone();
@@ -315,8 +322,19 @@ impl SidebarView {
                             });
 
                         if is_inside_drop {
-                            item = item.border_1().border_color(rgb(0x0066cc));
+                            item = item.border_1().border_color(primary_color);
                         }
+
+                        let chevron_icon = if is_expanded {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        };
+                        let folder_icon = if is_expanded {
+                            IconName::FolderOpen
+                        } else {
+                            IconName::Folder
+                        };
 
                         item.child(
                             div()
@@ -324,17 +342,12 @@ impl SidebarView {
                                 .items_center()
                                 .gap_2()
                                 .overflow_hidden()
-                                .child(div().text_xs().text_color(rgb(0x8e8e93)).child(chevron))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(if is_expanded {
-                                            rgb(0x2997ff)
-                                        } else {
-                                            rgb(0xa1a1a6)
-                                        })
-                                        .child("📁"),
-                                )
+                                .child(icon(chevron_icon).xsmall().text_color(text_muted))
+                                .child(icon(folder_icon).xsmall().text_color(if is_expanded {
+                                    primary_color
+                                } else {
+                                    text_muted
+                                }))
                                 .child(if is_rename {
                                     if let Some(ref input) = rename_input_cloned {
                                         Input::new(input)
@@ -512,15 +525,16 @@ impl SidebarView {
                 .items_center()
                 .size_full()
                 .py_3()
-                .bg(rgb(0x222224))
+                .bg(sidebar_bg)
                 .border_r_1()
-                .border_color(rgb(0x333333))
+                .border_color(sidebar_border)
                 .child(
                     Button::new("sidebar-collapsed-new-btn")
-                        .label("+")
+                        .icon(icon(IconName::Plus))
                         .xsmall()
                         .ghost()
                         .rounded(ButtonRounded::Small)
+                        .tooltip("New Request")
                         .on_click(cx.listener(move |this, _, window, cx| {
                             on_new(this, window, cx);
                         })),
@@ -532,9 +546,9 @@ impl SidebarView {
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x222224))
+            .bg(sidebar_bg)
             .border_r_1()
-            .border_color(rgb(0x333333))
+            .border_color(sidebar_border)
             .overflow_hidden()
             .child(
                 div()
@@ -543,7 +557,7 @@ impl SidebarView {
                     .pt_3()
                     .pb_2()
                     .border_b_1()
-                    .border_color(rgb(0x333333))
+                    .border_color(sidebar_border)
                     .child(SidebarHeader::new().child(header_div)),
             )
             .child(
@@ -583,7 +597,7 @@ impl SidebarView {
                 div()
                     .flex_shrink_0()
                     .border_t_1()
-                    .border_color(rgb(0x333333))
+                    .border_color(sidebar_border)
                     .px_2()
                     .py_2()
                     .flex()
@@ -625,9 +639,10 @@ impl SidebarView {
                                     })
                                     .child(
                                         Button::new("sidebar-env-new-btn")
-                                            .label("+")
+                                            .icon(icon(IconName::Plus))
                                             .xsmall()
                                             .ghost()
+                                            .tooltip("New Environment")
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 on_env_action(
                                                     this,
@@ -644,7 +659,7 @@ impl SidebarView {
                             div()
                                 .px_1()
                                 .text_xs()
-                                .text_color(rgb(0x666666))
+                                .text_color(text_muted)
                                 .child("No environments yet"),
                         )
                     })
@@ -670,13 +685,13 @@ impl SidebarView {
                                     .justify_between()
                                     .px_1p5()
                                     .py_0p5()
-                                    .rounded_sm()
+                                    .rounded(cx.theme().radius)
                                     .bg(if is_active {
-                                        rgb(0x2a2d34)
+                                        active_bg
                                     } else {
-                                        rgb(0x222224)
+                                        sidebar_bg
                                     })
-                                    .hover(|s| s.bg(rgb(0x2c2c30)))
+                                    .hover(move |s| s.bg(hover_bg))
                                     .child(
                                         div()
                                             .id(ElementId::NamedInteger(
@@ -705,16 +720,16 @@ impl SidebarView {
                                                     .bg(if is_active {
                                                         green_color
                                                     } else {
-                                                        rgb(0x555555)
+                                                        text_muted.opacity(0.45)
                                                     }),
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
                                                     .text_color(if is_active {
-                                                        rgb(0xffffff)
+                                                        primary_color
                                                     } else {
-                                                        rgb(0xcccccc)
+                                                        sidebar_fg
                                                     })
                                                     .truncate()
                                                     .child(format!("{ename} ({var_count})")),
@@ -801,18 +816,16 @@ impl SidebarView {
                 div()
                     .flex_shrink_0()
                     .border_t_1()
-                    .border_color(rgb(0x333333))
+                    .border_color(sidebar_border)
                     .child(
                         SidebarFooter::new().child(
-                            div()
-                                .flex()
-                                .items_center()
+                            h_flex()
                                 .gap_2()
                                 .px_3()
                                 .py_2()
                                 .text_xs()
                                 .text_color(text_muted)
-                                .child(div().text_color(green_color).child("✓"))
+                                .child(icon(IconName::Check).xsmall().text_color(green_color))
                                 .child("Workspace Synced"),
                         ),
                     ),

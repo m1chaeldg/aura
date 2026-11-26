@@ -1,11 +1,12 @@
 use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
+use crate::theme::subtle_surface;
 use aura_core::model::AuraRequest;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
-use gpui_kit::component::Sizable;
+use gpui_kit::component::switch::Switch;
+use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -15,9 +16,9 @@ impl RequestEditorView {
         max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
-        border: Rgba,
-        muted: Rgba,
-        normal: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -31,25 +32,29 @@ impl RequestEditorView {
         let is_redirects_focused =
             matches!(active_input, Some(ActiveInputTarget::SettingMaxRedirects));
 
+        let card_bg = subtle_surface(cx);
+        let field_bg = cx.theme().background;
+        let focus_border = cx.theme().primary;
+        let danger_color = cx.theme().danger;
+        let radius = cx.theme().radius;
+        let view_entity = cx.entity().clone();
+
         let render_toggle_row =
             |id: &'static str,
              label: &'static str,
              desc: &'static str,
              enabled: bool,
              action: RequestEditorAction| {
-                div()
-                    .flex()
-                    .items_center()
+                let entity = view_entity.clone();
+                h_flex()
                     .justify_between()
                     .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
+                    .rounded(radius)
+                    .bg(card_bg)
                     .border_1()
                     .border_color(border)
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
+                        v_flex()
                             .gap_0p5()
                             .child(
                                 div()
@@ -60,25 +65,19 @@ impl RequestEditorView {
                             )
                             .child(div().text_xs().text_color(muted).child(desc)),
                     )
-                    .child({
-                        let btn = Button::new(id)
-                            .label(if enabled { "Enabled" } else { "Disabled" })
+                    .child(
+                        Switch::new(id)
+                            .checked(enabled)
                             .small()
-                            .rounded(ButtonRounded::Medium)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(this, action.clone(), window, cx);
-                            }));
-                        if enabled {
-                            btn.primary()
-                        } else {
-                            btn.secondary()
-                        }
-                    })
+                            .on_change(move |_, window, app| {
+                                let _ = entity.update(app, |this, cx| {
+                                    on_action(this, action.clone(), window, cx);
+                                });
+                            }),
+                    )
             };
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_3()
             .child(
                 div()
@@ -87,33 +86,26 @@ impl RequestEditorView {
                     .text_color(muted)
                     .child("REQUEST EXECUTION SETTINGS"),
             )
-            // Timeout (ms)
             .child(
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1p5()
                     .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
+                    .rounded(radius)
+                    .bg(card_bg)
                     .border_1()
                     .border_color(if timeout_error.is_some() {
-                        rgb(0xe74c3c)
+                        danger_color
                     } else if is_timeout_focused {
-                        rgb(0x0066cc)
+                        focus_border
                     } else {
                         border
                     })
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .justify_between()
                             .gap_3()
                             .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
+                                v_flex()
                                     .gap_0p5()
                                     .child(
                                         div()
@@ -126,32 +118,29 @@ impl RequestEditorView {
                                         div()
                                             .text_xs()
                                             .text_color(muted)
-                                            .child("0 = unlimited (no timeout), or 100 – 300000 ms"),
+                                            .child("0 = unlimited (no timeout), or 100 - 300000 ms"),
                                     ),
                             )
-                            .child(
-                                div().w(px(140.0)).child(Self::render_inline_input(
-                                    "setting-timeout-input",
-                                    inputs.get_input(&InputKey::SettingTimeout),
-                                    &timeout.to_string(),
-                                    is_timeout_focused,
-                                    false,
-                                    rgb(0x222224),
-                                    rgb(0x38383a),
-                                    normal,
-                                )),
-                            ),
+                            .child(div().w(px(140.0)).child(Self::render_inline_input(
+                                "setting-timeout-input",
+                                inputs.get_input(&InputKey::SettingTimeout),
+                                &timeout.to_string(),
+                                is_timeout_focused,
+                                false,
+                                field_bg,
+                                border,
+                                normal,
+                            ))),
                     )
                     .when_some(timeout_error, |el, err| {
                         el.child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(0xe74c3c))
+                                .text_color(danger_color)
                                 .child(err.to_string()),
                         )
                     }),
             )
-            // Follow Redirects
             .child(render_toggle_row(
                 "setting-follow-redirects-btn",
                 "Follow Redirects",
@@ -159,33 +148,26 @@ impl RequestEditorView {
                 redirects,
                 RequestEditorAction::ToggleSettingFollowRedirects,
             ))
-            // Max Redirects
             .child(
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1p5()
                     .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
+                    .rounded(radius)
+                    .bg(card_bg)
                     .border_1()
                     .border_color(if max_redirects_error.is_some() {
-                        rgb(0xe74c3c)
+                        danger_color
                     } else if is_redirects_focused {
-                        rgb(0x0066cc)
+                        focus_border
                     } else {
                         border
                     })
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .justify_between()
                             .gap_3()
                             .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
+                                v_flex()
                                     .gap_0p5()
                                     .child(
                                         div()
@@ -198,32 +180,29 @@ impl RequestEditorView {
                                         div()
                                             .text_xs()
                                             .text_color(muted)
-                                            .child("Valid range: 0 – 50 hops"),
+                                            .child("Valid range: 0 - 50 hops"),
                                     ),
                             )
-                            .child(
-                                div().w(px(140.0)).child(Self::render_inline_input(
-                                    "setting-max-redirects-input",
-                                    inputs.get_input(&InputKey::SettingMaxRedirects),
-                                    &max_redirects.to_string(),
-                                    is_redirects_focused,
-                                    false,
-                                    rgb(0x222224),
-                                    rgb(0x38383a),
-                                    normal,
-                                )),
-                            ),
+                            .child(div().w(px(140.0)).child(Self::render_inline_input(
+                                "setting-max-redirects-input",
+                                inputs.get_input(&InputKey::SettingMaxRedirects),
+                                &max_redirects.to_string(),
+                                is_redirects_focused,
+                                false,
+                                field_bg,
+                                border,
+                                normal,
+                            ))),
                     )
                     .when_some(max_redirects_error, |el, err| {
                         el.child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(0xe74c3c))
+                                .text_color(danger_color)
                                 .child(err.to_string()),
                         )
                     }),
             )
-            // Verify SSL
             .child(render_toggle_row(
                 "setting-verify-ssl-btn",
                 "Verify SSL Certificates",
@@ -231,7 +210,6 @@ impl RequestEditorView {
                 ssl,
                 RequestEditorAction::ToggleSettingVerifySsl,
             ))
-            // Inherit Auth
             .child(render_toggle_row(
                 "setting-inherit-auth-btn",
                 "Inherit Collection Auth",
@@ -240,5 +218,4 @@ impl RequestEditorView {
                 RequestEditorAction::ToggleSettingInheritAuth,
             ))
     }
-
 }

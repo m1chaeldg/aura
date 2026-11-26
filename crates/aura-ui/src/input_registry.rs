@@ -5,14 +5,20 @@
 //! user editing.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use gpui::{AppContext, Context, Entity, Subscription, Window};
-use gpui_kit::component::input::{EditorState, InputEvent, InputState, TextareaState};
+use aura_core::templating::TemplateContext;
+use gpui::{App, AppContext, Context, Entity, Subscription, Window};
+use gpui_kit::component::input::{
+    EditorState, InputEvent, InputState, TextDecorationCollection, TextareaState,
+};
 
 use crate::app_state::ActiveInputTarget;
 use crate::editor_support::{AuraCompletionProvider, CompletionLanguage, EditorContextData};
+use crate::templating_ui::{
+    TemplateHoverProvider, sync_editor_template_decorations, sync_input_template_tokens,
+};
 
 /// Unique key identifying every text input and textarea control in Aura.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -121,10 +127,13 @@ impl InputKey {
 /// `TextareaState`, and `EditorState` entities.
 pub struct InputRegistry {
     inputs: HashMap<InputKey, Entity<InputState>>,
+    masked_inputs: HashSet<InputKey>,
     textareas: HashMap<InputKey, Entity<TextareaState>>,
     editors: HashMap<InputKey, Entity<EditorState>>,
     editor_configs: HashMap<InputKey, (String, bool)>,
+    editor_decorations: HashMap<InputKey, TextDecorationCollection>,
     editor_context: Rc<RefCell<EditorContextData>>,
+    template_context: Rc<RefCell<TemplateContext>>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -138,10 +147,13 @@ impl InputRegistry {
     pub fn new() -> Self {
         Self {
             inputs: HashMap::new(),
+            masked_inputs: HashSet::new(),
             textareas: HashMap::new(),
             editors: HashMap::new(),
             editor_configs: HashMap::new(),
+            editor_decorations: HashMap::new(),
             editor_context: Rc::new(RefCell::new(EditorContextData::default())),
+            template_context: Rc::new(RefCell::new(TemplateContext::default())),
             subscriptions: Vec::new(),
         }
     }
@@ -150,6 +162,34 @@ impl InputRegistry {
     /// editor autocomplete providers.
     pub fn set_editor_context(&self, data: EditorContextData) {
         *self.editor_context.borrow_mut() = data;
+    }
+
+    /// Updates the live cascading `{{...}}` template context used for color coding and tooltips.
+    pub fn set_template_context(&self, ctx: TemplateContext) {
+        *self.template_context.borrow_mut() = ctx;
+    }
+
+    /// Returns a handle to the shared live `{{...}}` template context.
+    pub fn template_context(&self) -> Rc<RefCell<TemplateContext>> {
+        Rc::clone(&self.template_context)
+    }
+
+    /// Re-synchronizes all live single-line `InputState` tokens and `EditorState` decorations
+    /// against the current `template_context`.
+    pub fn sync_all_template_highlights(&mut self, cx: &mut App) {
+        let ctx = self.template_context.borrow().clone();
+        for (key, entity) in &self.inputs {
+            if !self.masked_inputs.contains(key) {
+                sync_input_template_tokens(entity, &ctx, cx);
+            }
+        }
+        for (key, entity) in &self.editors {
+            let mut col = self.editor_decorations.remove(key);
+            sync_editor_template_decorations(entity, &mut col, &ctx, cx);
+            if let Some(col) = col {
+                self.editor_decorations.insert(key.clone(), col);
+            }
+        }
     }
 
     /// Ensures a single-line `InputState` exists for `key` and matches `value`.
@@ -164,6 +204,12 @@ impl InputRegistry {
         on_event: impl Fn(&mut V, &InputKey, &Entity<InputState>, &InputEvent, &mut Context<V>)
             + 'static,
     ) -> Entity<InputState> {
+        if masked {
+            self.masked_inputs.insert(key.clone());
+        } else {
+            self.masked_inputs.remove(&key);
+        }
+
         if let Some(entity) = self.inputs.get(&key) {
             let entity = entity.clone();
             let current = entity.read(cx).value();
@@ -172,6 +218,10 @@ impl InputRegistry {
                 entity.update(cx, |state, cx| {
                     state.set_value(val_owned, window, cx);
                 });
+            }
+            if !masked {
+                let tpl_ctx = self.template_context.borrow().clone();
+                sync_input_template_tokens(&entity, &tpl_ctx, cx);
             }
             return entity;
         }
@@ -190,6 +240,10 @@ impl InputRegistry {
             on_event(this, &key_clone, &state, event, cx);
         });
         self.subscriptions.push(sub);
+        if !masked {
+            let tpl_ctx = self.template_context.borrow().clone();
+            sync_input_template_tokens(&entity, &tpl_ctx, cx);
+        }
         self.inputs.insert(key, entity.clone());
         entity
     }
@@ -247,14 +301,28 @@ impl InputRegistry {
         on_event: impl Fn(&mut V, &InputKey, &Entity<EditorState>, &InputEvent, &mut Context<V>)
             + 'static,
     ) -> Entity<EditorState> {
+        let desired_cfg = (language.to_string(), true);
         if let Some(entity) = self.editors.get(&key) {
             let entity = entity.clone();
+            if self.editor_configs.get(&key) != Some(&desired_cfg) {
+                let lang_owned = language.to_string();
+                entity.update(cx, |state, cx| {
+                    state.set_highlighter(&lang_owned, cx);
+                });
+                self.editor_configs.insert(key.clone(), desired_cfg);
+            }
             let current = entity.read(cx).value();
             if current.as_ref() != value {
                 let val_owned = value.to_string();
                 entity.update(cx, |state, cx| {
                     state.set_value(val_owned, window, cx);
                 });
+            }
+            let tpl_ctx = self.template_context.borrow().clone();
+            let mut col = self.editor_decorations.remove(&key);
+            sync_editor_template_decorations(&entity, &mut col, &tpl_ctx, cx);
+            if let Some(col) = col {
+                self.editor_decorations.insert(key, col);
             }
             return entity;
         }
@@ -275,6 +343,7 @@ impl InputRegistry {
             _ => None,
         };
         let editor_context = Rc::clone(&self.editor_context);
+        let tpl_hover_ctx = Rc::clone(&self.template_context);
         let entity = cx.new(|cx| {
             let mut state = EditorState::new(window, cx)
                 .language(language_owned)
@@ -286,6 +355,8 @@ impl InputRegistry {
                 state.lsp_mut().completion_provider =
                     Some(Rc::new(AuraCompletionProvider::new(lang, editor_context)));
             }
+            state.lsp_mut().hover_provider =
+                Some(Rc::new(TemplateHoverProvider::new(tpl_hover_ctx)));
             state
         });
 
@@ -294,12 +365,20 @@ impl InputRegistry {
             on_event(this, &key_clone, &state, event, cx);
         });
         self.subscriptions.push(sub);
+        self.editor_configs.insert(key.clone(), desired_cfg);
+        let tpl_ctx = self.template_context.borrow().clone();
+        let mut col = None;
+        sync_editor_template_decorations(&entity, &mut col, &tpl_ctx, cx);
+        if let Some(col) = col {
+            self.editor_decorations.insert(key.clone(), col);
+        }
         self.editors.insert(key, entity.clone());
         entity
     }
 
     /// Ensures a read-only code `EditorState` exists for `key` with the given `language`
     /// and `soft_wrap`, recreating it if `language` or `soft_wrap` changed.
+    #[allow(clippy::too_many_arguments)]
     pub fn ensure_readonly_editor<V: 'static>(
         &mut self,
         key: InputKey,
@@ -321,22 +400,39 @@ impl InputRegistry {
                         state.set_value(val_owned, window, cx);
                     });
                 }
+                let tpl_ctx = self.template_context.borrow().clone();
+                let mut col = self.editor_decorations.remove(&key);
+                sync_editor_template_decorations(&entity, &mut col, &tpl_ctx, cx);
+                if let Some(col) = col {
+                    self.editor_decorations.insert(key, col);
+                }
                 return entity;
             }
         }
 
+        self.editor_decorations.remove(&key);
         let placeholder_owned = placeholder.to_string();
         let value_owned = value.to_string();
         let language_owned = language.to_string();
+        let tpl_hover_ctx = Rc::clone(&self.template_context);
         let entity = cx.new(|cx| {
-            EditorState::new(window, cx)
+            let mut state = EditorState::new(window, cx)
                 .language(language_owned)
                 .line_number(true)
                 .soft_wrap(soft_wrap)
                 .placeholder(placeholder_owned)
-                .default_value(value_owned)
+                .default_value(value_owned);
+            state.lsp_mut().hover_provider =
+                Some(Rc::new(TemplateHoverProvider::new(tpl_hover_ctx)));
+            state
         });
         self.editor_configs.insert(key.clone(), desired_cfg);
+        let tpl_ctx = self.template_context.borrow().clone();
+        let mut col = None;
+        sync_editor_template_decorations(&entity, &mut col, &tpl_ctx, cx);
+        if let Some(col) = col {
+            self.editor_decorations.insert(key.clone(), col);
+        }
         self.editors.insert(key, entity.clone());
         entity
     }

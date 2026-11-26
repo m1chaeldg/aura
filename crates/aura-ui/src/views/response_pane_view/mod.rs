@@ -8,9 +8,11 @@ use crate::services::{
     AggregationOp, ChartType, FormatService, ResponseLanguage,
 };
 use crate::stores::{ResponseBodyMode, ResponseTab};
+use crate::theme::{icon, status_tag_variant, subtle_surface};
 use aura_core::model::{AuraResponse, TestAssertion};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::assets::IconName;
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
@@ -18,7 +20,7 @@ use gpui_kit::component::input::{Editor, EditorState, InputState};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{Selectable, Sizable};
+use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, ThemeStyled as _, h_flex, v_flex};
 use std::collections::HashSet;
 
 /// Actions emitted by `ResponsePaneView`.
@@ -105,14 +107,8 @@ impl ResponsePaneView {
             .join("\n")
     }
 
-    pub fn status_color(status: u16) -> Rgba {
-        match status {
-            200..=299 => rgb(0x28a745),
-            300..=399 => rgb(0x0066cc),
-            400..=499 => rgb(0xf5a623),
-            500..=599 => rgb(0xe74c3c),
-            _ => rgb(0x7a7a7a),
-        }
+    pub fn status_color(status: u16, cx: &App) -> Hsla {
+        crate::theme::status_color(status, cx)
     }
 
     pub fn format_size(bytes: usize) -> String {
@@ -152,9 +148,9 @@ impl ResponsePaneView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let border = rgb(0x333333);
-        let surface = rgb(0x272729);
-        let text_muted = rgb(0x7a7a7a);
+        let border = cx.theme().border;
+        let surface = subtle_surface(cx);
+        let text_muted = cx.theme().muted_foreground;
 
         div()
             .flex()
@@ -163,9 +159,9 @@ impl ResponsePaneView {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .bg(rgb(0x1b1b1d))
+            .bg(cx.theme().background)
             .child(match response {
-                None => Self::render_empty_state(border, text_muted),
+                None => Self::render_empty_state(border, text_muted, cx),
                 Some(resp) => Self::render_active_response(
                     resp,
                     active_tab,
@@ -196,16 +192,12 @@ impl ResponsePaneView {
             })
     }
 
-    fn render_empty_state(border: Rgba, text_muted: Rgba) -> Div {
-        div()
-            .flex()
-            .flex_col()
+    fn render_empty_state(border: Hsla, text_muted: Hsla, cx: &App) -> Div {
+        v_flex()
             .flex_1()
             .p_4()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .border_b_1()
                     .border_color(border)
@@ -214,14 +206,14 @@ impl ResponsePaneView {
                         div()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(0x28a745))
+                            .text_color(cx.theme().success)
                             .child("RESPONSE PANE"),
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(text_muted)
-                            .child("Status: -- • Time: --ms • Size: --B"),
+                            .child("Status: --  ·  Time: --ms  ·  Size: --B"),
                     ),
             )
             .child(
@@ -229,7 +221,7 @@ impl ResponsePaneView {
                     EmptyHeader::new()
                         .title(EmptyTitle::new().child("Ready to dispatch request"))
                         .description(EmptyDescription::new().child(
-                            "Send a request with 'Send ↵' or Ctrl+Enter to inspect headers, raw body, and formatting.",
+                            "Send a request with Send or Ctrl+Enter to inspect headers, body, and formatting.",
                         )),
                 ),
             )
@@ -257,9 +249,9 @@ impl ResponsePaneView {
         tests_editor: Option<&Entity<EditorState>>,
         console_editor: Option<&Entity<EditorState>>,
         table_search_input: Option<&Entity<InputState>>,
-        border: Rgba,
-        surface: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        surface: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -289,25 +281,15 @@ impl ResponsePaneView {
             ),
         ];
 
-        let status_variant = match resp.status {
-            200..=299 => TagVariant::Success,
-            300..=399 => TagVariant::Primary,
-            400..=499 => TagVariant::Warning,
-            500..=599 => TagVariant::Danger,
-            _ => TagVariant::Secondary,
-        };
+        let status_variant = status_tag_variant(resp.status);
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .size_full()
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .px_3()
                     .py_2()
@@ -315,9 +297,7 @@ impl ResponsePaneView {
                     .border_b_1()
                     .border_color(border)
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
+                        h_flex()
                             .gap_2()
                             .child(
                                 Tag::new()
@@ -329,36 +309,56 @@ impl ResponsePaneView {
                                 Tag::secondary()
                                     .outline()
                                     .small()
-                                    .child(format!("⏱ {} ms", resp.duration_ms)),
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(icon(IconName::Clock).xsmall())
+                                            .child(format!("{} ms", resp.duration_ms)),
+                                    ),
                             )
                             .child(
                                 Tag::secondary()
                                     .outline()
                                     .small()
-                                    .child(format!("📦 {}", Self::format_size(resp.size_bytes))),
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(icon(IconName::Package).xsmall())
+                                            .child(Self::format_size(resp.size_bytes)),
+                                    ),
                             )
                             .when(!resp.script_errors.is_empty(), |el| {
                                 el.child(
                                     Tag::new()
                                         .with_variant(TagVariant::Danger)
                                         .small()
-                                        .child(format!(
-                                            "⚠ {} Script Error{}",
-                                            resp.script_errors.len(),
-                                            if resp.script_errors.len() == 1 { "" } else { "s" }
-                                        )),
+                                        .child(
+                                            h_flex()
+                                                .gap_1()
+                                                .child(icon(IconName::TriangleAlert).xsmall())
+                                                .child(format!(
+                                                    "{} Script Error{}",
+                                                    resp.script_errors.len(),
+                                                    if resp.script_errors.len() == 1 {
+                                                        ""
+                                                    } else {
+                                                        "s"
+                                                    }
+                                                )),
+                                        ),
                                 )
                             }),
                     )
                     .child(
                         Button::new("body-mode-toggle-btn")
                             .label(match body_mode {
-                                ResponseBodyMode::Pretty => "Format: Pretty ▾",
-                                ResponseBodyMode::Compress => "Format: Compress ▾",
-                                ResponseBodyMode::Raw => "Format: Raw ▾",
+                                ResponseBodyMode::Pretty => "Format: Pretty",
+                                ResponseBodyMode::Compress => "Format: Compress",
+                                ResponseBodyMode::Raw => "Format: Raw",
                             })
+                            .dropdown_caret(true)
                             .xsmall()
-                            .secondary()
+                            .outline()
                             .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(this, ResponsePaneAction::ToggleBodyMode, window, cx);
@@ -366,15 +366,13 @@ impl ResponsePaneView {
                     ),
             )
             .when(!resp.script_errors.is_empty(), |el| {
-                el.child(Self::render_script_errors_banner(&resp.script_errors))
+                el.child(Self::render_script_errors_banner(&resp.script_errors, cx))
             })
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .px_3()
                     .py_1()
-                    .bg(rgb(0x222224))
+                    .bg(cx.theme().tab_bar)
                     .border_b_1()
                     .border_color(border)
                     .child({
@@ -435,37 +433,43 @@ impl ResponsePaneView {
             )
     }
 
-    fn render_script_errors_banner(errors: &[aura_core::model::ScriptError]) -> Div {
-        div()
-            .flex()
-            .flex_col()
+    fn render_script_errors_banner(
+        errors: &[aura_core::model::ScriptError],
+        cx: &App,
+    ) -> Div {
+        let danger = cx.theme().danger;
+        let radius = cx.theme().radius;
+        v_flex()
             .gap_1p5()
             .px_3()
             .py_2()
-            .bg(rgb(0x3a1818))
+            .bg(danger.opacity(0.14))
             .border_b_1()
-            .border_color(rgb(0xe74c3c))
+            .border_color(danger)
             .children(errors.iter().enumerate().map(|(idx, err)| {
-                div()
-                    .flex()
-                    .flex_col()
+                v_flex()
                     .gap_1()
                     .child(
                         Tag::new()
                             .with_variant(TagVariant::Danger)
                             .xsmall()
-                            .child(format!("⚠ {} Error", err.stage)),
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(icon(IconName::TriangleAlert).xsmall())
+                                    .child(format!("{} Error", err.stage)),
+                            ),
                     )
                     .child(
                         div()
                             .p_2()
-                            .rounded_sm()
-                            .bg(rgb(0x261212))
+                            .rounded(radius)
+                            .bg(cx.theme().background)
                             .border_1()
-                            .border_color(rgb(0x7a2b2b))
+                            .border_color(danger.opacity(0.6))
                             .font_family("monospace")
                             .text_xs()
-                            .text_color(rgb(0xff9b9b))
+                            .text_color(danger)
                             .child(SelectableText::new(
                                 ElementId::NamedInteger("resp-script-err".into(), idx as u64),
                                 err.message.clone(),
@@ -496,8 +500,8 @@ impl ResponsePaneView {
         tests_editor: Option<&Entity<EditorState>>,
         console_editor: Option<&Entity<EditorState>>,
         table_search_input: Option<&Entity<InputState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -514,7 +518,9 @@ impl ResponsePaneView {
                 cx,
                 on_action,
             ),
-            ResponseTab::Raw => Self::render_raw_tab(resp, raw_editor, border, muted),
+            ResponseTab::Raw => {
+                Self::render_raw_tab(resp, raw_editor, border, muted, cx.theme().foreground)
+            }
             ResponseTab::Table => Self::render_table_panel(
                 resp,
                 table_search,
@@ -529,7 +535,7 @@ impl ResponsePaneView {
             ResponseTab::Tree => {
                 Self::render_tree_panel(resp, tree_collapsed, border, muted, cx, on_action)
             }
-            ResponseTab::Headers => Self::render_headers_tab(resp, border, muted),
+            ResponseTab::Headers => Self::render_headers_tab(resp, border, muted, cx),
             ResponseTab::Tests => {
                 Self::render_tests_tab(resp, tests_editor, border, muted, cx, on_action)
             }
@@ -559,8 +565,8 @@ impl ResponsePaneView {
         is_lang_dropdown_open: bool,
         soft_wrap: bool,
         body_editor: Option<&Entity<EditorState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -623,9 +629,10 @@ impl ResponsePaneView {
                                     .relative()
                                     .child(
                                         Button::new("resp-lang-dropdown-btn")
-                                            .label(format!("Lang: {} ▾", effective_lang.label()))
+                                            .label(format!("Lang: {}", effective_lang.label()))
+                                            .dropdown_caret(true)
                                             .xsmall()
-                                            .secondary()
+                                            .outline()
                                             .rounded(ButtonRounded::Small)
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 on_action(
@@ -637,19 +644,18 @@ impl ResponsePaneView {
                                             })),
                                     )
                                     .when(is_lang_dropdown_open, |el| {
+                                        let primary = cx.theme().primary;
+                                        let popover_fg = cx.theme().popover_foreground;
+                                        let radius = cx.theme().radius;
                                         let menu = div()
                                             .id("resp-lang-dropdown-menu")
+                                            .popover_style(cx)
                                             .absolute()
                                             .top_full()
                                             .left_0()
                                             .mt_1()
-                                            .w(px(120.0))
-                                            .bg(rgb(0x252528))
-                                            .border_1()
-                                            .border_color(border)
-                                            .rounded_md()
+                                            .w(px(126.0))
                                             .p_1()
-                                            .shadow_lg()
                                             .flex()
                                             .flex_col()
                                             .gap_0p5()
@@ -673,7 +679,7 @@ impl ResponsePaneView {
                                                     .selected(is_selected)
                                                     .px_2()
                                                     .py_1()
-                                                    .rounded_sm()
+                                                    .rounded(radius)
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
                                                             on_action(
@@ -687,26 +693,24 @@ impl ResponsePaneView {
                                                         },
                                                     ))
                                                     .child(
-                                                        div()
-                                                            .flex()
-                                                            .items_center()
+                                                        h_flex()
                                                             .justify_between()
                                                             .w_full()
                                                             .text_xs()
                                                             .child(
                                                                 div()
                                                                     .text_color(if is_selected {
-                                                                        rgb(0xffffff)
+                                                                        popover_fg
                                                                     } else {
-                                                                        rgb(0xcccccc)
+                                                                        muted
                                                                     })
                                                                     .child(lang.label()),
                                                             )
                                                             .when(is_selected, |el| {
                                                                 el.child(
-                                                                    div()
-                                                                        .text_color(rgb(0x2997ff))
-                                                                        .child("✓"),
+                                                                    icon(IconName::Check)
+                                                                        .xsmall()
+                                                                        .text_color(primary),
                                                                 )
                                                             }),
                                                     )
@@ -785,7 +789,7 @@ impl ResponsePaneView {
                     .p_2()
                     .font_family("monospace")
                     .text_xs()
-                    .text_color(rgb(0xcccccc))
+                    .text_color(cx.theme().foreground)
                     .child(formatted)
                     .into_any_element()
             })
@@ -794,8 +798,9 @@ impl ResponsePaneView {
     fn render_raw_tab(
         resp: &AuraResponse,
         raw_editor: Option<&Entity<EditorState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
+        fg: Hsla,
     ) -> Div {
         let mut raw_http = format!("HTTP/1.1 {} {}\n", resp.status, resp.status_text);
         let mut header_entries: Vec<_> = resp.headers.iter().collect();
@@ -833,25 +838,25 @@ impl ResponsePaneView {
                     .p_2()
                     .font_family("monospace")
                     .text_xs()
-                    .text_color(rgb(0xcccccc))
+                    .text_color(fg)
                     .child(raw_http)
                     .into_any_element()
             })
     }
 
-    fn render_headers_tab(resp: &AuraResponse, border: Rgba, muted: Rgba) -> Div {
+    fn render_headers_tab(resp: &AuraResponse, border: Hsla, muted: Hsla, cx: &App) -> Div {
         let mut header_entries: Vec<_> = resp.headers.iter().collect();
         header_entries.sort_by_key(|(k, _)| (*k).clone());
+        let row_bg = subtle_surface(cx);
+        let key_color = cx.theme().blue;
+        let fg_color = cx.theme().foreground;
+        let radius = cx.theme().radius;
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .gap_2()
             .min_w_0()
             .child(
-                div()
-                    .flex()
-                    .items_center()
+                h_flex()
                     .justify_between()
                     .child(
                         div()
@@ -867,15 +872,14 @@ impl ResponsePaneView {
                             .child("Case-insensitive RFC 7230 headers"),
                     ),
             )
-            .child(div().flex().flex_col().gap_1().min_w_0().children(
+            .child(v_flex().gap_1().min_w_0().children(
                 header_entries.into_iter().enumerate().map(|(idx, (k, v))| {
-                    div()
-                        .flex()
+                    h_flex()
                         .items_start()
                         .justify_between()
                         .p_2()
-                        .rounded_md()
-                        .bg(rgb(0x272729))
+                        .rounded(radius)
+                        .bg(row_bg)
                         .border_1()
                         .border_color(border)
                         .text_xs()
@@ -890,7 +894,7 @@ impl ResponsePaneView {
                                 .child(
                                     div()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(0x2997ff))
+                                        .text_color(key_color)
                                         .flex_shrink_0()
                                         .child(SelectableText::new(
                                             ElementId::NamedInteger(
@@ -903,7 +907,7 @@ impl ResponsePaneView {
                                 .child(
                                     div()
                                         .font_family("monospace")
-                                        .text_color(rgb(0xffffff))
+                                        .text_color(fg_color)
                                         .min_w_0()
                                         .flex_1()
                                         .whitespace_normal()
@@ -923,8 +927,8 @@ impl ResponsePaneView {
     fn render_tests_tab<V: 'static>(
         resp: &AuraResponse,
         tests_editor: Option<&Entity<EditorState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -960,14 +964,24 @@ impl ResponsePaneView {
                                     Tag::new()
                                         .with_variant(TagVariant::Success)
                                         .xsmall()
-                                        .child(format!("✓ {passed} Passed")),
+                                        .child(
+                                            h_flex()
+                                                .gap_1()
+                                                .child(icon(IconName::Check).size(px(11.0)))
+                                                .child(format!("{passed} Passed")),
+                                        ),
                                 )
                                 .when(failed > 0, |el| {
                                     el.child(
                                         Tag::new()
                                             .with_variant(TagVariant::Danger)
                                             .xsmall()
-                                            .child(format!("✗ {failed} Failed")),
+                                            .child(
+                                                h_flex()
+                                                    .gap_1()
+                                                    .child(icon(IconName::X).size(px(11.0)))
+                                                    .child(format!("{failed} Failed")),
+                                            ),
                                     )
                                 })
                             }),
@@ -1016,7 +1030,7 @@ impl ResponsePaneView {
                     .p_2()
                     .font_family("monospace")
                     .text_xs()
-                    .text_color(rgb(0xcccccc))
+                    .text_color(cx.theme().foreground)
                     .child(formatted_text)
                     .into_any_element()
             })
@@ -1025,8 +1039,8 @@ impl ResponsePaneView {
     fn render_console_tab<V: 'static>(
         resp: &AuraResponse,
         console_editor: Option<&Entity<EditorState>>,
-        border: Rgba,
-        muted: Rgba,
+        border: Hsla,
+        muted: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
@@ -1127,7 +1141,7 @@ impl ResponsePaneView {
                     .p_2()
                     .font_family("monospace")
                     .text_xs()
-                    .text_color(rgb(0xcccccc))
+                    .text_color(cx.theme().foreground)
                     .child(formatted_text)
                     .into_any_element()
             })
