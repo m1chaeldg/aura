@@ -4,6 +4,7 @@ use crate::app_state::AuraAppState;
 use crate::stores::workspace_store::{DragPlacement, WorkspaceTreeNode};
 use aura_core::model::HttpMethod;
 use gpui::*;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::sidebar::{
     Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem,
 };
@@ -61,6 +62,7 @@ impl SidebarView {
     #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
         state: &AuraAppState,
+        inline_rename_input: Option<&Entity<InputState>>,
         cx: &mut Context<V>,
         on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
         on_new: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -98,6 +100,7 @@ impl SidebarView {
                     node,
                     0,
                     state,
+                    inline_rename_input,
                     cx,
                     on_select,
                     on_toggle_folder,
@@ -284,6 +287,7 @@ fn render_tree_node<V: 'static>(
     node: &WorkspaceTreeNode,
     depth: usize,
     state: &AuraAppState,
+    inline_rename_input: Option<&Entity<InputState>>,
     cx: &mut Context<V>,
     on_select: impl Fn(&mut V, &str, &str, &mut Window, &mut Context<V>) + 'static + Copy,
     on_toggle_folder: impl Fn(&mut V, &std::path::Path, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -436,13 +440,25 @@ fn render_tree_node<V: 'static>(
                         .child("📁"),
                 )
                 .child(if is_rename {
-                    div()
+                    let box_div = div()
+                        .flex_1()
                         .px_1()
                         .bg(rgb(0x1d1d1f))
                         .border_1()
                         .border_color(rgb(0x0066cc))
-                        .rounded_sm()
-                        .child(name.clone())
+                        .rounded_sm();
+                    if let Some(input) = inline_rename_input {
+                        box_div.child(
+                            Input::new(input)
+                                .id("sidebar-inline-rename-folder")
+                                .appearance(false)
+                                .w_full()
+                                .text_xs()
+                                .text_color(rgb(0xffffff)),
+                        )
+                    } else {
+                        box_div.child(name.clone())
+                    }
                 } else {
                     div().child(name.clone())
                 });
@@ -524,6 +540,7 @@ fn render_tree_node<V: 'static>(
                         child,
                         depth + 1,
                         state,
+                        inline_rename_input,
                         cx,
                         on_select,
                         on_toggle_folder,
@@ -648,13 +665,25 @@ fn render_tree_node<V: 'static>(
                         .child(method.as_str()),
                 )
                 .child(if is_rename {
-                    div()
+                    let box_div = div()
+                        .flex_1()
                         .px_1()
                         .bg(rgb(0x1d1d1f))
                         .border_1()
                         .border_color(rgb(0x0066cc))
-                        .rounded_sm()
-                        .child(name.clone())
+                        .rounded_sm();
+                    if let Some(input) = inline_rename_input {
+                        box_div.child(
+                            Input::new(input)
+                                .id("sidebar-inline-rename-folder")
+                                .appearance(false)
+                                .w_full()
+                                .text_xs()
+                                .text_color(rgb(0xffffff)),
+                        )
+                    } else {
+                        box_div.child(name.clone())
+                    }
                 } else {
                     div().child(name.clone())
                 });

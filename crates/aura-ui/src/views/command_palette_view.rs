@@ -3,11 +3,12 @@
 use crate::app_state::AuraAppState;
 use aura_core::model::HttpMethod;
 use gpui::*;
+use gpui_kit::component::input::{Input, InputState};
 
 pub struct CommandPaletteView;
 
 impl CommandPaletteView {
-    pub fn render(state: &AuraAppState) -> impl IntoElement {
+    pub fn render(state: &AuraAppState, search_input: &Entity<InputState>) -> impl IntoElement {
         let accent_blue = rgb(0x0066cc);
         let surface_color = rgb(0x272729);
         let border_color = rgb(0x333333);
@@ -46,26 +47,14 @@ impl CommandPaletteView {
                             .cursor_text()
                             .child(div().text_sm().text_color(accent_blue).child("🔍"))
                             .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(if state.command_palette_search.is_empty() {
-                                                text_muted
-                                            } else {
-                                                text_color
-                                            })
-                                            .child(if state.command_palette_search.is_empty() {
-                                                "Search requests or type command... (Esc to dismiss)"
-                                                    .to_string()
-                                            } else {
-                                                state.command_palette_search.clone()
-                                            }),
-                                    )
-                                    .child(div().w(px(2.0)).h(px(14.0)).bg(accent_blue)),
+                                div().flex_1().child(
+                                    Input::new(search_input)
+                                        .id("command-palette-search-input")
+                                        .appearance(false)
+                                        .w_full()
+                                        .text_sm()
+                                        .text_color(text_color),
+                                ),
                             ),
                     )
                     .child(div().flex().flex_col().py_2().children(

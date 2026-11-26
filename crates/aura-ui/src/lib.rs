@@ -1,6 +1,7 @@
 //! GPUI Presentation Views, Domain Stores, and Ergonomics for Aura.
 
 pub mod app_state;
+pub mod input_registry;
 pub mod keybindings;
 pub mod preferences;
 pub mod services;

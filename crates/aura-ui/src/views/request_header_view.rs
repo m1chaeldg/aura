@@ -3,6 +3,7 @@
 use aura_core::model::HttpMethod;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::input::{Input, InputContentType, InputState};
 
 pub struct RequestHeaderView;
 
@@ -23,13 +24,13 @@ impl RequestHeaderView {
     #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
         method: HttpMethod,
-        url: &str,
+        url_input: &Entity<InputState>,
         is_in_flight: bool,
         is_url_focused: bool,
         is_dirty: bool,
         cx: &mut Context<V>,
         on_cycle_method: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
-        on_focus_url: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
+        _on_focus_url: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_send: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_cancel: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_save: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -70,16 +71,6 @@ impl RequestHeaderView {
             border_color
         };
 
-        let display_url = if url.is_empty() {
-            if is_url_focused {
-                "|"
-            } else {
-                "Enter request URL (e.g. https://postman-echo.com/get)..."
-            }
-        } else {
-            url
-        };
-
         let mut header = div()
             .id("request-header-container")
             .flex()
@@ -117,8 +108,8 @@ impl RequestHeaderView {
                     .flex()
                     .flex_1()
                     .items_center()
-                    .px_3()
-                    .py_1p5()
+                    .px_2()
+                    .py_0p5()
                     .rounded_md()
                     .bg(rgb(0x1d1d1f))
                     .border_1()
@@ -130,21 +121,15 @@ impl RequestHeaderView {
                             s
                         }
                     })
-                    .cursor_text()
-                    .text_sm()
-                    .text_color(if url.is_empty() && !is_url_focused {
-                        rgb(0x7a7a7a)
-                    } else {
-                        rgb(0xffffff)
-                    })
-                    .child(if is_url_focused && !url.is_empty() {
-                        format!("{url}|")
-                    } else {
-                        display_url.to_string()
-                    })
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_focus_url(this, window, cx);
-                    })),
+                    .child(
+                        Input::new(url_input)
+                            .id("url-text-input")
+                            .appearance(false)
+                            .content_type(InputContentType::Url)
+                            .w_full()
+                            .text_sm()
+                            .text_color(rgb(0xffffff)),
+                    ),
             );
 
         if Self::is_save_button_visible(is_dirty) {

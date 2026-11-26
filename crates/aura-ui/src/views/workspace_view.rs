@@ -1,6 +1,7 @@
 //! Modular GPUI Desktop Workspace View coordinating single-responsibility sub-views.
 
 use crate::app_state::{AuraAppState, EditorDialogState};
+use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::LayoutOrientation;
 use crate::views::{
     CommandPaletteView, ContextMenuView, LogViewerView, RequestEditorAction, RequestEditorView,
@@ -8,12 +9,14 @@ use crate::views::{
     TabBarView,
 };
 
-use aura_core::model::HttpMethod;
+use aura_core::model::{AuthConfig, BodyType, HttpMethod};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
 
 pub struct AuraWorkspaceView {
     pub state: AuraAppState,
+    pub inputs: InputRegistry,
     pub focus_handle: Option<FocusHandle>,
     #[allow(dead_code)]
     watcher_cancel: Option<tokio_util::sync::CancellationToken>,
@@ -25,6 +28,7 @@ impl AuraWorkspaceView {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let mut view = Self {
             state: AuraAppState::new(),
+            inputs: InputRegistry::new(),
             focus_handle: Some(cx.focus_handle()),
             watcher_cancel: None,
             auto_save_seq: 0,
@@ -748,6 +752,7 @@ impl AuraWorkspaceView {
 
     fn render_editor_dialog(
         dialog: &EditorDialogState,
+        inputs: &InputRegistry,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let (title, subtitle, width, body_el) = match dialog {
@@ -767,12 +772,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Key / Header Name",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "e.g. Content-Type",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Header Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "e.g. application/json",
@@ -796,12 +803,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Key / Header Name",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "Header Name",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Header Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "Header Value",
@@ -824,12 +833,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Parameter Key",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "e.g. page",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Parameter Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "e.g. 1",
@@ -853,12 +864,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Parameter Key",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "Key",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Parameter Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "Value",
@@ -875,6 +888,7 @@ impl AuraWorkspaceView {
                     .gap_2()
                     .child(Self::render_dialog_input_row(
                         "Body Content",
+                        inputs.get_input(&InputKey::EditorDialogField(0)),
                         content,
                         true,
                         "{\n  \"key\": \"value\"\n}",
@@ -890,6 +904,7 @@ impl AuraWorkspaceView {
                     .gap_2()
                     .child(Self::render_dialog_input_row(
                         "Token",
+                        inputs.get_input(&InputKey::EditorDialogField(0)),
                         token,
                         true,
                         "eyJhbGciOi...",
@@ -910,10 +925,18 @@ impl AuraWorkspaceView {
                         .flex_col()
                         .gap_3()
                         .child(Self::render_dialog_input_row(
-                            "Username", username, !is_pw, "Username",
+                            "Username",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
+                            username,
+                            !is_pw,
+                            "Username",
                         ))
                         .child(Self::render_dialog_input_row(
-                            "Password", password, is_pw, "Password",
+                            "Password",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
+                            password,
+                            is_pw,
+                            "Password",
                         )),
                 )
             }
@@ -935,12 +958,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Key Name",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "e.g. X-API-Key",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Key Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "secret_key_123",
@@ -1002,30 +1027,35 @@ impl AuraWorkspaceView {
                         .gap_2()
                         .child(Self::render_dialog_input_row(
                             "Access Key",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             access_key,
                             af == 0,
                             "AKIA...",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Secret Key",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             secret_key,
                             af == 1,
                             "wJalrXUtnFEMI...",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Region",
+                            inputs.get_input(&InputKey::EditorDialogField(2)),
                             region,
                             af == 2,
                             "us-east-1",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Service",
+                            inputs.get_input(&InputKey::EditorDialogField(3)),
                             service,
                             af == 3,
                             "execute-api",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Session Token (optional)",
+                            inputs.get_input(&InputKey::EditorDialogField(4)),
                             session_token,
                             af == 4,
                             "AQoDYXdz...",
@@ -1051,30 +1081,35 @@ impl AuraWorkspaceView {
                         .gap_2()
                         .child(Self::render_dialog_input_row(
                             "Access Token",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             access_token,
                             af == 0,
                             "ya29...",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Grant Type",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             grant_type,
                             af == 1,
                             "authorization_code",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Token URL (optional)",
+                            inputs.get_input(&InputKey::EditorDialogField(2)),
                             token_url,
                             af == 2,
                             "https://auth.example.com/token",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Client ID (optional)",
+                            inputs.get_input(&InputKey::EditorDialogField(3)),
                             client_id,
                             af == 3,
                             "client_123",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Client Secret (optional)",
+                            inputs.get_input(&InputKey::EditorDialogField(4)),
                             client_secret,
                             af == 4,
                             "secret_456",
@@ -1097,12 +1132,14 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Form Field Key",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             key,
                             !is_val,
                             "key",
                         ))
                         .child(Self::render_dialog_input_row(
                             "Form Field Value",
+                            inputs.get_input(&InputKey::EditorDialogField(1)),
                             value,
                             is_val,
                             "value",
@@ -1128,6 +1165,7 @@ impl AuraWorkspaceView {
                         .gap_3()
                         .child(Self::render_dialog_input_row(
                             "Field Name",
+                            inputs.get_input(&InputKey::EditorDialogField(0)),
                             name,
                             af == 0,
                             "name",
@@ -1135,6 +1173,7 @@ impl AuraWorkspaceView {
                         .when(!is_f, |el| {
                             el.child(Self::render_dialog_input_row(
                                 "Text Value",
+                                inputs.get_input(&InputKey::EditorDialogField(1)),
                                 value,
                                 af == 1,
                                 "value",
@@ -1143,6 +1182,7 @@ impl AuraWorkspaceView {
                         .when(is_f, |el| {
                             el.child(Self::render_dialog_input_row(
                                 "File Path",
+                                inputs.get_input(&InputKey::EditorDialogField(2)),
                                 file_path,
                                 af == 2,
                                 "path/to/file.bin",
@@ -1240,10 +1280,48 @@ impl AuraWorkspaceView {
 
     fn render_dialog_input_row(
         label: &'static str,
+        input: Option<&Entity<InputState>>,
         val: &str,
         is_focused: bool,
         placeholder: &'static str,
     ) -> Div {
+        let box_div = div()
+            .flex()
+            .items_center()
+            .px_2()
+            .py_1()
+            .bg(rgb(0x1d1d1f))
+            .border_1()
+            .border_color(if is_focused {
+                rgb(0x0066cc)
+            } else {
+                rgb(0x333333)
+            })
+            .rounded_sm();
+
+        let field_el = if let Some(state) = input {
+            box_div.child(
+                Input::new(state)
+                    .appearance(false)
+                    .w_full()
+                    .text_xs()
+                    .text_color(rgb(0xffffff)),
+            )
+        } else {
+            box_div
+                .text_xs()
+                .text_color(if val.is_empty() {
+                    rgb(0x666666)
+                } else {
+                    rgb(0xffffff)
+                })
+                .child(if val.is_empty() {
+                    placeholder.to_string()
+                } else {
+                    val.to_string()
+                })
+        };
+
         div()
             .flex()
             .flex_col()
@@ -1259,45 +1337,7 @@ impl AuraWorkspaceView {
                     })
                     .child(label),
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .px_3()
-                    .py_2()
-                    .bg(rgb(0x1d1d1f))
-                    .border_1()
-                    .border_color(if is_focused {
-                        rgb(0x0066cc)
-                    } else {
-                        rgb(0x333333)
-                    })
-                    .rounded_sm()
-                    .cursor_text()
-                    .text_xs()
-                    .text_color(rgb(0xffffff))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .child(if val.is_empty() {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                    .child(div().text_color(rgb(0x666666)).child(placeholder))
-                            } else {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(div().child(val.to_string()))
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                            }),
-                    ),
-            )
+            .child(field_el)
     }
 }
 
@@ -1305,6 +1345,7 @@ impl Default for AuraWorkspaceView {
     fn default() -> Self {
         Self {
             state: AuraAppState::new(),
+            inputs: InputRegistry::new(),
             focus_handle: None,
             watcher_cancel: None,
             auto_save_seq: 0,
@@ -1313,16 +1354,679 @@ impl Default for AuraWorkspaceView {
     }
 }
 
+impl AuraWorkspaceView {
+    fn handle_input_event(
+        &mut self,
+        key: &InputKey,
+        state: &Entity<InputState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            InputEvent::Change => {
+                let val = state.read(cx).value().to_string();
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_input_text_for(target, val);
+                    self.schedule_auto_save(cx);
+                } else {
+                    match key {
+                        InputKey::CommandPaletteSearch => {
+                            self.state.command_palette_search = val;
+                            self.state.selected_palette_index = 0;
+                        }
+                        InputKey::RenameDialog => {
+                            self.state.update_rename_text(val);
+                        }
+                        InputKey::MoveToSearch => {
+                            self.state.update_move_to_search(val);
+                        }
+                        InputKey::InlineRename => {
+                            if let Some(ref mut ir) = self.state.inline_rename {
+                                ir.current_value = val;
+                            }
+                        }
+                        InputKey::EditorDialogField(idx) => {
+                            Self::set_editor_dialog_field(&mut self.state.editor_dialog, *idx, val);
+                        }
+                        _ => {}
+                    }
+                }
+                cx.notify();
+            }
+            InputEvent::PressEnter { .. } => match key {
+                InputKey::Url => {
+                    self.dispatch_send_request(cx);
+                }
+                InputKey::CommandPaletteSearch => {
+                    let _ = self.state.execute_selected_palette_item();
+                    cx.notify();
+                }
+                InputKey::RenameDialog => {
+                    self.confirm_rename_action(cx);
+                }
+                InputKey::MoveToSearch => {
+                    self.confirm_move_to_action(cx);
+                }
+                InputKey::InlineRename => {
+                    self.state.inline_rename = None;
+                    cx.notify();
+                }
+                InputKey::EditorDialogField(_) => {
+                    self.state.confirm_editor_dialog();
+                    self.schedule_auto_save(cx);
+                    cx.notify();
+                }
+                _ => {}
+            },
+            InputEvent::Focus => {
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_active_input(Some(target));
+                    cx.notify();
+                }
+            }
+            InputEvent::Blur => {
+                if let Some(target) = key.to_active_target() {
+                    if self.state.active_input_target.as_ref() == Some(&target) {
+                        self.state.blur_active_input();
+                        cx.notify();
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_textarea_event(
+        &mut self,
+        key: &InputKey,
+        state: &Entity<TextareaState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            InputEvent::Change => {
+                let val = state.read(cx).value().to_string();
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_input_text_for(target, val);
+                    self.schedule_auto_save(cx);
+                    cx.notify();
+                }
+            }
+            InputEvent::Focus => {
+                if let Some(target) = key.to_active_target() {
+                    self.state.set_active_input(Some(target));
+                    cx.notify();
+                }
+            }
+            InputEvent::Blur => {
+                if let Some(target) = key.to_active_target() {
+                    if self.state.active_input_target.as_ref() == Some(&target) {
+                        self.state.blur_active_input();
+                        cx.notify();
+                    }
+                }
+            }
+            InputEvent::PressEnter { .. } => {}
+        }
+    }
+
+    fn set_editor_dialog_field(dialog: &mut Option<EditorDialogState>, idx: usize, val: String) {
+        let Some(dlg) = dialog.as_mut() else {
+            return;
+        };
+        match dlg {
+            EditorDialogState::AddHeader { key, value, .. }
+            | EditorDialogState::EditHeader { key, value, .. }
+            | EditorDialogState::AddParam { key, value, .. }
+            | EditorDialogState::EditParam { key, value, .. }
+            | EditorDialogState::AddFormParam { key, value, .. } => {
+                if idx == 0 {
+                    *key = val;
+                } else if idx == 1 {
+                    *value = val;
+                }
+            }
+            EditorDialogState::EditBody { content } => {
+                if idx == 0 {
+                    *content = val;
+                }
+            }
+            EditorDialogState::EditBearerAuth { token } => {
+                if idx == 0 {
+                    *token = val;
+                }
+            }
+            EditorDialogState::EditBasicAuth {
+                username, password, ..
+            } => {
+                if idx == 0 {
+                    *username = val;
+                } else if idx == 1 {
+                    *password = val;
+                }
+            }
+            EditorDialogState::EditApiKeyAuth { key, value, .. } => {
+                if idx == 0 {
+                    *key = val;
+                } else if idx == 1 {
+                    *value = val;
+                }
+            }
+            EditorDialogState::EditAwsSigV4 {
+                access_key,
+                secret_key,
+                region,
+                service,
+                session_token,
+                ..
+            } => match idx {
+                0 => *access_key = val,
+                1 => *secret_key = val,
+                2 => *region = val,
+                3 => *service = val,
+                4 => *session_token = val,
+                _ => {}
+            },
+            EditorDialogState::EditOAuth2 {
+                access_token,
+                grant_type,
+                token_url,
+                client_id,
+                client_secret,
+                ..
+            } => match idx {
+                0 => *access_token = val,
+                1 => *grant_type = val,
+                2 => *token_url = val,
+                3 => *client_id = val,
+                4 => *client_secret = val,
+                _ => {}
+            },
+            EditorDialogState::AddMultipartField {
+                name,
+                value,
+                file_path,
+                ..
+            } => match idx {
+                0 => *name = val,
+                1 => *value = val,
+                2 => *file_path = val,
+                _ => {}
+            },
+        }
+    }
+
+    fn sync_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut inputs = std::mem::take(&mut self.inputs);
+
+        let url_val = self
+            .state
+            .tabs
+            .get(self.state.active_tab_index)
+            .map(|t| t.request.url.clone())
+            .unwrap_or_default();
+        inputs.ensure_input(
+            InputKey::Url,
+            &url_val,
+            "Enter request URL (e.g. https://postman-echo.com/get)...",
+            false,
+            window,
+            cx,
+            Self::handle_input_event,
+        );
+
+        let palette_q = self.state.command_palette_search.clone();
+        inputs.ensure_input(
+            InputKey::CommandPaletteSearch,
+            &palette_q,
+            "Search requests or type command... (Esc to dismiss)",
+            false,
+            window,
+            cx,
+            Self::handle_input_event,
+        );
+
+        if let Some(ref rd) = self.state.rename_dialog {
+            let v = rd.current_name.clone();
+            inputs.ensure_input(
+                InputKey::RenameDialog,
+                &v,
+                "Enter name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if let Some(ref md) = self.state.move_to_dialog {
+            let v = md.search_query.clone();
+            inputs.ensure_input(
+                InputKey::MoveToSearch,
+                &v,
+                "Type to filter destination folders...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if let Some(ref ir) = self.state.inline_rename {
+            let v = ir.current_value.clone();
+            inputs.ensure_input(
+                InputKey::InlineRename,
+                &v,
+                "Enter name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if let Some(ref dlg) = self.state.editor_dialog {
+            let fields: Vec<(usize, String, &'static str)> = match dlg {
+                EditorDialogState::AddHeader { key, value, .. }
+                | EditorDialogState::EditHeader { key, value, .. } => vec![
+                    (0, key.clone(), "Header Name"),
+                    (1, value.clone(), "Header Value"),
+                ],
+                EditorDialogState::AddParam { key, value, .. }
+                | EditorDialogState::EditParam { key, value, .. } => {
+                    vec![(0, key.clone(), "Key"), (1, value.clone(), "Value")]
+                }
+                EditorDialogState::EditBody { content } => {
+                    vec![(0, content.clone(), "{\n  \"key\": \"value\"\n}")]
+                }
+                EditorDialogState::EditBearerAuth { token } => {
+                    vec![(0, token.clone(), "eyJhbGciOi...")]
+                }
+                EditorDialogState::EditBasicAuth {
+                    username, password, ..
+                } => vec![
+                    (0, username.clone(), "Username"),
+                    (1, password.clone(), "Password"),
+                ],
+                EditorDialogState::EditApiKeyAuth { key, value, .. } => vec![
+                    (0, key.clone(), "e.g. X-API-Key"),
+                    (1, value.clone(), "secret_key_123"),
+                ],
+                EditorDialogState::EditAwsSigV4 {
+                    access_key,
+                    secret_key,
+                    region,
+                    service,
+                    session_token,
+                    ..
+                } => vec![
+                    (0, access_key.clone(), "AKIA..."),
+                    (1, secret_key.clone(), "wJalrXUtnFEMI..."),
+                    (2, region.clone(), "us-east-1"),
+                    (3, service.clone(), "execute-api"),
+                    (4, session_token.clone(), "AQoDYXdz..."),
+                ],
+                EditorDialogState::EditOAuth2 {
+                    access_token,
+                    grant_type,
+                    token_url,
+                    client_id,
+                    client_secret,
+                    ..
+                } => vec![
+                    (0, access_token.clone(), "ya29..."),
+                    (1, grant_type.clone(), "authorization_code"),
+                    (2, token_url.clone(), "https://auth.example.com/token"),
+                    (3, client_id.clone(), "client_123"),
+                    (4, client_secret.clone(), "secret_456"),
+                ],
+                EditorDialogState::AddFormParam { key, value, .. } => {
+                    vec![(0, key.clone(), "key"), (1, value.clone(), "value")]
+                }
+                EditorDialogState::AddMultipartField {
+                    name,
+                    value,
+                    file_path,
+                    ..
+                } => vec![
+                    (0, name.clone(), "name"),
+                    (1, value.clone(), "value"),
+                    (2, file_path.clone(), "path/to/file.bin"),
+                ],
+            };
+            for (idx, val, ph) in fields {
+                inputs.ensure_input(
+                    InputKey::EditorDialogField(idx),
+                    &val,
+                    ph,
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+        }
+
+        if let Some(tab) = self.state.tabs.get(self.state.active_tab_index).cloned() {
+            for (idx, p) in tab.request.params.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::ParamKey(idx),
+                    &p.key,
+                    "Key",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::ParamValue(idx),
+                    &p.value,
+                    "Value",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
+            for (idx, h) in tab.request.headers.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::HeaderKey(idx),
+                    &h.key,
+                    "Header Name",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::HeaderValue(idx),
+                    &h.value,
+                    "Header Value",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
+            match &tab.request.body {
+                BodyType::Json(s) | BodyType::Xml(s) | BodyType::Text(s) => {
+                    inputs.ensure_textarea(
+                        InputKey::BodyText,
+                        s,
+                        "// Click or type to edit request body...",
+                        window,
+                        cx,
+                        Self::handle_textarea_event,
+                    );
+                }
+                BodyType::Raw { content, .. } => {
+                    inputs.ensure_textarea(
+                        InputKey::BodyText,
+                        content,
+                        "// Click or type to edit request body...",
+                        window,
+                        cx,
+                        Self::handle_textarea_event,
+                    );
+                }
+                BodyType::FormUrlEncoded(items) => {
+                    for (idx, item) in items.iter().enumerate() {
+                        inputs.ensure_input(
+                            InputKey::FormParamKey(idx),
+                            &item.key,
+                            "Field Key",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                        inputs.ensure_input(
+                            InputKey::FormParamValue(idx),
+                            &item.value,
+                            "Field Value",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                BodyType::Form(map) => {
+                    for (idx, (k, v)) in map.iter().enumerate() {
+                        inputs.ensure_input(
+                            InputKey::FormParamKey(idx),
+                            k,
+                            "Field Key",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                        inputs.ensure_input(
+                            InputKey::FormParamValue(idx),
+                            v,
+                            "Field Value",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                _ => {}
+            }
+
+            match &tab.request.auth {
+                AuthConfig::Bearer { token } => {
+                    inputs.ensure_input(
+                        InputKey::AuthBearerToken,
+                        token,
+                        "Enter Bearer token or paste JWT here...",
+                        false,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                }
+                AuthConfig::Basic { username, password } => {
+                    inputs.ensure_input(
+                        InputKey::AuthBasicUsername,
+                        username,
+                        "Enter username...",
+                        false,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                    inputs.ensure_input(
+                        InputKey::AuthBasicPassword,
+                        password,
+                        "Enter password...",
+                        true,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                }
+                AuthConfig::ApiKey { key, value, .. } => {
+                    inputs.ensure_input(
+                        InputKey::AuthApiKeyName,
+                        key,
+                        "e.g. X-API-Key",
+                        false,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                    inputs.ensure_input(
+                        InputKey::AuthApiKeyValue,
+                        value,
+                        "secret_key_123...",
+                        false,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                }
+                AuthConfig::AwsSigV4 {
+                    access_key,
+                    secret_key,
+                    region,
+                    service,
+                    session_token,
+                } => {
+                    let fields = [
+                        (0, access_key.as_str(), "Enter Access Key..."),
+                        (1, secret_key.as_str(), "Enter Secret Key..."),
+                        (2, region.as_str(), "Enter Region..."),
+                        (3, service.as_str(), "Enter Service..."),
+                        (4, session_token.as_deref().unwrap_or(""), "Enter Session Token..."),
+                    ];
+                    for (idx, val, ph) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthAwsField(idx),
+                            val,
+                            ph,
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::OAuth2 {
+                    grant_type,
+                    access_token,
+                    token_url,
+                    client_id,
+                    client_secret,
+                } => {
+                    let fields = [
+                        (0, access_token.as_str(), "Enter Access Token..."),
+                        (1, grant_type.as_str(), "Enter Grant Type..."),
+                        (2, token_url.as_deref().unwrap_or(""), "Enter Token URL..."),
+                        (3, client_id.as_deref().unwrap_or(""), "Enter Client ID..."),
+                        (4, client_secret.as_deref().unwrap_or(""), "Enter Client Secret..."),
+                    ];
+                    for (idx, val, ph) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthOAuth2Field(idx),
+                            val,
+                            ph,
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::None | AuthConfig::Inherit => {}
+            }
+
+            inputs.ensure_textarea(
+                InputKey::PreRequestScript,
+                &tab.request.scripts.pre_request,
+                "// Write pre-request script here...",
+                window,
+                cx,
+                Self::handle_textarea_event,
+            );
+            inputs.ensure_textarea(
+                InputKey::PostResponseScript,
+                &tab.request.scripts.post_response,
+                "// Write post-response script here...",
+                window,
+                cx,
+                Self::handle_textarea_event,
+            );
+            inputs.ensure_textarea(
+                InputKey::TestScript,
+                &tab.request.scripts.tests,
+                "// Write Jasmine/Chai assertions...",
+                window,
+                cx,
+                Self::handle_textarea_event,
+            );
+
+            let spec_val = tab
+                .spec_buffer
+                .clone()
+                .unwrap_or_else(|| aura_parser::request_to_spec(&tab.request));
+            inputs.ensure_textarea(
+                InputKey::SpecText,
+                &spec_val,
+                "// Empty .aura specification...",
+                window,
+                cx,
+                Self::handle_textarea_event,
+            );
+
+            if let Some(ref resp) = tab.response {
+                let body_formatted =
+                    ResponsePaneView::format_body(&resp.body, self.state.active_body_mode);
+                let body_display = if body_formatted.is_empty() {
+                    "// Response body is empty".to_string()
+                } else {
+                    body_formatted
+                };
+                inputs.ensure_textarea(
+                    InputKey::ResponseBody,
+                    &body_display,
+                    "",
+                    window,
+                    cx,
+                    Self::handle_textarea_event,
+                );
+
+                let mut raw_http = format!("HTTP/1.1 {} {}\n", resp.status, resp.status_text);
+                let mut header_entries: Vec<_> = resp.headers.iter().collect();
+                header_entries.sort_by_key(|(k, _)| (*k).clone());
+                for (k, v) in header_entries {
+                    raw_http.push_str(&format!("{}: {}\n", k, v));
+                }
+                raw_http.push('\n');
+                raw_http.push_str(&resp.body);
+                inputs.ensure_textarea(
+                    InputKey::ResponseRaw,
+                    &raw_http,
+                    "",
+                    window,
+                    cx,
+                    Self::handle_textarea_event,
+                );
+
+                let json_pretty = match serde_json::from_str::<serde_json::Value>(&resp.body) {
+                    Ok(val) => {
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| resp.body.clone())
+                    }
+                    Err(_) => {
+                        "/* Response body is not valid JSON */\n\n".to_string() + &resp.body
+                    }
+                };
+                inputs.ensure_textarea(
+                    InputKey::ResponseJson,
+                    &json_pretty,
+                    "",
+                    window,
+                    cx,
+                    Self::handle_textarea_event,
+                );
+            }
+        }
+
+        self.inputs = inputs;
+    }
+}
+
 impl Render for AuraWorkspaceView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_inputs(window, cx);
         let active_tab = self.state.tabs.get(self.state.active_tab_index);
         let active_title = active_tab
             .map(|t| t.title.clone())
             .unwrap_or_else(|| "Untitled Request".to_string());
         let active_method = active_tab.map(|t| t.method).unwrap_or(HttpMethod::GET);
-        let active_url = active_tab
-            .map(|t| t.request.url.clone())
-            .unwrap_or_else(|| "https://postman-echo.com/get".to_string());
 
         let bg_color = rgb(0x1d1d1f);
         let surface_color = rgb(0x272729);
@@ -1390,280 +2094,29 @@ impl Render for AuraWorkspaceView {
                     return;
                 }
 
-                if this.state.active_input_target.is_some() {
-                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
-                    let key = event.keystroke.key.as_str();
-
-                    if has_ctrl {
-                        match key {
-                            "c" | "C" => {
-                                if let Some(text) = this.state.get_active_input_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    this.state.status_message = Some("Copied input text to clipboard".to_string());
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            "v" | "V" => {
-                                if let Some(item) = cx.read_from_clipboard() {
-                                    if let Some(text) = item.text() {
-                                        this.state.paste_text_into_active(&text);
-                                        this.schedule_auto_save(cx);
-                                        cx.notify();
-                                    }
-                                }
-                                return;
-                            }
-                            "x" | "X" => {
-                                if let Some(text) = this.state.get_active_input_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    this.state.set_active_input_text(String::new());
-                                    this.state.status_message = Some("Cut input text to clipboard".to_string());
-                                    this.schedule_auto_save(cx);
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            "a" | "A" => {
-                                this.state.status_message = Some("Selected input text".to_string());
-                                cx.notify();
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    match key {
-                        "escape" => {
-                            this.state.blur_active_input();
-                            cx.notify();
-                        }
-                        "enter" => {
-                            this.state.enter_active_input();
-                            cx.notify();
-                        }
-                        "tab" => {
-                            this.state.tab_next_input(event.keystroke.modifiers.shift);
-                            cx.notify();
-                        }
-                        "backspace" | "delete" => {
-                            this.state.backspace_active();
-                            this.schedule_auto_save(cx);
-                            cx.notify();
-                        }
-                        "space" => {
-                            this.state.type_char_into_active(' ');
-                            this.schedule_auto_save(cx);
-                            cx.notify();
-                        }
-                        _ => {
-                            if key.len() == 1
-                                && !event.keystroke.modifiers.control
-                                && !event.keystroke.modifiers.platform
-                                && !event.keystroke.modifiers.alt
-                            {
-                                let c = key.chars().next().unwrap();
-                                let final_c = if event.keystroke.modifiers.shift {
-                                    c.to_ascii_uppercase()
-                                } else {
-                                    c
-                                };
-                                this.state.type_char_into_active(final_c);
-                                this.schedule_auto_save(cx);
-                                cx.notify();
-                            }
-                        }
-                    }
-                    return;
-                }
+                let key = event.keystroke.key.as_str();
 
                 if this.state.editor_dialog.is_some() {
-                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
-                    let key = event.keystroke.key.as_str();
-
-                    if has_ctrl {
-                        match key {
-                            "c" | "C" => {
-                                if let Some(text) = this.state.dialog_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            "v" | "V" => {
-                                if let Some(item) = cx.read_from_clipboard() {
-                                    if let Some(text) = item.text() {
-                                        this.state.dialog_paste_text(&text);
-                                        cx.notify();
-                                    }
-                                }
-                                return;
-                            }
-                            "x" | "X" => {
-                                if let Some(text) = this.state.dialog_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    this.state.dialog_set_text(String::new());
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    match key {
-                        "escape" => {
-                            this.state.cancel_editor_dialog();
-                            cx.notify();
-                        }
-                        "enter" => {
-                            this.state.confirm_editor_dialog();
-                            this.schedule_auto_save(cx);
-                            cx.notify();
-                        }
-                        "tab" => {
-                            this.state.dialog_tab_next_field();
-                            cx.notify();
-                        }
-                        "backspace" | "delete" => {
-                            this.state.dialog_backspace();
-                            cx.notify();
-                        }
-                        "space" => {
-                            this.state.dialog_append_char(' ');
-                            cx.notify();
-                        }
-                        _ => {
-                            if key.len() == 1
-                                && !event.keystroke.modifiers.control
-                                && !event.keystroke.modifiers.platform
-                                && !event.keystroke.modifiers.alt
-                            {
-                                let c = key.chars().next().unwrap();
-                                let final_c = if event.keystroke.modifiers.shift {
-                                    c.to_ascii_uppercase()
-                                } else {
-                                    c
-                                };
-                                this.state.dialog_append_char(final_c);
-                                cx.notify();
-                            }
-                        }
+                    if key == "escape" {
+                        this.state.cancel_editor_dialog();
+                        cx.notify();
                     }
                     return;
                 }
 
                 if this.state.rename_dialog.is_some() {
-                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
-                    let key = event.keystroke.key.as_str();
-
-                    if has_ctrl {
-                        match key {
-                            "c" | "C" => {
-                                if let Some(text) = this.state.rename_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            "v" | "V" => {
-                                if let Some(item) = cx.read_from_clipboard() {
-                                    if let Some(text) = item.text() {
-                                        this.state.rename_paste_text(&text);
-                                        cx.notify();
-                                    }
-                                }
-                                return;
-                            }
-                            "x" | "X" => {
-                                if let Some(text) = this.state.rename_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    this.state.update_rename_text(String::new());
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    match key {
-                        "escape" => {
-                            this.state.cancel_rename();
-                            cx.notify();
-                        }
-                        "enter" => {
-                            this.confirm_rename_action(cx);
-                        }
-                        "backspace" | "delete" => {
-                            this.state.backspace_rename();
-                            cx.notify();
-                        }
-                        "space" => {
-                            this.state.append_rename_char(' ');
-                            cx.notify();
-                        }
-                        _ => {
-                            if key.len() == 1
-                                && !event.keystroke.modifiers.control
-                                && !event.keystroke.modifiers.platform
-                                && !event.keystroke.modifiers.alt
-                            {
-                                let c = key.chars().next().unwrap();
-                                let final_c = if event.keystroke.modifiers.shift {
-                                    c.to_ascii_uppercase()
-                                } else {
-                                    c
-                                };
-                                this.state.append_rename_char(final_c);
-                                cx.notify();
-                            }
-                        }
+                    if key == "escape" {
+                        this.state.cancel_rename();
+                        cx.notify();
                     }
                     return;
                 }
 
                 if this.state.move_to_dialog.is_some() {
-                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
-                    let key = event.keystroke.key.as_str();
-
-                    if has_ctrl {
-                        match key {
-                            "c" | "C" => {
-                                if let Some(text) = this.state.move_to_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            "v" | "V" => {
-                                if let Some(item) = cx.read_from_clipboard() {
-                                    if let Some(text) = item.text() {
-                                        this.state.move_to_paste_text(&text);
-                                        cx.notify();
-                                    }
-                                }
-                                return;
-                            }
-                            "x" | "X" => {
-                                if let Some(text) = this.state.move_to_get_text() {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                                    this.state.update_move_to_search(String::new());
-                                    cx.notify();
-                                }
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
-
                     match key {
                         "escape" => {
                             this.state.cancel_move_to();
                             cx.notify();
-                        }
-                        "enter" => {
-                            this.confirm_move_to_action(cx);
                         }
                         "up" => {
                             this.state.move_to_select_prev();
@@ -1673,71 +2126,15 @@ impl Render for AuraWorkspaceView {
                             this.state.move_to_select_next();
                             cx.notify();
                         }
-                        "backspace" | "delete" => {
-                            this.state.backspace_move_to_search();
-                            cx.notify();
-                        }
-                        "space" => {
-                            this.state.append_move_to_search_char(' ');
-                            cx.notify();
-                        }
-                        _ => {
-                            if key.len() == 1
-                                && !event.keystroke.modifiers.control
-                                && !event.keystroke.modifiers.platform
-                                && !event.keystroke.modifiers.alt
-                            {
-                                let c = key.chars().next().unwrap();
-                                let final_c = if event.keystroke.modifiers.shift {
-                                    c.to_ascii_uppercase()
-                                } else {
-                                    c
-                                };
-                                this.state.append_move_to_search_char(final_c);
-                                cx.notify();
-                            }
-                        }
+                        _ => {}
                     }
                     return;
                 }
 
                 if this.state.is_command_palette_open {
-                    let has_ctrl = event.keystroke.modifiers.control || event.keystroke.modifiers.platform;
-                    let key = event.keystroke.key.as_str();
-
-                    if has_ctrl {
-                        match key {
-                            "c" | "C" => {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(this.state.command_palette_search.clone()));
-                                cx.notify();
-                                return;
-                            }
-                            "v" | "V" => {
-                                if let Some(item) = cx.read_from_clipboard() {
-                                    if let Some(text) = item.text() {
-                                        this.state.command_palette_search.push_str(&text);
-                                        cx.notify();
-                                    }
-                                }
-                                return;
-                            }
-                            "x" | "X" => {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(this.state.command_palette_search.clone()));
-                                this.state.command_palette_search.clear();
-                                cx.notify();
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
-
                     match key {
                         "escape" => {
                             this.state.close_command_palette();
-                            cx.notify();
-                        }
-                        "enter" => {
-                            let _ = this.state.execute_selected_palette_item();
                             cx.notify();
                         }
                         "up" => {
@@ -1748,35 +2145,18 @@ impl Render for AuraWorkspaceView {
                             this.state.palette_select_next();
                             cx.notify();
                         }
-                        "backspace" | "delete" => {
-                            this.state.command_palette_search.pop();
-                            cx.notify();
-                        }
-                        "space" => {
-                            this.state.command_palette_search.push(' ');
-                            cx.notify();
-                        }
-                        _ => {
-                            if key.len() == 1
-                                && !event.keystroke.modifiers.control
-                                && !event.keystroke.modifiers.platform
-                                && !event.keystroke.modifiers.alt
-                            {
-                                let c = key.chars().next().unwrap();
-                                let final_c = if event.keystroke.modifiers.shift {
-                                    c.to_ascii_uppercase()
-                                } else {
-                                    c
-                                };
-                                this.state.command_palette_search.push(final_c);
-                                cx.notify();
-                            }
-                        }
+                        _ => {}
                     }
                     return;
                 }
 
-                if event.keystroke.key == "f2" {
+                if key == "escape" && this.state.active_input_target.is_some() {
+                    this.state.blur_active_input();
+                    cx.notify();
+                    return;
+                }
+
+                if key == "f2" {
                     if let Some(selected) = this.state.workspace_store.selected_path.clone() {
                         let is_folder = selected.is_dir();
                         this.state.request_rename(selected, is_folder);
@@ -1937,6 +2317,7 @@ impl Render for AuraWorkspaceView {
                     .flex_1()
                     .child(SidebarView::render(
                         &self.state,
+                        self.inputs.get_input(&InputKey::InlineRename),
                         cx,
                         |this, col_id, req_id_or_path, _window, cx| {
                             if col_id.is_empty() {
@@ -2036,7 +2417,9 @@ impl Render for AuraWorkspaceView {
                             ))
                             .child(RequestHeaderView::render(
                                 active_method,
-                                &active_url,
+                                self.inputs
+                                    .get_input(&InputKey::Url)
+                                    .expect("URL input initialized in sync_inputs"),
                                 is_in_flight,
                                 self.state.active_input_target == Some(crate::app_state::ActiveInputTarget::Url),
                                 self.state.is_active_tab_dirty(),
@@ -2079,6 +2462,7 @@ impl Render for AuraWorkspaceView {
                                         self.state.active_editor_tab,
                                         active_tab.map(|t| &t.request),
                                         self.state.active_input_target.as_ref(),
+                                        &self.inputs,
                                         self.state.active_script_sub_tab,
                                         active_tab.and_then(|t| t.response.as_ref()).map(|r| r.assertions.as_slice()),
                                         active_tab.and_then(|t| t.spec_buffer.as_deref()),
@@ -2114,6 +2498,9 @@ impl Render for AuraWorkspaceView {
                                         active_tab.and_then(|t| t.response.as_ref()),
                                         self.state.active_response_tab,
                                         self.state.active_body_mode,
+                                        self.inputs.get_textarea(&InputKey::ResponseBody),
+                                        self.inputs.get_textarea(&InputKey::ResponseRaw),
+                                        self.inputs.get_textarea(&InputKey::ResponseJson),
                                         cx,
                                         |this, tab, _window, cx| {
                                             this.state.set_response_tab(tab);
@@ -2177,7 +2564,11 @@ impl Render for AuraWorkspaceView {
                     ),
             )
             .when(self.state.is_command_palette_open, |el| {
-                el.child(CommandPaletteView::render(&self.state))
+                let search_input = self
+                    .inputs
+                    .get_input(&InputKey::CommandPaletteSearch)
+                    .expect("Command palette search input initialized in sync_inputs");
+                el.child(CommandPaletteView::render(&self.state, search_input))
             })
             .when(self.state.is_log_viewer_open, |el| {
                 el.child(LogViewerView::render(&self.state, cx))
@@ -2327,34 +2718,23 @@ impl Render for AuraWorkspaceView {
                                         .flex()
                                         .items_center()
                                         .justify_between()
-                                        .px_3()
-                                        .py_2()
+                                        .px_2()
+                                        .py_1()
                                         .bg(rgb(0x1d1d1f))
                                         .border_1()
                                         .border_color(rgb(0x0066cc))
                                         .rounded_sm()
-                                        .cursor_text()
-                                        .text_sm()
-                                        .text_color(rgb(0xffffff))
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .child(
-                                                    if current_val.is_empty() {
-                                                        div().text_color(rgb(0x777777)).child("Enter name...")
-                                                    } else {
-                                                        div().child(current_val.clone())
-                                                    }
-                                                )
-                                                .child(
-                                                    div()
-                                                        .w(px(2.0))
-                                                        .h(px(14.0))
-                                                        .bg(rgb(0x0066cc))
-                                                ),
-                                        )
+                                        .gap_2()
+                                        .child(div().flex_1().child(if let Some(inp) = self.inputs.get_input(&InputKey::RenameDialog) {
+                                            Input::new(inp)
+                                                .appearance(false)
+                                                .w_full()
+                                                .text_sm()
+                                                .text_color(rgb(0xffffff))
+                                                .into_any_element()
+                                        } else {
+                                            div().text_sm().text_color(rgb(0xffffff)).child(current_val.clone()).into_any_element()
+                                        }))
                                         .when(!rename_state.is_folder, |el| {
                                             el.child(div().text_xs().text_color(rgb(0x777777)).child(".aura"))
                                         }),
@@ -2459,29 +2839,24 @@ impl Render for AuraWorkspaceView {
                                     div()
                                         .flex()
                                         .items_center()
-                                        .px_3()
-                                        .py_2()
+                                        .px_2()
+                                        .py_1()
                                         .bg(rgb(0x1d1d1f))
                                         .border_1()
                                         .border_color(rgb(0x333333))
                                         .rounded_sm()
-                                        .cursor_text()
                                         .gap_2()
                                         .child(div().text_xs().text_color(rgb(0x0066cc)).child("🔍"))
-                                        .child(
-                                            div()
+                                        .child(div().flex_1().child(if let Some(inp) = self.inputs.get_input(&InputKey::MoveToSearch) {
+                                            Input::new(inp)
+                                                .appearance(false)
+                                                .w_full()
                                                 .text_xs()
-                                                .text_color(if move_dialog.search_query.is_empty() {
-                                                    rgb(0x7a7a7a)
-                                                } else {
-                                                    rgb(0xffffff)
-                                                })
-                                                .child(if move_dialog.search_query.is_empty() {
-                                                    "Type to filter destination folders...".to_string()
-                                                } else {
-                                                    move_dialog.search_query.clone()
-                                                }),
-                                        ),
+                                                .text_color(rgb(0xffffff))
+                                                .into_any_element()
+                                        } else {
+                                            div().text_xs().text_color(rgb(0xffffff)).child(move_dialog.search_query.clone()).into_any_element()
+                                        })),
                                 )
                                 .child(
                                     div()
@@ -2605,7 +2980,7 @@ impl Render for AuraWorkspaceView {
                 ))
             })
             .when_some(self.state.editor_dialog.clone(), |el, dialog| {
-                el.child(Self::render_editor_dialog(&dialog, cx))
+                el.child(Self::render_editor_dialog(&dialog, &self.inputs, cx))
             })
     }
 }

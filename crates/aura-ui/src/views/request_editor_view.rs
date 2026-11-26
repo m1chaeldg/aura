@@ -1,11 +1,13 @@
 //! RequestEditor View: Modal-free sub-tabs (Params, Headers, Auth, Body, Scripts, Tests, Settings) and content panels.
 
 use crate::app_state::{ActiveInputTarget, ScriptSubTab};
+use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::EditorTab;
 use aura_core::model::{AuraRequest, AuthConfig, BodyType, HttpMethod, TestAssertion};
 use base64::Engine;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::Selectable;
 
@@ -105,6 +107,7 @@ impl RequestEditorView {
         active_tab: EditorTab,
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
@@ -187,6 +190,7 @@ impl RequestEditorView {
                         active_tab,
                         request,
                         active_input,
+                        inputs,
                         script_sub_tab,
                         test_assertions,
                         spec_buffer,
@@ -197,11 +201,86 @@ impl RequestEditorView {
             )
     }
 
+    fn render_inline_input(
+        id: impl Into<ElementId>,
+        input: Option<&Entity<InputState>>,
+        fallback: &str,
+        is_focused: bool,
+        mask_toggle: bool,
+        bg: Rgba,
+        border: Rgba,
+        text_color: Rgba,
+    ) -> Stateful<Div> {
+        let el_id = id.into();
+        let box_div = div()
+            .id(el_id.clone())
+            .flex_1()
+            .px_2()
+            .py_0p5()
+            .rounded_sm()
+            .bg(if is_focused { rgb(0x1d1d1f) } else { bg })
+            .border_1()
+            .border_color(if is_focused { rgb(0x0071e3) } else { border });
+
+        if let Some(state) = input {
+            let mut inp = Input::new(state)
+                .appearance(false)
+                .w_full()
+                .text_xs()
+                .text_color(text_color);
+            if mask_toggle {
+                inp = inp.mask_toggle();
+            }
+            box_div.child(inp)
+        } else {
+            box_div.text_xs().text_color(text_color).child(fallback.to_string())
+        }
+    }
+
+    fn render_inline_textarea(
+        id: impl Into<ElementId>,
+        ta: Option<&Entity<TextareaState>>,
+        fallback: &str,
+        height: Pixels,
+        is_focused: bool,
+        border: Rgba,
+        text_color: Rgba,
+    ) -> Stateful<Div> {
+        let el_id = id.into();
+        let box_div = div()
+            .id(el_id)
+            .p_2()
+            .rounded_md()
+            .bg(rgb(0x18181a))
+            .border_1()
+            .border_color(if is_focused { rgb(0x0071e3) } else { border });
+
+        if let Some(state) = ta {
+            box_div.child(
+                Textarea::new(state)
+                    .appearance(false)
+                    .h(height)
+                    .w_full()
+                    .font_family("monospace")
+                    .text_xs()
+                    .text_color(text_color),
+            )
+        } else {
+            box_div
+                .min_h(height)
+                .font_family("monospace")
+                .text_xs()
+                .text_color(text_color)
+                .child(fallback.to_string())
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_panel_content<V: 'static>(
         tab: EditorTab,
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
@@ -217,6 +296,7 @@ impl RequestEditorView {
             EditorTab::Headers => Self::render_headers_panel(
                 request,
                 active_input,
+                inputs,
                 border,
                 muted,
                 normal,
@@ -226,18 +306,33 @@ impl RequestEditorView {
             EditorTab::Params => Self::render_params_panel(
                 request,
                 active_input,
+                inputs,
                 border,
                 muted,
                 normal,
                 cx,
                 on_action,
             ),
-            EditorTab::Body => {
-                Self::render_body_panel(request, active_input, border, muted, normal, cx, on_action)
-            }
-            EditorTab::Auth => {
-                Self::render_auth_panel(request, active_input, border, muted, normal, cx, on_action)
-            }
+            EditorTab::Body => Self::render_body_panel(
+                request,
+                active_input,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            ),
+            EditorTab::Auth => Self::render_auth_panel(
+                request,
+                active_input,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            ),
             EditorTab::Variables => Self::render_box(
                 "ENVIRONMENT & REQUEST VARIABLES",
                 "Variables referenced with {{var_name}} in URL, headers, and body.",
@@ -249,6 +344,7 @@ impl RequestEditorView {
             EditorTab::Scripts => Self::render_scripts_panel(
                 request,
                 active_input,
+                inputs,
                 script_sub_tab,
                 border,
                 muted,
@@ -259,6 +355,7 @@ impl RequestEditorView {
             EditorTab::Tests => Self::render_tests_panel(
                 request,
                 active_input,
+                inputs,
                 test_assertions,
                 border,
                 muted,
@@ -281,6 +378,7 @@ impl RequestEditorView {
                     content,
                     spec_error,
                     active_input,
+                    inputs,
                     border,
                     muted,
                     normal,
@@ -295,9 +393,11 @@ impl RequestEditorView {
     // Headers Panel (Modal-Free Interactive Key-Value Grid)
     // =========================================================================
 
+    #[allow(clippy::too_many_arguments)]
     fn render_headers_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -469,115 +569,40 @@ impl RequestEditorView {
                             })),
                     )
                     // Inline Editable Key Field
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger(
-                                "edit-header-key".into(),
-                                idx as u64,
-                            ))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_key_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_key_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(if is_key_focused {
-                                rgb(0xffffff)
-                            } else if enabled {
-                                normal
-                            } else {
-                                muted
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if key.is_empty() {
-                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Header Name")
-                                    } else {
-                                        div().child(key)
-                                    })
-                                    .when(is_key_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusHeaderKey(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-header-key".into(), idx as u64),
+                        inputs.get_input(&InputKey::HeaderKey(idx)),
+                        &key,
+                        is_key_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_key_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
+                    ))
                     .child(div().text_xs().text_color(muted).child(":"))
                     // Inline Editable Value Field
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger(
-                                "edit-header-val".into(),
-                                idx as u64,
-                            ))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_val_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_val_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .text_color(if is_val_focused {
-                                rgb(0xffffff)
-                            } else if enabled {
-                                normal
-                            } else {
-                                muted
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if val.is_empty() {
-                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Header Value")
-                                    } else {
-                                        div().child(val)
-                                    })
-                                    .when(is_val_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusHeaderVal(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-header-val".into(), idx as u64),
+                        inputs.get_input(&InputKey::HeaderValue(idx)),
+                        &val,
+                        is_val_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_val_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
+                    ))
                     // Delete Button
                     .child(
                         div()
@@ -632,9 +657,11 @@ impl RequestEditorView {
     // Query Parameters Panel (Modal-Free Interactive Key-Value Grid)
     // =========================================================================
 
+    #[allow(clippy::too_many_arguments)]
     fn render_params_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -779,109 +806,40 @@ impl RequestEditorView {
                             })),
                     )
                     // Inline Editable Key Field
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger("edit-param-key".into(), idx as u64))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_key_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_key_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(if is_key_focused {
-                                rgb(0xffffff)
-                            } else if enabled {
-                                normal
-                            } else {
-                                muted
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if key.is_empty() {
-                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Key")
-                                    } else {
-                                        div().child(key)
-                                    })
-                                    .when(is_key_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusParamKey(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-param-key".into(), idx as u64),
+                        inputs.get_input(&InputKey::ParamKey(idx)),
+                        &key,
+                        is_key_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_key_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
+                    ))
                     .child(div().text_xs().text_color(muted).child("="))
                     // Inline Editable Value Field
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger("edit-param-val".into(), idx as u64))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_val_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_val_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .text_color(if is_val_focused {
-                                rgb(0xffffff)
-                            } else if enabled {
-                                normal
-                            } else {
-                                muted
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if val.is_empty() {
-                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Value")
-                                    } else {
-                                        div().child(val)
-                                    })
-                                    .when(is_val_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusParamVal(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-param-val".into(), idx as u64),
+                        inputs.get_input(&InputKey::ParamValue(idx)),
+                        &val,
+                        is_val_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_val_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
+                    ))
                     // Delete Button
                     .child(
                         div()
@@ -906,9 +864,11 @@ impl RequestEditorView {
     // Request Body Panel (Full-Height Direct Monospace Editor + Actions)
     // =========================================================================
 
+    #[allow(clippy::too_many_arguments)]
     fn render_body_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -997,6 +957,7 @@ impl RequestEditorView {
                     content,
                     true,
                     active_input,
+                    inputs,
                     border,
                     muted,
                     normal,
@@ -1008,6 +969,7 @@ impl RequestEditorView {
                     content,
                     false,
                     active_input,
+                    inputs,
                     border,
                     muted,
                     normal,
@@ -1019,6 +981,7 @@ impl RequestEditorView {
                     content,
                     false,
                     active_input,
+                    inputs,
                     border,
                     muted,
                     normal,
@@ -1036,6 +999,7 @@ impl RequestEditorView {
                         content,
                         false,
                         active_input,
+                        inputs,
                         border,
                         muted,
                         normal,
@@ -1046,6 +1010,7 @@ impl RequestEditorView {
                 Some(BodyType::FormUrlEncoded(items)) => Self::render_form_urlencoded_editor(
                     items,
                     active_input,
+                    inputs,
                     border,
                     muted,
                     normal,
@@ -1060,6 +1025,7 @@ impl RequestEditorView {
                     Self::render_form_urlencoded_editor(
                         &items,
                         active_input,
+                        inputs,
                         border,
                         muted,
                         normal,
@@ -1121,6 +1087,7 @@ impl RequestEditorView {
         content: &str,
         is_json: bool,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -1206,55 +1173,22 @@ impl RequestEditorView {
                     ),
             )
             // Full-Height Direct Monospace Textarea
-            .child(
-                div()
-                    .id("direct-body-editor")
-                    .p_3()
-                    .min_h(px(260.0))
-                    .rounded_md()
-                    .bg(rgb(0x18181a))
-                    .border_1()
-                    .border_color(if is_focused { rgb(0x0071e3) } else { border })
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_text()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .child(if content.is_empty() {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                    .child(div().text_color(rgb(0x555555)).child("// Click or type to edit request body (Ctrl+C / Ctrl+V supported)..."))
-                            } else {
-                                div().child(content.to_string())
-                            })
-                            .when(is_focused && !content.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_1()
-                                        .mt_1()
-                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
-                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Body (Ctrl+C copy • Ctrl+V paste)")),
-                                )
-                            }),
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_action(this, RequestEditorAction::FocusBody, window, cx);
-                    })),
-            )
+            .child(Self::render_inline_textarea(
+                "direct-body-editor",
+                inputs.get_textarea(&InputKey::BodyText),
+                content,
+                px(260.0),
+                is_focused,
+                border,
+                if is_focused { rgb(0xffffff) } else { normal },
+            ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_form_urlencoded_editor<V: 'static>(
         items: &[aura_core::model::ParamItem],
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -1357,104 +1291,27 @@ impl RequestEditorView {
                                 );
                             })),
                     )
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger("edit-form-key".into(), idx as u64))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_key_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_key_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(if is_key_focused {
-                                rgb(0xffffff)
-                            } else {
-                                normal
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if k.is_empty() {
-                                        div().text_color(if is_key_focused { rgb(0x666666) } else { muted }).child("Field Key")
-                                    } else {
-                                        div().child(k)
-                                    })
-                                    .when(is_key_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusFormParamKey(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-form-key".into(), idx as u64),
+                        inputs.get_input(&InputKey::FormParamKey(idx)),
+                        &k,
+                        is_key_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_key_focused { rgb(0xffffff) } else { normal },
+                    ))
                     .child(div().text_xs().text_color(muted).child("="))
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger("edit-form-val".into(), idx as u64))
-                            .flex_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_val_focused {
-                                rgb(0x1d1d1f)
-                            } else {
-                                rgb(0x222224)
-                            })
-                            .border_1()
-                            .border_color(if is_val_focused {
-                                rgb(0x0071e3)
-                            } else {
-                                rgb(0x38383a)
-                            })
-                            .cursor_text()
-                            .text_xs()
-                            .text_color(if is_val_focused {
-                                rgb(0xffffff)
-                            } else {
-                                normal
-                            })
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_0p5()
-                                    .child(if v.is_empty() {
-                                        div().text_color(if is_val_focused { rgb(0x666666) } else { muted }).child("Field Value")
-                                    } else {
-                                        div().child(v)
-                                    })
-                                    .when(is_val_focused, |el| {
-                                        el.child(div().w(px(2.0)).h(px(12.0)).bg(rgb(0x0066cc)))
-                                    }),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(
-                                    this,
-                                    RequestEditorAction::FocusFormParamVal(idx),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .child(Self::render_inline_input(
+                        ElementId::NamedInteger("edit-form-val".into(), idx as u64),
+                        inputs.get_input(&InputKey::FormParamValue(idx)),
+                        &v,
+                        is_val_focused,
+                        false,
+                        rgb(0x222224),
+                        rgb(0x38383a),
+                        if is_val_focused { rgb(0xffffff) } else { normal },
+                    ))
                     .child(
                         div()
                             .id(ElementId::NamedInteger("del-form-param".into(), idx as u64))
@@ -1617,9 +1474,11 @@ impl RequestEditorView {
     // Authentication Panel (Modal-Free Full Space Inputs + Previews)
     // =========================================================================
 
+    #[allow(clippy::too_many_arguments)]
     fn render_auth_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -1716,44 +1575,16 @@ impl RequestEditorView {
                                 .flex_col()
                                 .gap_1()
                                 .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("BEARER TOKEN / JWT"))
-                                .child(
-                                    div()
-                                        .id("input-bearer-token")
-                                        .p_3()
-                                        .min_h(px(50.0))
-                                        .rounded_md()
-                                        .bg(rgb(0x18181a))
-                                        .border_1()
-                                        .border_color(if is_token_focused { rgb(0x0071e3) } else { border })
-                                        .font_family("monospace")
-                                        .text_xs()
-                                        .text_color(if is_token_focused { rgb(0xffffff) } else { normal })
-                                        .cursor_text()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .child(if token.is_empty() {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .when(is_token_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        .child(div().text_color(rgb(0x555555)).child("Enter Bearer token or paste JWT here..."))
-                                                } else {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(div().child(token.clone()))
-                                                        .when(is_token_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                }),
-                                        )
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBearerToken), window, cx);
-                                        })),
-                                ),
+                                .child(Self::render_inline_input(
+                                    "input-bearer-token",
+                                    inputs.get_input(&InputKey::AuthBearerToken),
+                                    token,
+                                    is_token_focused,
+                                    false,
+                                    rgb(0x18181a),
+                                    border,
+                                    if is_token_focused { rgb(0xffffff) } else { normal },
+                                )),
                         )
                         .when_some(decoded, |el, jwt| {
                             el.child(
@@ -1834,43 +1665,16 @@ impl RequestEditorView {
                                         .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Username"))
-                                        .child(
-                                            div()
-                                                .id("input-basic-username")
-                                                .px_3()
-                                                .py_2()
-                                                .rounded_sm()
-                                                .bg(rgb(0x18181a))
-                                                .border_1()
-                                                .border_color(if is_user_focused { rgb(0x0071e3) } else { border })
-                                                .text_xs()
-                                                .text_color(if is_user_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_text()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(if username.is_empty() {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .when(is_user_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                                .child(div().text_color(rgb(0x555555)).child("Enter username..."))
-                                                        } else {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .child(div().child(username.clone()))
-                                                                .when(is_user_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        }),
-                                                )
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBasicUsername), window, cx);
-                                                })),
-                                        ),
+                                        .child(Self::render_inline_input(
+                                            "input-basic-username",
+                                            inputs.get_input(&InputKey::AuthBasicUsername),
+                                            username,
+                                            is_user_focused,
+                                            false,
+                                            rgb(0x18181a),
+                                            border,
+                                            if is_user_focused { rgb(0xffffff) } else { normal },
+                                        )),
                                 )
                                 // Password input
                                 .child(
@@ -1880,43 +1684,16 @@ impl RequestEditorView {
                                         .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Password"))
-                                        .child(
-                                            div()
-                                                .id("input-basic-password")
-                                                .px_3()
-                                                .py_2()
-                                                .rounded_sm()
-                                                .bg(rgb(0x18181a))
-                                                .border_1()
-                                                .border_color(if is_pass_focused { rgb(0x0071e3) } else { border })
-                                                .text_xs()
-                                                .text_color(if is_pass_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_text()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(if password.is_empty() {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .when(is_pass_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                                .child(div().text_color(rgb(0x555555)).child("Enter password..."))
-                                                        } else {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .child(div().child("•".repeat(password.len().max(1))))
-                                                                .when(is_pass_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        }),
-                                                )
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthBasicPassword), window, cx);
-                                                })),
-                                        ),
+                                        .child(Self::render_inline_input(
+                                            "input-basic-password",
+                                            inputs.get_input(&InputKey::AuthBasicPassword),
+                                            password,
+                                            is_pass_focused,
+                                            true,
+                                            rgb(0x18181a),
+                                            border,
+                                            if is_pass_focused { rgb(0xffffff) } else { normal },
+                                        )),
                                 ),
                         )
                         // Live Base64 Preview
@@ -1955,43 +1732,16 @@ impl RequestEditorView {
                                         .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Key Name"))
-                                        .child(
-                                            div()
-                                                .id("input-apikey-name")
-                                                .px_3()
-                                                .py_2()
-                                                .rounded_sm()
-                                                .bg(rgb(0x18181a))
-                                                .border_1()
-                                                .border_color(if is_key_focused { rgb(0x0071e3) } else { border })
-                                                .text_xs()
-                                                .text_color(if is_key_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_text()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(if key.is_empty() {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .when(is_key_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                                .child(div().text_color(rgb(0x555555)).child("e.g. X-API-Key"))
-                                                        } else {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .child(div().child(key.clone()))
-                                                                .when(is_key_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        }),
-                                                )
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthApiKeyName), window, cx);
-                                                })),
-                                        ),
+                                        .child(Self::render_inline_input(
+                                            "input-apikey-name",
+                                            inputs.get_input(&InputKey::AuthApiKeyName),
+                                            key,
+                                            is_key_focused,
+                                            false,
+                                            rgb(0x18181a),
+                                            border,
+                                            if is_key_focused { rgb(0xffffff) } else { normal },
+                                        )),
                                 )
                                 // Key Value
                                 .child(
@@ -2001,43 +1751,16 @@ impl RequestEditorView {
                                         .flex_col()
                                         .gap_1()
                                         .child(div().text_xs().text_color(muted).child("Key Value"))
-                                        .child(
-                                            div()
-                                                .id("input-apikey-val")
-                                                .px_3()
-                                                .py_2()
-                                                .rounded_sm()
-                                                .bg(rgb(0x18181a))
-                                                .border_1()
-                                                .border_color(if is_val_focused { rgb(0x0071e3) } else { border })
-                                                .text_xs()
-                                                .text_color(if is_val_focused { rgb(0xffffff) } else { normal })
-                                                .cursor_text()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(if value.is_empty() {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .when(is_val_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                                .child(div().text_color(rgb(0x555555)).child("secret_key_123..."))
-                                                        } else {
-                                                            div()
-                                                                .flex()
-                                                                .items_center()
-                                                                .gap_1()
-                                                                .child(div().child(value.clone()))
-                                                                .when(is_val_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        }),
-                                                )
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthApiKeyValue), window, cx);
-                                                })),
-                                        ),
+                                        .child(Self::render_inline_input(
+                                            "input-apikey-val",
+                                            inputs.get_input(&InputKey::AuthApiKeyValue),
+                                            value,
+                                            is_val_focused,
+                                            false,
+                                            rgb(0x18181a),
+                                            border,
+                                            if is_val_focused { rgb(0xffffff) } else { normal },
+                                        )),
                                 ),
                         )
                         // Placement Toggle
@@ -2103,43 +1826,16 @@ impl RequestEditorView {
                                 .flex_col()
                                 .gap_1()
                                 .child(div().text_xs().text_color(muted).child(label))
-                                .child(
-                                    div()
-                                        .id(ElementId::NamedInteger("input-aws-field".into(), f_idx as u64))
-                                        .px_3()
-                                        .py_1p5()
-                                        .rounded_sm()
-                                        .bg(rgb(0x18181a))
-                                        .border_1()
-                                        .border_color(if is_f { rgb(0x0071e3) } else { border })
-                                        .text_xs()
-                                        .text_color(if is_f { rgb(0xffffff) } else { normal })
-                                        .cursor_text()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .child(if val.is_empty() {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        .child(div().text_color(rgb(0x555555)).child(format!("Enter {label}...")))
-                                                } else {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(div().child(val.to_string()))
-                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                }),
-                                        )
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthAwsField(f_idx)), window, cx);
-                                        })),
-                                )
+                                .child(Self::render_inline_input(
+                                    ElementId::NamedInteger("input-aws-field".into(), f_idx as u64),
+                                    inputs.get_input(&InputKey::AuthAwsField(f_idx)),
+                                    val,
+                                    is_f,
+                                    false,
+                                    rgb(0x18181a),
+                                    border,
+                                    if is_f { rgb(0xffffff) } else { normal },
+                                ))
                         }))
                 }
                 Some(AuthConfig::OAuth2 { grant_type, access_token, token_url, client_id, client_secret }) => {
@@ -2163,43 +1859,16 @@ impl RequestEditorView {
                                 .flex_col()
                                 .gap_1()
                                 .child(div().text_xs().text_color(muted).child(label))
-                                .child(
-                                    div()
-                                        .id(ElementId::NamedInteger("input-oauth-field".into(), f_idx as u64))
-                                        .px_3()
-                                        .py_1p5()
-                                        .rounded_sm()
-                                        .bg(rgb(0x18181a))
-                                        .border_1()
-                                        .border_color(if is_f { rgb(0x0071e3) } else { border })
-                                        .text_xs()
-                                        .text_color(if is_f { rgb(0xffffff) } else { normal })
-                                        .cursor_text()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .child(if val.is_empty() {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                        .child(div().text_color(rgb(0x555555)).child(format!("Enter {label}...")))
-                                                } else {
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_1()
-                                                        .child(div().child(val.to_string()))
-                                                        .when(is_f, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                                }),
-                                        )
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            on_action(this, RequestEditorAction::FocusAuthField(ActiveInputTarget::AuthOAuth2Field(f_idx)), window, cx);
-                                        })),
-                                )
+                                .child(Self::render_inline_input(
+                                    ElementId::NamedInteger("input-oauth-field".into(), f_idx as u64),
+                                    inputs.get_input(&InputKey::AuthOAuth2Field(f_idx)),
+                                    val,
+                                    is_f,
+                                    false,
+                                    rgb(0x18181a),
+                                    border,
+                                    if is_f { rgb(0xffffff) } else { normal },
+                                ))
                         }))
                 }
             })
@@ -2213,6 +1882,7 @@ impl RequestEditorView {
     fn render_scripts_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         sub_tab: ScriptSubTab,
         border: Rgba,
         muted: Rgba,
@@ -2296,54 +1966,19 @@ impl RequestEditorView {
                     .child(Self::render_snippet_chip("+ Log Info", is_pre, "console.log(\"Executing script at:\", new Date());\n", cx, on_action)),
             )
             // Full-Height Multiline Code Area
-            .child(
-                div()
-                    .id("direct-script-editor")
-                    .p_3()
-                    .min_h(px(260.0))
-                    .rounded_md()
-                    .bg(rgb(0x18181a))
-                    .border_1()
-                    .border_color(if is_focused { rgb(0x0071e3) } else { border })
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_text()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .child(if script_content.is_empty() {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                    .child(div().text_color(rgb(0x555555)).child(if is_pre {
-                                        "// Write pre-request script here (Ctrl+C / Ctrl+V supported)..."
-                                    } else {
-                                        "// Write post-response script here (Ctrl+C / Ctrl+V supported)..."
-                                    }))
-                            } else {
-                                div().child(script_content.to_string())
-                            })
-                            .when(is_focused && !script_content.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_1()
-                                        .mt_1()
-                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
-                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Script (Ctrl+C copy • Ctrl+V paste)")),
-                                )
-                            }),
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_action(this, RequestEditorAction::FocusScript(sub_tab), window, cx);
-                    })),
-            )
+            .child(Self::render_inline_textarea(
+                "direct-script-editor",
+                inputs.get_textarea(if is_pre {
+                    &InputKey::PreRequestScript
+                } else {
+                    &InputKey::PostResponseScript
+                }),
+                script_content,
+                px(260.0),
+                is_focused,
+                border,
+                if is_focused { rgb(0xffffff) } else { normal },
+            ))
     }
 
     fn render_snippet_chip<V: 'static>(
@@ -2384,6 +2019,7 @@ impl RequestEditorView {
     fn render_tests_panel<V: 'static>(
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         assertions: Option<&[TestAssertion]>,
         border: Rgba,
         muted: Rgba,
@@ -2480,50 +2116,15 @@ impl RequestEditorView {
                     )),
             )
             // Full-Height Multiline Code Editor
-            .child(
-                div()
-                    .id("direct-test-editor")
-                    .p_3()
-                    .min_h(px(260.0))
-                    .rounded_md()
-                    .bg(rgb(0x18181a))
-                    .border_1()
-                    .border_color(if is_focused { rgb(0x0071e3) } else { border })
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_text()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .child(if tests.is_empty() {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                    .child(div().text_color(rgb(0x555555)).child("// Write Jasmine/Chai assertions (Ctrl+C / Ctrl+V supported)..."))
-                            } else {
-                                div().child(tests.to_string())
-                            })
-                            .when(is_focused && !tests.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_1()
-                                        .mt_1()
-                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
-                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Tests (Ctrl+C copy • Ctrl+V paste)")),
-                                )
-                            }),
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_action(this, RequestEditorAction::FocusTests, window, cx);
-                    })),
-            )
+            .child(Self::render_inline_textarea(
+                "direct-test-editor",
+                inputs.get_textarea(&InputKey::TestScript),
+                tests,
+                px(260.0),
+                is_focused,
+                border,
+                if is_focused { rgb(0xffffff) } else { normal },
+            ))
     }
 
     fn render_test_snippet_chip<V: 'static>(
@@ -2621,6 +2222,7 @@ impl RequestEditorView {
         spec_content: &str,
         spec_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
+        inputs: &InputRegistry,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -2758,49 +2360,14 @@ impl RequestEditorView {
                     ),
             )
             // Monospace Editor Textarea
-            .child(
-                div()
-                    .id("direct-spec-editor")
-                    .p_3()
-                    .min_h(px(320.0))
-                    .rounded_md()
-                    .bg(rgb(0x18181a))
-                    .border_1()
-                    .border_color(if is_focused { rgb(0x0071e3) } else { border })
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(if is_focused { rgb(0xffffff) } else { normal })
-                    .cursor_text()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .child(if spec_content.is_empty() {
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .when(is_focused, |el| el.child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc))))
-                                    .child(div().text_color(rgb(0x555555)).child("// Empty .aura specification (Ctrl+C / Ctrl+V supported)..."))
-                            } else {
-                                div().child(spec_content.to_string())
-                            })
-                            .when(is_focused && !spec_content.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_1()
-                                        .mt_1()
-                                        .child(div().w(px(2.0)).h(px(14.0)).bg(rgb(0x0066cc)))
-                                        .child(div().text_xs().text_color(rgb(0x0071e3)).child("Editing Spec (Ctrl+C copy • Ctrl+V paste)")),
-                                )
-                            }),
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        on_action(this, RequestEditorAction::FocusSpec, window, cx);
-                    })),
-            )
+            .child(Self::render_inline_textarea(
+                "direct-spec-editor",
+                inputs.get_textarea(&InputKey::SpecText),
+                spec_content,
+                px(320.0),
+                is_focused,
+                border,
+                if is_focused { rgb(0xffffff) } else { normal },
+            ))
     }
 }

@@ -964,6 +964,14 @@ impl AuraAppState {
         }
     }
 
+    /// Sets the text content of a specific input target without altering `active_input_target`.
+    pub fn set_input_text_for(&mut self, target: ActiveInputTarget, text: String) {
+        let prev = self.active_input_target.clone();
+        self.active_input_target = Some(target);
+        self.set_active_input_text(text);
+        self.active_input_target = prev;
+    }
+
     /// Sets the text content of the active input target completely (used by cut / paste / replace)
     pub fn set_active_input_text(&mut self, text: String) {
         let target = match &self.active_input_target {

@@ -4,6 +4,8 @@ use crate::stores::{ResponseBodyMode, ResponseTab};
 use aura_core::model::{AuraResponse, TestAssertion};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::base::SelectableText;
+use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::Selectable;
 
@@ -56,6 +58,9 @@ impl ResponsePaneView {
         response: Option<&AuraResponse>,
         active_tab: ResponseTab,
         body_mode: ResponseBodyMode,
+        body_textarea: Option<&Entity<TextareaState>>,
+        raw_textarea: Option<&Entity<TextareaState>>,
+        json_textarea: Option<&Entity<TextareaState>>,
         cx: &mut Context<V>,
         on_select_tab: impl Fn(&mut V, ResponseTab, &mut Window, &mut Context<V>) + 'static + Copy,
         on_toggle_body_mode: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -102,7 +107,20 @@ impl ResponsePaneView {
                             .child(div().text_sm().text_color(text_muted).child("Ready to dispatch request"))
                             .child(div().text_xs().text_color(rgb(0x555555)).child("Send a request with 'Send ↵' or Ctrl+Enter to inspect headers, raw body, and formatting.")),
                     ),
-                Some(resp) => Self::render_active_response(resp, active_tab, body_mode, border, surface, text_muted, cx, on_select_tab, on_toggle_body_mode),
+                Some(resp) => Self::render_active_response(
+                    resp,
+                    active_tab,
+                    body_mode,
+                    body_textarea,
+                    raw_textarea,
+                    json_textarea,
+                    border,
+                    surface,
+                    text_muted,
+                    cx,
+                    on_select_tab,
+                    on_toggle_body_mode,
+                ),
             })
     }
 
@@ -111,6 +129,9 @@ impl ResponsePaneView {
         resp: &AuraResponse,
         active_tab: ResponseTab,
         body_mode: ResponseBodyMode,
+        body_textarea: Option<&Entity<TextareaState>>,
+        raw_textarea: Option<&Entity<TextareaState>>,
+        json_textarea: Option<&Entity<TextareaState>>,
         border: Rgba,
         surface: Rgba,
         muted: Rgba,
@@ -272,15 +293,26 @@ impl ResponsePaneView {
                     .overflow_y_scroll()
                     .overflow_x_hidden()
                     .child(Self::render_tab_content(
-                        resp, active_tab, body_mode, border, muted,
+                        resp,
+                        active_tab,
+                        body_mode,
+                        body_textarea,
+                        raw_textarea,
+                        json_textarea,
+                        border,
+                        muted,
                     )),
             )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_tab_content(
         resp: &AuraResponse,
         tab: ResponseTab,
         body_mode: ResponseBodyMode,
+        body_textarea: Option<&Entity<TextareaState>>,
+        raw_textarea: Option<&Entity<TextareaState>>,
+        json_textarea: Option<&Entity<TextareaState>>,
         border: Rgba,
         muted: Rgba,
     ) -> Div {
@@ -316,7 +348,7 @@ impl ResponsePaneView {
                     )
                     .child(
                         div()
-                            .p_3()
+                            .p_2()
                             .rounded_md()
                             .bg(rgb(0x141416))
                             .border_1()
@@ -326,10 +358,20 @@ impl ResponsePaneView {
                             .text_color(rgb(0xcccccc))
                             .min_w_0()
                             .overflow_x_hidden()
-                            .child(if formatted.is_empty() {
-                                "// Response body is empty".to_string()
+                            .child(if let Some(ta) = body_textarea {
+                                Textarea::new(ta)
+                                    .appearance(false)
+                                    .readonly(true)
+                                    .h(px(340.0))
+                                    .w_full()
+                                    .font_family("monospace")
+                                    .text_xs()
+                                    .text_color(rgb(0xcccccc))
+                                    .into_any_element()
+                            } else if formatted.is_empty() {
+                                div().child("// Response body is empty").into_any_element()
                             } else {
-                                formatted
+                                div().child(formatted).into_any_element()
                             }),
                     )
             }
@@ -358,7 +400,7 @@ impl ResponsePaneView {
                     )
                     .child(
                         div()
-                            .p_3()
+                            .p_2()
                             .rounded_md()
                             .bg(rgb(0x141416))
                             .border_1()
@@ -368,7 +410,19 @@ impl ResponsePaneView {
                             .text_color(rgb(0xcccccc))
                             .min_w_0()
                             .overflow_x_hidden()
-                            .child(raw_http),
+                            .child(if let Some(ta) = raw_textarea {
+                                Textarea::new(ta)
+                                    .appearance(false)
+                                    .readonly(true)
+                                    .h(px(340.0))
+                                    .w_full()
+                                    .font_family("monospace")
+                                    .text_xs()
+                                    .text_color(rgb(0xcccccc))
+                                    .into_any_element()
+                            } else {
+                                div().child(raw_http).into_any_element()
+                            }),
                     )
             }
             ResponseTab::Json => {
@@ -392,7 +446,7 @@ impl ResponsePaneView {
                     )
                     .child(
                         div()
-                            .p_3()
+                            .p_2()
                             .rounded_md()
                             .bg(rgb(0x141416))
                             .border_1()
@@ -402,7 +456,19 @@ impl ResponsePaneView {
                             .text_color(rgb(0xcccccc))
                             .min_w_0()
                             .overflow_x_hidden()
-                            .child(json_pretty),
+                            .child(if let Some(ta) = json_textarea {
+                                Textarea::new(ta)
+                                    .appearance(false)
+                                    .readonly(true)
+                                    .h(px(340.0))
+                                    .w_full()
+                                    .font_family("monospace")
+                                    .text_xs()
+                                    .text_color(rgb(0xcccccc))
+                                    .into_any_element()
+                            } else {
+                                div().child(json_pretty).into_any_element()
+                            }),
                     )
             }
             ResponseTab::Headers => {
@@ -434,7 +500,7 @@ impl ResponsePaneView {
                             ),
                     )
                     .child(div().flex().flex_col().gap_1().min_w_0().children(
-                        header_entries.into_iter().map(|(k, v)| {
+                        header_entries.into_iter().enumerate().map(|(idx, (k, v))| {
                             div()
                                 .flex()
                                 .items_start()
@@ -458,7 +524,10 @@ impl ResponsePaneView {
                                                 .font_weight(FontWeight::SEMIBOLD)
                                                 .text_color(rgb(0x2997ff))
                                                 .flex_shrink_0()
-                                                .child(format!("{}:", k)),
+                                                .child(SelectableText::new(
+                                                    ElementId::NamedInteger("resp-hdr-k".into(), idx as u64),
+                                                    format!("{}:", k),
+                                                )),
                                         )
                                         .child(
                                             div()
@@ -467,7 +536,10 @@ impl ResponsePaneView {
                                                 .min_w_0()
                                                 .flex_1()
                                                 .whitespace_normal()
-                                                .child(v.clone()),
+                                                .child(SelectableText::new(
+                                                    ElementId::NamedInteger("resp-hdr-v".into(), idx as u64),
+                                                    v.clone(),
+                                                )),
                                         ),
                                 )
                         }),
@@ -558,7 +630,7 @@ impl ResponsePaneView {
                             .child("No console output recorded."),
                     )
                 })
-                .children(resp.console_logs.iter().map(|log| {
+                .children(resp.console_logs.iter().enumerate().map(|(idx, log)| {
                     let level_color = match log.level.to_uppercase().as_str() {
                         "WARN" => rgb(0xf5a623),
                         "ERROR" => rgb(0xe74c3c),
@@ -593,7 +665,10 @@ impl ResponsePaneView {
                                 .text_color(rgb(0xcccccc))
                                 .min_w_0()
                                 .overflow_x_hidden()
-                                .child(log.message.clone()),
+                                .child(SelectableText::new(
+                                    ElementId::NamedInteger("resp-console-msg".into(), idx as u64),
+                                    log.message.clone(),
+                                )),
                         )
                 })),
             _ => div()

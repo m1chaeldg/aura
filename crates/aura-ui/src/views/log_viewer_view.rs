@@ -5,6 +5,7 @@ use crate::app_state::AuraAppState;
 use crate::views::workspace_view::AuraWorkspaceView;
 use aura_engine::LogLevel;
 use gpui::*;
+use gpui_kit::base::SelectableText;
 
 pub struct LogViewerView;
 
@@ -297,7 +298,8 @@ impl LogViewerView {
                                     .iter()
                                     .rev()
                                     .take(200)
-                                    .map(|entry| {
+                                    .enumerate()
+                                    .map(|(idx, entry)| {
                                         let badge_color = match entry.level {
                                             LogLevel::TRACE => rgb(0x7a7a7a),
                                             LogLevel::DEBUG => rgb(0x55555a),
@@ -346,7 +348,10 @@ impl LogViewerView {
                                                 div()
                                                     .flex_1()
                                                     .text_color(text_color)
-                                                    .child(entry.message.clone()),
+                                                    .child(SelectableText::new(
+                                                        ElementId::NamedInteger("log-entry-msg".into(), idx as u64),
+                                                        entry.message.clone(),
+                                                    )),
                                             )
                                             .into_any_element()
                                     })
