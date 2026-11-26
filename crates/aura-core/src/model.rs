@@ -4,6 +4,88 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Request transport protocol
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RequestProtocol {
+    #[default]
+    Http,
+    Graphql,
+    Websocket,
+    Sse,
+    Grpc,
+    Soap,
+}
+
+impl RequestProtocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Http => "HTTP",
+            Self::Graphql => "GraphQL",
+            Self::Websocket => "WS",
+            Self::Sse => "SSE",
+            Self::Grpc => "gRPC",
+            Self::Soap => "SOAP",
+        }
+    }
+
+    pub fn from_str_lenient(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "graphql" | "gql" => Self::Graphql,
+            "ws" | "wss" | "websocket" => Self::Websocket,
+            "sse" | "event-stream" => Self::Sse,
+            "grpc" | "grpcs" => Self::Grpc,
+            "soap" | "wsdl" => Self::Soap,
+            _ => Self::Http,
+        }
+    }
+}
+
+/// Saved WebSocket message template attached to a request
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WsMessageTemplate {
+    pub id: String,
+    pub name: String,
+    pub payload: String,
+}
+
+/// gRPC call configuration attached to a request
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct GrpcConfig {
+    #[serde(default)]
+    pub proto_path: Option<String>,
+    #[serde(default)]
+    pub proto_content: Option<String>,
+    #[serde(default)]
+    pub service: String,
+    #[serde(default)]
+    pub method: String,
+    #[serde(default)]
+    pub use_reflection: bool,
+    #[serde(default)]
+    pub payload: String,
+}
+
+/// Parsed Server-Sent Event item
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SseEvent {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub event: String,
+    pub data: String,
+    #[serde(default)]
+    pub retry_ms: Option<u64>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Unified live streaming message (WebSocket or gRPC stream)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamMessage {
+    pub direction: String, // "in", "out", "system"
+    pub payload: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 /// HTTP Method
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -136,6 +218,11 @@ pub enum BodyType {
         #[serde(default)]
         content_type: Option<String>,
     },
+    GraphQL {
+        query: String,
+        #[serde(default)]
+        variables: String,
+    },
 }
 
 impl BodyType {
@@ -150,6 +237,7 @@ impl BodyType {
             Self::FormUrlEncoded(_) => "FormUrlEncoded",
             Self::Multipart(_) => "Multipart",
             Self::Binary { .. } => "Binary",
+            Self::GraphQL { .. } => "GraphQL",
         }
     }
 
@@ -157,6 +245,7 @@ impl BodyType {
         match self {
             Self::Json(s) | Self::Xml(s) | Self::Text(s) => s.as_str(),
             Self::Raw { content, .. } => content.as_str(),
+            Self::GraphQL { query, .. } => query.as_str(),
             _ => "",
         }
     }
@@ -182,6 +271,10 @@ impl BodyType {
             "BINARY" => Self::Binary {
                 file_path: "".to_string(),
                 content_type: None,
+            },
+            "GRAPHQL" | "GQL" => Self::GraphQL {
+                query: "query {\n  \n}".to_string(),
+                variables: "{}".to_string(),
             },
             _ => Self::None,
         }
@@ -355,6 +448,8 @@ pub struct AuraRequest {
     pub method: HttpMethod,
     pub url: String,
     #[serde(default)]
+    pub protocol: RequestProtocol,
+    #[serde(default)]
     pub params: Vec<ParamItem>,
     #[serde(default)]
     pub headers: Vec<HeaderItem>,
@@ -372,6 +467,10 @@ pub struct AuraRequest {
     pub settings: RequestSettings,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub grpc: Option<GrpcConfig>,
+    #[serde(default)]
+    pub ws_templates: Vec<WsMessageTemplate>,
 }
 
 impl AuraRequest {
@@ -381,6 +480,7 @@ impl AuraRequest {
             name: name.into(),
             method,
             url: url.into(),
+            protocol: RequestProtocol::Http,
             params: Vec::new(),
             headers: Vec::new(),
             variables: HashMap::new(),
@@ -390,6 +490,8 @@ impl AuraRequest {
             scripts: ScriptConfig::default(),
             settings: RequestSettings::default(),
             description: None,
+            grpc: None,
+            ws_templates: Vec::new(),
         }
     }
 
@@ -483,6 +585,10 @@ pub struct AuraResponse {
     pub console_logs: Vec<ConsoleMessage>,
     #[serde(default)]
     pub script_errors: Vec<ScriptError>,
+    #[serde(default)]
+    pub sse_events: Vec<SseEvent>,
+    #[serde(default)]
+    pub stream_messages: Vec<StreamMessage>,
 }
 
 impl AuraResponse {
@@ -664,6 +770,8 @@ pub struct AuraFileRequest {
     pub name: String,
     pub method: String,
     pub url: String,
+    #[serde(default)]
+    pub protocol: Option<RequestProtocol>,
     pub settings: Settings,
     pub headers: IndexMap<String, String>,
     pub auth: Option<AuthConfig>,
@@ -677,6 +785,10 @@ pub struct AuraFileRequest {
     pub assert: Option<String>,
     #[serde(default)]
     pub tests: Option<String>,
+    #[serde(default)]
+    pub grpc: Option<GrpcConfig>,
+    #[serde(default)]
+    pub ws_templates: Vec<WsMessageTemplate>,
 }
 
 impl Default for AuraFileRequest {
@@ -686,6 +798,7 @@ impl Default for AuraFileRequest {
             name: "New Request".to_string(),
             method: "GET".to_string(),
             url: "".to_string(),
+            protocol: None,
             settings: Settings::default(),
             headers: IndexMap::new(),
             auth: None,
@@ -696,6 +809,8 @@ impl Default for AuraFileRequest {
             scripts: ScriptHooks::default(),
             assert: None,
             tests: None,
+            grpc: None,
+            ws_templates: Vec::new(),
         }
     }
 }
@@ -774,6 +889,7 @@ impl From<AuraFileRequest> for AuraRequest {
             name: r.name,
             method,
             url: r.url,
+            protocol: r.protocol.unwrap_or_default(),
             params,
             headers,
             variables,
@@ -783,6 +899,8 @@ impl From<AuraFileRequest> for AuraRequest {
             scripts,
             settings,
             description: None,
+            grpc: r.grpc,
+            ws_templates: r.ws_templates,
         }
     }
 }
@@ -834,6 +952,11 @@ impl From<AuraRequest> for AuraFileRequest {
             name: req.name,
             method: req.method.as_str().to_string(),
             url: req.url,
+            protocol: if req.protocol == RequestProtocol::Http {
+                None
+            } else {
+                Some(req.protocol)
+            },
             settings: Settings {
                 inherit_auth: req.settings.inherit_auth,
                 verify_ssl: req.settings.verify_ssl,
@@ -865,6 +988,8 @@ impl From<AuraRequest> for AuraFileRequest {
             } else {
                 Some(req.scripts.tests)
             },
+            grpc: req.grpc,
+            ws_templates: req.ws_templates,
         }
     }
 }

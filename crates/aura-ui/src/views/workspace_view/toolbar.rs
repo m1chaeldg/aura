@@ -103,6 +103,19 @@ impl AuraWorkspaceView {
                                 Self::spawn_open_workspace_picker(cx);
                             })),
                     )
+                    .child(
+                        Button::new("import-wsdl-toolbar-btn")
+                            .icon(icon(IconName::FileText))
+                            .label("Import WSDL")
+                            .small()
+                            .ghost()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Import SOAP WSDL definition into collection")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.open_wsdl_import_dialog();
+                                cx.notify();
+                            })),
+                    )
                     .child({
                         let btn = Button::new("toggle-logs-btn")
                             .icon(icon(IconName::ScrollText))

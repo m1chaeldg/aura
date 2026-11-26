@@ -156,6 +156,9 @@ impl CstDocument {
                     "name" => req.name = kv.value.as_str().to_string(),
                     "method" => req.method = kv.value.as_str().to_uppercase(),
                     "url" => req.url = kv.value.as_str().to_string(),
+                    "protocol" => {
+                        req.protocol = Some(RequestProtocol::from_str_lenient(kv.value.as_str()));
+                    }
                     _ => {}
                 }
             }
@@ -317,6 +320,55 @@ impl CstDocument {
                                 };
                             }
                         }
+                    }
+                    "body.graphql" => {
+                        let mut query = String::new();
+                        let mut variables = String::new();
+                        for sub in &table.items {
+                            match sub {
+                                CstTableItem::FencedBlock(fb) => {
+                                    if fb.lang.eq_ignore_ascii_case("json")
+                                        || (!query.is_empty() && variables.is_empty())
+                                    {
+                                        variables =
+                                            fb.content.trim_end_matches(['\r', '\n']).to_string();
+                                    } else {
+                                        query =
+                                            fb.content.trim_end_matches(['\r', '\n']).to_string();
+                                    }
+                                }
+                                CstTableItem::KeyValue(kv) if kv.key == "variables" => {
+                                    variables = kv.value.as_str().to_string();
+                                }
+                                _ => {}
+                            }
+                        }
+                        req.body = BodyType::GraphQL { query, variables };
+                    }
+                    "grpc" => {
+                        let mut cfg = GrpcConfig::default();
+                        for sub in &table.items {
+                            match sub {
+                                CstTableItem::KeyValue(kv) => match kv.key.as_str() {
+                                    "proto_path" => {
+                                        cfg.proto_path = Some(kv.value.as_str().to_string())
+                                    }
+                                    "service" => cfg.service = kv.value.as_str().to_string(),
+                                    "method" => cfg.method = kv.value.as_str().to_string(),
+                                    "use_reflection" => {
+                                        cfg.use_reflection = kv.value.as_bool().unwrap_or(false)
+                                    }
+                                    "payload" => cfg.payload = kv.value.as_str().to_string(),
+                                    _ => {}
+                                },
+                                CstTableItem::FencedBlock(fb) => {
+                                    cfg.payload =
+                                        fb.content.trim_end_matches(['\r', '\n']).to_string();
+                                }
+                                _ => {}
+                            }
+                        }
+                        req.grpc = Some(cfg);
                     }
                     "body.form" | "body.form-urlencoded" => {
                         let mut form = indexmap::IndexMap::new();

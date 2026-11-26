@@ -33,6 +33,7 @@ pub enum ResponseTab {
     Table,
     Tree,
     Visualize,
+    Stream,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

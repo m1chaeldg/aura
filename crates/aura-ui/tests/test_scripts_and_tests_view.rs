@@ -50,6 +50,8 @@ fn test_tests_panel_snippets_and_manual_evaluation() {
         assertions: Vec::new(),
         console_logs: Vec::new(),
         script_errors: Vec::new(),
+        sse_events: Vec::new(),
+        stream_messages: Vec::new(),
     });
 
     // Run tests directly on demand
@@ -80,6 +82,8 @@ fn test_script_syntax_error_populates_response_script_errors() {
         assertions: Vec::new(),
         console_logs: Vec::new(),
         script_errors: Vec::new(),
+        sse_events: Vec::new(),
+        stream_messages: Vec::new(),
     });
 
     let err = state.run_active_tests().expect_err("syntax error should fail");

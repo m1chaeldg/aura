@@ -60,6 +60,42 @@ impl AuraWorkspaceView {
                                 }
                             }
                         }
+                        InputKey::WsTemplateName => {
+                            self.state.ws_template_name = val;
+                        }
+                        InputKey::GrpcService => {
+                            if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index)
+                            {
+                                let cfg = tab
+                                    .request
+                                    .grpc
+                                    .get_or_insert_with(aura_core::model::GrpcConfig::default);
+                                cfg.service = val;
+                                tab.mark_dirty(true);
+                                tab.sync_spec_from_request();
+                            }
+                        }
+                        InputKey::GrpcMethod => {
+                            if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index)
+                            {
+                                let cfg = tab
+                                    .request
+                                    .grpc
+                                    .get_or_insert_with(aura_core::model::GrpcConfig::default);
+                                cfg.method = val;
+                                tab.mark_dirty(true);
+                                tab.sync_spec_from_request();
+                            }
+                        }
+                        InputKey::SoapOperation => {
+                            self.state.soap_operation = val;
+                        }
+                        InputKey::SoapNamespace => {
+                            self.state.soap_namespace = val;
+                        }
+                        InputKey::SoapAction => {
+                            self.state.soap_action = val;
+                        }
                         _ => {}
                     }
                 }
@@ -166,6 +202,44 @@ impl AuraWorkspaceView {
                     cx.notify();
                 } else if matches!(key, InputKey::EnvCode) {
                     self.state.update_environment_code_buffer(val);
+                    self.inputs
+                        .set_template_context(self.state.active_template_context());
+                    self.inputs.sync_all_template_highlights(cx);
+                    cx.notify();
+                } else {
+                    match key {
+                        InputKey::GraphQLQuery => {
+                            self.state.set_graphql_query(val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::GraphQLVariables => {
+                            self.state.set_graphql_variables(val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::WsMessageInput => {
+                            self.state.ws_composer_text = val;
+                        }
+                        InputKey::GrpcPayload => {
+                            if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index)
+                            {
+                                let cfg = tab
+                                    .request
+                                    .grpc
+                                    .get_or_insert_with(aura_core::model::GrpcConfig::default);
+                                cfg.payload = val;
+                                tab.mark_dirty(true);
+                                tab.sync_spec_from_request();
+                            }
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::WsdlImportText => {
+                            if let Some(ref mut dlg) = self.state.wsdl_import_dialog {
+                                dlg.wsdl_text = val;
+                                dlg.error = None;
+                            }
+                        }
+                        _ => {}
+                    }
                     self.inputs
                         .set_template_context(self.state.active_template_context());
                     self.inputs.sync_all_template_highlights(cx);

@@ -1,5 +1,6 @@
 //! ResponsePane View: Status pills, metrics, tabs, tests, console logs, and custom viewers.
 
+mod stream_panel;
 mod table_panel;
 mod tree_panel;
 mod visualize_panel;
@@ -44,6 +45,7 @@ pub enum ResponsePaneAction {
     CycleBiXCol(Vec<String>),
     CycleBiYCol(Vec<String>),
     CycleBiPivotCol(Vec<String>),
+    ClearStream,
 }
 
 pub struct ResponsePaneView;
@@ -261,8 +263,17 @@ impl ResponsePaneView {
             active_tab
         };
         let (passed_tests, total_tests) = Self::assertion_counts(&resp.assertions);
+        let stream_total = resp.sse_events.len() + resp.stream_messages.len();
         let tabs = [
             (ResponseTab::Body, "Body".to_string()),
+            (
+                ResponseTab::Stream,
+                if stream_total > 0 {
+                    format!("Stream ({stream_total})")
+                } else {
+                    "Stream".to_string()
+                },
+            ),
             (
                 ResponseTab::Headers,
                 format!("Headers ({})", resp.headers.len()),
@@ -554,6 +565,7 @@ impl ResponsePaneView {
                 cx,
                 on_action,
             ),
+            ResponseTab::Stream => Self::render_stream_panel(resp, border, muted, cx, on_action),
         }
     }
 

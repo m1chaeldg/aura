@@ -47,6 +47,7 @@ fn test_js_completion_includes_aura_variables_response_and_bdd() {
         ],
         query_params: vec![("page".into(), "1".into(), true)],
         headers: vec![],
+        graphql_schema: None,
     };
 
     let post_items = collect_completion_items(
@@ -96,6 +97,7 @@ fn test_spec_completion_includes_sections_and_template_variables() {
         variables: vec![("base_url".into(), "https://api.example.com".into(), true)],
         query_params: vec![],
         headers: vec![],
+        graphql_schema: None,
     };
 
     let items = collect_completion_items(CompletionLanguage::TomlSpec, "{{", &ctx);

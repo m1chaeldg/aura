@@ -4,8 +4,10 @@ pub mod curl;
 pub mod insomnia;
 pub mod openapi;
 pub mod postman;
+pub mod wsdl;
 
 pub use curl::parse_curl_command;
 pub use insomnia::import_insomnia;
 pub use openapi::import_openapi;
 pub use postman::import_postman_collection;
+pub use wsdl::import_wsdl;

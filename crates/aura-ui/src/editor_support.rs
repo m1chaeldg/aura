@@ -17,6 +17,7 @@ use lsp_types::{
 pub enum CompletionLanguage {
     JavaScript { include_response: bool },
     TomlSpec,
+    GraphQL,
 }
 
 /// Live request/tab context fed into `AuraCompletionProvider` so autocomplete
@@ -26,6 +27,7 @@ pub struct EditorContextData {
     pub variables: Vec<(String, String, bool)>,
     pub query_params: Vec<(String, String, bool)>,
     pub headers: Vec<(String, String, bool)>,
+    pub graphql_schema: Option<aura_core::graphql::GraphQLSchema>,
 }
 
 /// Static documentation entry used for both autocomplete and the Reference panel.
@@ -394,6 +396,43 @@ pub fn collect_completion_items(
                         key,
                         "Query parameter defined on this request.",
                         CompletionItemKind::FIELD,
+                    ));
+                }
+            }
+        }
+        CompletionLanguage::GraphQL => {
+            let mut full_text = String::new();
+            let gql_items =
+                aura_core::graphql::graphql_completions(prefix, ctx.graphql_schema.as_ref());
+            for item in gql_items {
+                if matches_prefix(&item.label, &item.insert_text, &needle) {
+                    full_text.clear();
+                    full_text.push_str(&item.detail);
+                    items.push(make_item(
+                        &item.label,
+                        &full_text,
+                        &item.insert_text,
+                        "GraphQL completion",
+                        if item.kind == "Keyword" {
+                            CompletionItemKind::KEYWORD
+                        } else {
+                            CompletionItemKind::FIELD
+                        },
+                    ));
+                }
+            }
+            for (key, val, enabled) in &ctx.variables {
+                if !enabled || key.trim().is_empty() {
+                    continue;
+                }
+                let token = format!("{{{{{key}}}}}");
+                if matches_prefix(&token, key, &needle) {
+                    items.push(make_item(
+                        &token,
+                        &format!("Variable = {val}"),
+                        &token,
+                        "Template variable from active request/workspace.",
+                        CompletionItemKind::VARIABLE,
                     ));
                 }
             }

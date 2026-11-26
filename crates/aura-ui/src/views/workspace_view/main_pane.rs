@@ -94,7 +94,12 @@ impl AuraWorkspaceView {
         is_in_flight: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let active_proto = self.state.active_protocol();
+        let is_ws_connected = self.state.is_active_ws_connected();
         RequestHeaderView::render(
+            active_proto,
+            self.state.is_protocol_dropdown_open,
+            is_ws_connected,
             active_method,
             self.inputs
                 .get_input(&InputKey::Url)
@@ -104,6 +109,19 @@ impl AuraWorkspaceView {
             self.state.is_active_tab_dirty(),
             self.state.is_method_dropdown_open,
             cx,
+            |this, _window, cx| {
+                this.state.toggle_protocol_dropdown();
+                cx.notify();
+            },
+            |this, proto, _window, cx| {
+                this.state.set_active_protocol(proto);
+                this.schedule_auto_save(cx);
+                cx.notify();
+            },
+            |this, _window, cx| {
+                this.state.close_protocol_dropdown();
+                cx.notify();
+            },
             |this, _window, cx| {
                 this.state.toggle_method_dropdown();
                 cx.notify();
@@ -125,12 +143,19 @@ impl AuraWorkspaceView {
                 this.dispatch_send_request(cx);
             },
             |this, _window, cx| {
-                tracing::info!(
-                    target: "aura_ui::execution",
-                    "User clicked Cancel button; aborting active request"
-                );
-                this.state.execution_service.cancel();
-                this.state.status_message = Some("Request cancelled by user".to_string());
+                if this.state.active_protocol() == aura_core::model::RequestProtocol::Websocket {
+                    if let Some(tid) = this.state.active_tab().map(|t| t.id.clone()) {
+                        this.state.disconnect_ws_tab(&tid);
+                        this.state.status_message = Some("WebSocket disconnected".to_string());
+                    }
+                } else {
+                    tracing::info!(
+                        target: "aura_ui::execution",
+                        "User clicked Cancel button; aborting active request"
+                    );
+                    this.state.execution_service.cancel();
+                    this.state.status_message = Some("Request cancelled by user".to_string());
+                }
                 cx.notify();
             },
             |this, _window, cx| {
@@ -171,6 +196,12 @@ impl AuraWorkspaceView {
                 active_tab.and_then(|t| t.spec_buffer.as_deref()),
                 active_tab.and_then(|t| t.spec_error.as_deref()),
                 self.state.is_body_format_dropdown_open,
+                self.state.active_graphql_schema(),
+                self.state.is_graphql_introspecting,
+                self.state.show_graphql_schema,
+                self.state.active_proto_schema(),
+                self.state.is_active_ws_connected(),
+                &self.state.ws_composer_text,
                 cx,
                 |this, action, window, cx| {
                     this.handle_request_editor_action(action, window, cx);
@@ -282,6 +313,9 @@ impl AuraWorkspaceView {
                         }
                         ResponsePaneAction::CycleBiPivotCol(cols) => {
                             this.state.cycle_response_bi_pivot_col(&cols);
+                        }
+                        ResponsePaneAction::ClearStream => {
+                            this.state.clear_active_stream();
                         }
                     }
                     cx.notify();

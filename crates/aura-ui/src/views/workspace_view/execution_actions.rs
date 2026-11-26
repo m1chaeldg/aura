@@ -17,10 +17,32 @@ impl AuraWorkspaceView {
             None => return,
         };
         let execution_service = self.state.execution_service.clone();
-        let cancel_token = execution_service.begin_flight();
         let tab_id = active_tab.id.clone();
         let request = active_tab.request.clone();
         let context = self.state.active_template_context();
+
+        if request.protocol == aura_core::model::RequestProtocol::Websocket {
+            if self.state.is_active_ws_connected() {
+                self.state.disconnect_ws_tab(&tab_id);
+                self.state.status_message = Some("WebSocket disconnected".to_string());
+                cx.notify();
+            } else {
+                self.dispatch_connect_websocket(cx);
+            }
+            return;
+        }
+
+        if request.protocol == aura_core::model::RequestProtocol::Sse {
+            self.dispatch_sse_stream(tab_id, request, context, cx);
+            return;
+        }
+
+        if request.protocol == aura_core::model::RequestProtocol::Grpc {
+            self.dispatch_grpc_request(tab_id, request, context, cx);
+            return;
+        }
+
+        let cancel_token = execution_service.begin_flight();
 
         tracing::info!(
             target: "aura_ui::execution",
@@ -66,7 +88,7 @@ impl AuraWorkspaceView {
                                 tab.response = Some(resp);
                             }
                         }
-                        Err(e) => {
+                Err(e) => {
                             tracing::warn!(
                                 target: "aura_ui::execution",
                                 tab_id = %tab_id,
@@ -74,6 +96,195 @@ impl AuraWorkspaceView {
                                 "Request did not complete"
                             );
                             this.state.status_message = Some(format!("Request failed: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(super) fn dispatch_connect_websocket(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.state.active_tab().cloned() else {
+            return;
+        };
+        let tab_id = tab.id.clone();
+        let ctx = self.state.active_template_context();
+        let url = ctx.render(&tab.request.url);
+        let mut headers: Vec<(String, String)> = tab
+            .request
+            .headers
+            .iter()
+            .filter(|h| h.enabled)
+            .map(|h| (ctx.render(&h.key), ctx.render(&h.value)))
+            .collect();
+        let mut dummy_params = Vec::new();
+        aura_core::security::apply_auth(&tab.request.auth, &mut headers, &mut dummy_params);
+        let verify_ssl = tab.request.settings.verify_ssl;
+
+        self.state.status_message = Some(format!("Connecting WebSocket {url}..."));
+        self.state.active_response_tab = crate::stores::ResponseTab::Stream;
+        cx.notify();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                match aura_engine::connect_websocket(&url, headers, verify_ssl).await {
+                    Ok((cmd_tx, mut ev_rx)) => {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            this.state.register_ws_connection(&tab_id, cmd_tx);
+                            this.state.status_message = Some(format!("WebSocket connected: {url}"));
+                            cx.notify();
+                        });
+                        while let Some(ev) = ev_rx.recv().await {
+                            let tab_id_inner = tab_id.clone();
+                            let cont = this.update(&mut cx, |this, cx| {
+                                match ev {
+                                    aura_engine::WsEvent::Message { payload, .. } => {
+                                        this.state.push_stream_message(&tab_id_inner, "in", payload);
+                                    }
+                                    aura_engine::WsEvent::Closed { reason, .. } => {
+                                        this.state.ws_senders.remove(&tab_id_inner);
+                                        this.state.push_stream_message(
+                                            &tab_id_inner,
+                                            "system",
+                                            format!("Closed: {reason}"),
+                                        );
+                                        this.state.status_message =
+                                            Some(format!("WebSocket closed: {reason}"));
+                                    }
+                                    aura_engine::WsEvent::Error(err) => {
+                                        this.state.push_stream_message(
+                                            &tab_id_inner,
+                                            "system",
+                                            format!("Error: {err}"),
+                                        );
+                                    }
+                                    aura_engine::WsEvent::Connected { .. } => {}
+                                }
+                                cx.notify();
+                            });
+                            if cont.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            this.state.status_message =
+                                Some(format!("WebSocket connect failed: {e}"));
+                            cx.notify();
+                        });
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn dispatch_sse_stream(
+        &mut self,
+        tab_id: String,
+        request: aura_core::model::AuraRequest,
+        context: aura_core::templating::TemplateContext,
+        cx: &mut Context<Self>,
+    ) {
+        let cancel_token = self.state.execution_service.begin_flight();
+        self.state.status_message = Some(format!("Streaming SSE {}...", request.url));
+        self.state.active_response_tab = crate::stores::ResponseTab::Stream;
+        cx.notify();
+
+        let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel();
+        let tab_id_pump = tab_id.clone();
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                while let Some(ev) = ev_rx.recv().await {
+                    let tid = tab_id_pump.clone();
+                    if this
+                        .update(&mut cx, |this, cx| {
+                            this.state.push_sse_event(&tid, ev);
+                            cx.notify();
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+
+        let exec_svc = self.state.execution_service.clone();
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let res = tokio::select! {
+                    r = aura_engine::execute_sse_request(&request, &context, Some(ev_tx)) => r,
+                    _ = cancel_token.cancelled() => Err(anyhow::anyhow!("SSE stream cancelled")),
+                };
+                exec_svc.end_flight();
+                let _ = this.update(&mut cx, |this, cx| {
+                    match res {
+                        Ok(resp) => {
+                            let ev_count = resp.sse_events.len();
+                            this.state.status_message = Some(format!(
+                                "SSE completed: {} {} ({ev_count} events, {} ms)",
+                                resp.status, resp.status_text, resp.duration_ms
+                            ));
+                            if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                tab.response = Some(resp);
+                            }
+                        }
+                        Err(e) => {
+                            this.state.status_message = Some(format!("SSE failed: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn dispatch_grpc_request(
+        &mut self,
+        tab_id: String,
+        request: aura_core::model::AuraRequest,
+        context: aura_core::templating::TemplateContext,
+        cx: &mut Context<Self>,
+    ) {
+        let cancel_token = self.state.execution_service.begin_flight();
+        let schema = self.state.grpc_schemas.get(&tab_id).cloned();
+        self.state.status_message = Some(format!("Calling gRPC {}...", request.url));
+        self.state.active_response_tab = crate::stores::ResponseTab::Stream;
+        cx.notify();
+
+        let exec_svc = self.state.execution_service.clone();
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let res = tokio::select! {
+                    r = aura_engine::execute_grpc_call(&request, schema.as_ref(), &context, None) => r,
+                    _ = cancel_token.cancelled() => Err(anyhow::anyhow!("gRPC call cancelled")),
+                };
+                exec_svc.end_flight();
+                let _ = this.update(&mut cx, |this, cx| {
+                    match res {
+                        Ok(resp) => {
+                            this.state.status_message = Some(format!(
+                                "gRPC: {} ({} ms, {})",
+                                resp.status_text,
+                                resp.duration_ms,
+                                resp.formatted_size()
+                            ));
+                            if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                tab.response = Some(resp);
+                            }
+                        }
+                        Err(e) => {
+                            this.state.status_message = Some(format!("gRPC call failed: {e}"));
                         }
                     }
                     cx.notify();

@@ -14,8 +14,11 @@ mod inline_input_edit;
 mod inline_input_nav;
 mod item_dialogs;
 mod layout_and_palette;
+mod protocols;
 mod request_editing;
 mod workspace_tabs;
+
+pub use protocols::WsdlImportDialogState;
 
 /// Sub-tabs within the Scripts panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -333,11 +336,36 @@ pub struct AuraAppState {
     #[serde(skip)]
     pub is_method_dropdown_open: bool,
     #[serde(skip)]
+    pub is_protocol_dropdown_open: bool,
+    #[serde(skip)]
     pub is_body_format_dropdown_open: bool,
     #[serde(skip)]
     pub is_response_lang_dropdown_open: bool,
     #[serde(skip)]
     pub is_env_dropdown_open: bool,
+    #[serde(skip)]
+    pub graphql_schemas: std::collections::HashMap<String, aura_core::graphql::GraphQLSchema>,
+    #[serde(skip)]
+    pub is_graphql_introspecting: bool,
+    #[serde(skip)]
+    pub show_graphql_schema: bool,
+    #[serde(skip)]
+    pub grpc_schemas: std::collections::HashMap<String, aura_core::grpc::ProtoSchema>,
+    #[serde(skip)]
+    pub ws_senders:
+        std::collections::HashMap<String, tokio::sync::mpsc::UnboundedSender<aura_engine::WsCommand>>,
+    #[serde(skip)]
+    pub ws_composer_text: String,
+    #[serde(skip)]
+    pub ws_template_name: String,
+    #[serde(skip)]
+    pub soap_operation: String,
+    #[serde(skip)]
+    pub soap_namespace: String,
+    #[serde(skip)]
+    pub soap_action: String,
+    #[serde(skip)]
+    pub wsdl_import_dialog: Option<WsdlImportDialogState>,
     pub is_log_viewer_open: bool,
     #[serde(default)]
     pub is_log_viewer_text_mode: bool,
@@ -433,9 +461,21 @@ impl Default for AuraAppState {
             is_code_mode: false,
             is_command_palette_open: false,
             is_method_dropdown_open: false,
+            is_protocol_dropdown_open: false,
             is_body_format_dropdown_open: false,
             is_response_lang_dropdown_open: false,
             is_env_dropdown_open: false,
+            graphql_schemas: std::collections::HashMap::new(),
+            is_graphql_introspecting: false,
+            show_graphql_schema: true,
+            grpc_schemas: std::collections::HashMap::new(),
+            ws_senders: std::collections::HashMap::new(),
+            ws_composer_text: String::new(),
+            ws_template_name: String::new(),
+            soap_operation: "Operation".to_string(),
+            soap_namespace: "http://tempuri.org/".to_string(),
+            soap_action: String::new(),
+            wsdl_import_dialog: None,
             is_log_viewer_open: false,
             is_log_viewer_text_mode: false,
             is_sidebar_collapsed: false,
@@ -1102,6 +1142,8 @@ mod tests {
             assertions: Vec::new(),
             console_logs: Vec::new(),
             script_errors: Vec::new(),
+            sse_events: Vec::new(),
+            stream_messages: Vec::new(),
         });
 
         let count = state.run_active_tests().expect("tests should run");

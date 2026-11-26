@@ -1,6 +1,6 @@
 //! Shared GPUI Kit Design Guide theme helpers and semantic mappings for Aura.
 
-use aura_core::model::HttpMethod;
+use aura_core::model::{HttpMethod, RequestProtocol};
 use gpui::{App, Hsla};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tag::TagVariant;
@@ -32,6 +32,30 @@ pub fn method_tag_variant(method: &HttpMethod) -> TagVariant {
         HttpMethod::PATCH => TagVariant::Color(ColorName::Purple),
         HttpMethod::DELETE => TagVariant::Danger,
         HttpMethod::HEAD | HttpMethod::OPTIONS => TagVariant::Color(ColorName::Cyan),
+    }
+}
+
+/// Maps a request protocol to a semantic GPUI Kit `TagVariant`.
+pub fn protocol_tag_variant(proto: RequestProtocol) -> TagVariant {
+    match proto {
+        RequestProtocol::Http => TagVariant::Secondary,
+        RequestProtocol::Graphql => TagVariant::Color(ColorName::Pink),
+        RequestProtocol::Websocket => TagVariant::Success,
+        RequestProtocol::Sse => TagVariant::Info,
+        RequestProtocol::Grpc => TagVariant::Color(ColorName::Purple),
+        RequestProtocol::Soap => TagVariant::Warning,
+    }
+}
+
+/// Maps a request protocol to a semantic theme accent color.
+pub fn protocol_color(proto: RequestProtocol, cx: &App) -> Hsla {
+    match proto {
+        RequestProtocol::Http => cx.theme().muted_foreground,
+        RequestProtocol::Graphql => cx.theme().magenta,
+        RequestProtocol::Websocket => cx.theme().green,
+        RequestProtocol::Sse => cx.theme().blue,
+        RequestProtocol::Grpc => cx.theme().cyan,
+        RequestProtocol::Soap => cx.theme().yellow,
     }
 }
 

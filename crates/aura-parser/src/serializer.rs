@@ -41,6 +41,14 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
     out.push_str(&format!("name = \"{}\"\n", req.name.replace('"', "\\\"")));
     out.push_str(&format!("method = \"{}\"\n", req.method));
     out.push_str(&format!("url = \"{}\"\n", req.url.replace('"', "\\\"")));
+    if let Some(proto) = req.protocol {
+        if proto != aura_core::model::RequestProtocol::Http {
+            out.push_str(&format!(
+                "protocol = \"{}\"\n",
+                proto.as_str().to_lowercase()
+            ));
+        }
+    }
 
     out.push_str("\n[settings]\n");
     out.push_str(&format!("inherit_auth = {}\n", req.settings.inherit_auth));
@@ -217,6 +225,41 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
             if let Some(ct) = content_type {
                 out.push_str(&format!("content_type = \"{}\"\n", ct.replace('"', "\\\"")));
             }
+        }
+        BodyType::GraphQL { query, variables } => {
+            out.push_str("\n[body.graphql]\n");
+            out.push_str("```graphql\n");
+            out.push_str(query);
+            if !query.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str("```\n");
+            if !variables.trim().is_empty() {
+                out.push_str("```json\n");
+                out.push_str(variables);
+                if !variables.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("```\n");
+            }
+        }
+    }
+
+    if let Some(grpc) = &req.grpc {
+        out.push_str("\n[grpc]\n");
+        if let Some(pp) = &grpc.proto_path {
+            out.push_str(&format!("proto_path = \"{}\"\n", pp.replace('"', "\\\"")));
+        }
+        out.push_str(&format!("service = \"{}\"\n", grpc.service.replace('"', "\\\"")));
+        out.push_str(&format!("method = \"{}\"\n", grpc.method.replace('"', "\\\"")));
+        out.push_str(&format!("use_reflection = {}\n", grpc.use_reflection));
+        if !grpc.payload.trim().is_empty() {
+            out.push_str("```json\n");
+            out.push_str(&grpc.payload);
+            if !grpc.payload.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str("```\n");
         }
     }
 

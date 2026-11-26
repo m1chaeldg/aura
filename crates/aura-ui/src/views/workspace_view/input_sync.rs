@@ -176,6 +176,7 @@ impl AuraWorkspaceView {
                     .iter()
                     .map(|h| (h.key.clone(), h.value.clone(), h.enabled))
                     .collect(),
+                graphql_schema: self.state.graphql_schemas.get(&tab.id).cloned(),
             });
 
             for (idx, p) in tab.request.params.iter().enumerate() {
@@ -311,6 +312,26 @@ impl AuraWorkspaceView {
                         content,
                         "// Click or type to edit raw body...",
                         "plaintext",
+                        window,
+                        cx,
+                        Self::handle_editor_event,
+                    );
+                }
+                BodyType::GraphQL { query, variables } => {
+                    inputs.ensure_editor(
+                        InputKey::GraphQLQuery,
+                        query,
+                        "query {\n  \n}",
+                        "plaintext",
+                        window,
+                        cx,
+                        Self::handle_editor_event,
+                    );
+                    inputs.ensure_editor(
+                        InputKey::GraphQLVariables,
+                        variables,
+                        "{}",
+                        "json",
                         window,
                         cx,
                         Self::handle_editor_event,
@@ -517,6 +538,98 @@ impl AuraWorkspaceView {
                 Self::handle_editor_event,
             );
 
+            // Protocol-specific controls (WebSocket, gRPC, SOAP)
+            inputs.ensure_editor(
+                InputKey::WsMessageInput,
+                &self.state.ws_composer_text,
+                "{\"event\": \"ping\"}",
+                "json",
+                window,
+                cx,
+                Self::handle_editor_event,
+            );
+            inputs.ensure_input(
+                InputKey::WsTemplateName,
+                &self.state.ws_template_name,
+                "Template name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            let grpc_svc = tab
+                .request
+                .grpc
+                .as_ref()
+                .map(|g| g.service.as_str())
+                .unwrap_or("");
+            let grpc_mth = tab
+                .request
+                .grpc
+                .as_ref()
+                .map(|g| g.method.as_str())
+                .unwrap_or("");
+            let grpc_payload = tab
+                .request
+                .grpc
+                .as_ref()
+                .map(|g| g.payload.as_str())
+                .unwrap_or("{}");
+            inputs.ensure_input(
+                InputKey::GrpcService,
+                grpc_svc,
+                "e.g. helloworld.Greeter",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GrpcMethod,
+                grpc_mth,
+                "e.g. SayHello",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_editor(
+                InputKey::GrpcPayload,
+                grpc_payload,
+                "{\"name\": \"Aura\"}",
+                "json",
+                window,
+                cx,
+                Self::handle_editor_event,
+            );
+            inputs.ensure_input(
+                InputKey::SoapOperation,
+                &self.state.soap_operation,
+                "Operation name",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::SoapNamespace,
+                &self.state.soap_namespace,
+                "http://tempuri.org/",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::SoapAction,
+                &self.state.soap_action,
+                "SOAPAction URI (optional)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+
             if let Some(ref resp) = tab.response {
                 let content_type = resp
                     .headers
@@ -655,6 +768,18 @@ impl AuraWorkspaceView {
                     );
                 }
             }
+        }
+
+        if let Some(ref dlg) = self.state.wsdl_import_dialog {
+            inputs.ensure_editor(
+                InputKey::WsdlImportText,
+                &dlg.wsdl_text,
+                "<!-- Paste WSDL XML here or click Choose .wsdl File -->",
+                "html",
+                window,
+                cx,
+                Self::handle_editor_event,
+            );
         }
 
         inputs.sync_all_template_highlights(cx);

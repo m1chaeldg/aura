@@ -62,6 +62,17 @@ pub enum InputKey {
     EnvVarKey(usize),
     EnvVarValue(usize),
     EnvCode,
+    GraphQLQuery,
+    GraphQLVariables,
+    WsMessageInput,
+    WsTemplateName,
+    GrpcService,
+    GrpcMethod,
+    GrpcPayload,
+    SoapOperation,
+    SoapNamespace,
+    SoapAction,
+    WsdlImportText,
 }
 
 impl InputKey {
@@ -118,7 +129,18 @@ impl InputKey {
             | InputKey::EnvName
             | InputKey::EnvVarKey(_)
             | InputKey::EnvVarValue(_)
-            | InputKey::EnvCode => None,
+            | InputKey::EnvCode
+            | InputKey::GraphQLQuery
+            | InputKey::GraphQLVariables
+            | InputKey::WsMessageInput
+            | InputKey::WsTemplateName
+            | InputKey::GrpcService
+            | InputKey::GrpcMethod
+            | InputKey::GrpcPayload
+            | InputKey::SoapOperation
+            | InputKey::SoapNamespace
+            | InputKey::SoapAction
+            | InputKey::WsdlImportText => None,
         }
     }
 }
@@ -340,6 +362,7 @@ impl InputRegistry {
                 })
             }
             InputKey::SpecText => Some(CompletionLanguage::TomlSpec),
+            InputKey::GraphQLQuery => Some(CompletionLanguage::GraphQL),
             _ => None,
         };
         let editor_context = Rc::clone(&self.editor_context);

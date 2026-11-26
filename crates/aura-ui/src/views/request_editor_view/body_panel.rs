@@ -2,7 +2,9 @@ use super::{RequestEditorAction, RequestEditorView};
 use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
 use crate::theme::{icon, subtle_surface};
-use aura_core::model::{AuraRequest, BodyType};
+use aura_core::graphql::GraphQLSchema;
+use aura_core::grpc::ProtoSchema;
+use aura_core::model::{AuraRequest, BodyType, RequestProtocol};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::assets::IconName;
@@ -19,17 +21,53 @@ impl RequestEditorView {
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         is_format_dropdown_open: bool,
+        graphql_schema: Option<&GraphQLSchema>,
+        is_graphql_introspecting: bool,
+        show_graphql_schema: bool,
+        grpc_schema: Option<&ProtoSchema>,
+        is_ws_connected: bool,
+        ws_composer_text: &str,
         border: Hsla,
         muted: Hsla,
         normal: Hsla,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
+        let protocol = request
+            .map(|r| r.protocol)
+            .unwrap_or(RequestProtocol::Http);
+        if protocol == RequestProtocol::Websocket {
+            return Self::render_websocket_panel(
+                request,
+                is_ws_connected,
+                ws_composer_text,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            );
+        }
+        if protocol == RequestProtocol::Grpc {
+            return Self::render_grpc_panel(
+                request,
+                grpc_schema,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            );
+        }
+
         let body = request.map(|r| &r.body);
         let active_type = body.map(|b| b.type_name()).unwrap_or("None");
-        const FORMATS: [&str; 8] = [
+        const FORMATS: [&str; 9] = [
             "None",
             "JSON",
+            "GraphQL",
             "XML",
             "Text",
             "Raw",
@@ -151,11 +189,27 @@ impl RequestEditorView {
                     cx,
                     on_action,
                 ),
-                Some(BodyType::Xml(content)) => Self::render_full_height_body_editor(
-                    "XML (application/xml)",
-                    content,
-                    false,
-                    active_input,
+                Some(BodyType::Xml(content)) => v_flex()
+                    .gap_2()
+                    .child(Self::render_soap_helper_bar(inputs, border, muted, cx, on_action))
+                    .child(Self::render_full_height_body_editor(
+                        "XML / SOAP (application/xml)",
+                        content,
+                        false,
+                        active_input,
+                        inputs,
+                        border,
+                        muted,
+                        normal,
+                        cx,
+                        on_action,
+                    )),
+                Some(BodyType::GraphQL { query, variables }) => Self::render_graphql_panel(
+                    query,
+                    variables,
+                    graphql_schema,
+                    is_graphql_introspecting,
+                    show_graphql_schema,
                     inputs,
                     border,
                     muted,

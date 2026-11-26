@@ -14,6 +14,7 @@ use gpui_kit::component::input::{Editor, Input};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex};
+use gpui_kit::base::Disableable as _;
 
 impl AuraWorkspaceView {
     pub(super) fn apply_workspace_modals(&self, el: Div, cx: &mut Context<Self>) -> Div {
@@ -636,6 +637,102 @@ impl AuraWorkspaceView {
                                         if let Err(e) = this.state.save_environment_editor() {
                                             this.state.status_message =
                                                 Some(format!("Failed to save environment: {e}"));
+                                        }
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
+            )
+        })
+        .when_some(self.state.wsdl_import_dialog.clone(), |el, dlg| {
+            let view_close = cx.entity().clone();
+            let danger_color = cx.theme().red;
+            let muted_color = cx.theme().muted_foreground;
+            let border_color = cx.theme().border;
+            let wsdl_text = dlg.wsdl_text.clone();
+            let err_opt = dlg.error.clone();
+
+            el.child(
+                Dialog::new(cx)
+                    .w(px(620.0))
+                    .title("Import SOAP WSDL")
+                    .on_close(move |_, _window, app| {
+                        let _ = view_close.update(app, |this, cx| {
+                            this.state.close_wsdl_import_dialog();
+                            cx.notify();
+                        });
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted_color)
+                                            .child("Paste a WSDL XML definition or choose a .wsdl / .xml file:"),
+                                    )
+                                    .child(
+                                        Button::new("wsdl-pick-file-btn")
+                                            .icon(icon(IconName::FolderOpen))
+                                            .label("Choose .wsdl File")
+                                            .xsmall()
+                                            .outline()
+                                            .rounded(ButtonRounded::Small)
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.spawn_pick_wsdl_file(cx);
+                                            })),
+                                    ),
+                            )
+                            .child(if let Some(editor) = self.inputs.get_editor(&InputKey::WsdlImportText) {
+                                div()
+                                    .h(px(260.0))
+                                    .w_full()
+                                    .rounded(cx.theme().radius)
+                                    .border_1()
+                                    .border_color(border_color)
+                                    .overflow_hidden()
+                                    .child(Editor::new(editor).h(px(260.0)).w_full())
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_xs()
+                                    .text_color(muted_color)
+                                    .child("WSDL editor initializing...")
+                                    .into_any_element()
+                            })
+                            .when_some(err_opt, |el, err| {
+                                el.child(div().text_xs().text_color(danger_color).child(err))
+                            }),
+                    )
+                    .footer(
+                        DialogFooter::new()
+                            .child(
+                                Button::new("wsdl-cancel-btn")
+                                    .label("Cancel")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.close_wsdl_import_dialog();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("wsdl-import-btn")
+                                    .label("Import Operations")
+                                    .primary()
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .disabled(wsdl_text.trim().is_empty())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Err(e) = this.state.import_wsdl_to_workspace(&wsdl_text) {
+                                            if let Some(ref mut d) = this.state.wsdl_import_dialog {
+                                                d.error = Some(format!("{e}"));
+                                            }
                                         }
                                         cx.notify();
                                     })),

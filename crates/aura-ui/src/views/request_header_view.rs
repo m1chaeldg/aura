@@ -1,6 +1,6 @@
 //! RequestHeader View: Method badge selector, URL input field, and Send/Cancel action trigger using gpui_kit.
 
-use aura_core::model::HttpMethod;
+use aura_core::model::{HttpMethod, RequestProtocol};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::assets::IconName;
@@ -10,7 +10,7 @@ use gpui_kit::component::list::ListItem;
 use gpui_kit::component::{ActiveTheme as _, Sizable, ThemeStyled as _, h_flex};
 
 use crate::templating_ui::render_template_token;
-use crate::theme::{icon, method_color};
+use crate::theme::{icon, method_color, protocol_color};
 
 const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::GET,
@@ -20,6 +20,15 @@ const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::DELETE,
     HttpMethod::HEAD,
     HttpMethod::OPTIONS,
+];
+
+const ALL_PROTOCOLS: [RequestProtocol; 6] = [
+    RequestProtocol::Http,
+    RequestProtocol::Graphql,
+    RequestProtocol::Websocket,
+    RequestProtocol::Sse,
+    RequestProtocol::Grpc,
+    RequestProtocol::Soap,
 ];
 
 pub struct RequestHeaderView;
@@ -40,6 +49,9 @@ impl RequestHeaderView {
 
     #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
+        protocol: RequestProtocol,
+        is_protocol_dropdown_open: bool,
+        is_ws_connected: bool,
         method: HttpMethod,
         url_input: &Entity<InputState>,
         is_in_flight: bool,
@@ -47,6 +59,9 @@ impl RequestHeaderView {
         is_dirty: bool,
         is_method_dropdown_open: bool,
         cx: &mut Context<V>,
+        on_toggle_protocol_dropdown: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_select_protocol: impl Fn(&mut V, RequestProtocol, &mut Window, &mut Context<V>) + 'static + Copy,
+        on_dismiss_protocol_dropdown: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_toggle_dropdown: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_select_method: impl Fn(&mut V, HttpMethod, &mut Window, &mut Context<V>) + 'static + Copy,
         on_dismiss_dropdown: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -55,11 +70,23 @@ impl RequestHeaderView {
         on_cancel: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
         on_save: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let btn_label = Self::button_label(is_in_flight);
+        let is_ws = protocol == RequestProtocol::Websocket;
+        let btn_label = if is_ws {
+            if is_ws_connected {
+                "Disconnect"
+            } else {
+                "Connect"
+            }
+        } else {
+            Self::button_label(is_in_flight)
+        };
         let send_btn = {
+            let active_abort = if is_ws { is_ws_connected } else { is_in_flight };
             let btn = Button::new("send-btn")
-                .icon(icon(if is_in_flight {
+                .icon(icon(if active_abort {
                     IconName::Square
+                } else if is_ws {
+                    IconName::Zap
                 } else {
                     IconName::Send
                 }))
@@ -67,18 +94,81 @@ impl RequestHeaderView {
                 .small()
                 .rounded(ButtonRounded::Medium)
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    if is_in_flight {
+                    if active_abort {
                         on_cancel(this, window, cx);
                     } else {
                         on_send(this, window, cx);
                     }
                 }));
-            if is_in_flight {
+            if active_abort {
                 btn.danger()
             } else {
                 btn.primary()
             }
         };
+
+        let protocol_selector = div()
+            .relative()
+            .child(
+                Button::new("protocol-selector-btn")
+                    .label(protocol.as_str())
+                    .dropdown_caret(true)
+                    .small()
+                    .outline()
+                    .rounded(ButtonRounded::Medium)
+                    .tooltip("Switch request protocol (HTTP, GraphQL, WebSocket, SSE, gRPC, SOAP)")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_toggle_protocol_dropdown(this, window, cx);
+                    })),
+            )
+            .when(is_protocol_dropdown_open, |el| {
+                let menu = div()
+                    .id("protocol-dropdown-menu")
+                    .popover_style(cx)
+                    .absolute()
+                    .top_full()
+                    .left_0()
+                    .mt_1()
+                    .w(px(140.0))
+                    .p_1()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .on_mouse_down_out(cx.listener(move |this, _, window, cx| {
+                        on_dismiss_protocol_dropdown(this, window, cx);
+                    }))
+                    .children(ALL_PROTOCOLS.iter().enumerate().map(|(idx, &p)| {
+                        let is_selected = p == protocol;
+                        ListItem::new(ElementId::NamedInteger("proto-opt".into(), idx as u64))
+                            .selected(is_selected)
+                            .px_2()
+                            .py_1()
+                            .rounded(cx.theme().radius)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                on_select_protocol(this, p, window, cx);
+                            }))
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .w_full()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(protocol_color(p, cx))
+                                            .child(p.as_str()),
+                                    )
+                                    .when(is_selected, |el| {
+                                        el.child(
+                                            icon(IconName::Check)
+                                                .xsmall()
+                                                .text_color(cx.theme().primary),
+                                        )
+                                    }),
+                            )
+                    }));
+                el.child(deferred(menu).with_priority(2))
+            });
 
         let method_btn = {
             let btn = Button::new("method-selector-btn")
@@ -160,6 +250,7 @@ impl RequestHeaderView {
             .border_b_1()
             .border_color(cx.theme().border)
             .flex_shrink_0()
+            .child(protocol_selector)
             .child(method_selector)
             .child(
                 div().flex_1().min_w_0().child(

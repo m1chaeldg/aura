@@ -121,6 +121,11 @@ impl ExecutionService {
         }
     }
 
+    /// Marks execution as no longer in flight on normal completion.
+    pub fn end_flight(&self) {
+        self.is_in_flight.store(false, Ordering::SeqCst);
+    }
+
     /// Cooperative abort via CancellationToken
     pub fn cancel(&self) {
         tracing::warn!(target: "aura_ui::execution", "Request cancellation requested");

@@ -74,6 +74,10 @@ pub fn request_to_toml(req: &AuraRequest) -> Result<String> {
             (Some("multipart".to_string()), Some(json))
         }
         BodyType::Binary { file_path, .. } => (Some("binary".to_string()), Some(file_path.clone())),
+        BodyType::GraphQL { query, variables } => {
+            let json = serde_json::json!({ "query": query, "variables": variables }).to_string();
+            (Some("graphql".to_string()), Some(json))
+        }
     };
 
     let schema = TomlRequestSchema {
@@ -176,6 +180,19 @@ pub fn toml_to_request(toml_str: &str, existing_id: Option<&str>) -> Result<Aura
             file_path: rel_path,
             content_type: None,
         },
+        (Some("graphql"), Some(s)) => {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&s) {
+                BodyType::GraphQL {
+                    query: val["query"].as_str().unwrap_or("").to_string(),
+                    variables: val["variables"].as_str().unwrap_or("{}").to_string(),
+                }
+            } else {
+                BodyType::GraphQL {
+                    query: s,
+                    variables: "{}".to_string(),
+                }
+            }
+        }
         _ => BodyType::None,
     };
 

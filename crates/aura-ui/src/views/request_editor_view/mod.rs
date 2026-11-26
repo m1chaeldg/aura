@@ -5,7 +5,10 @@ use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::EditorTab;
 use crate::templating_ui::render_template_token;
 use crate::theme::icon;
+use aura_core::graphql::GraphQLSchema;
+use aura_core::grpc::ProtoSchema;
 use aura_core::model::{AuraRequest, HttpMethod, TestAssertion};
+use aura_core::soap::SoapVersion;
 use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
@@ -17,8 +20,10 @@ use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 mod auth_panel;
 mod body_panel;
 mod form_body_panel;
+mod graphql_panel;
 mod headers_panel;
 mod params_panel;
+mod protocol_panel;
 mod reference_panel;
 mod scripts_panel;
 mod settings_panel;
@@ -95,6 +100,22 @@ pub enum RequestEditorAction {
     TriggerAutocomplete(InputKey),
     ToggleScriptReference,
     InsertDynamicSnippet(InputKey, String),
+    // Protocols: GraphQL, WebSocket, gRPC, SOAP/WSDL
+    IntrospectGraphQLSchema,
+    ToggleGraphQLSchema,
+    InsertGraphQLField(String),
+    ToggleWsConnection,
+    SendWsMessage,
+    SaveWsTemplate,
+    LoadWsTemplate(String),
+    DeleteWsTemplate(String),
+    LoadProtoFile,
+    ReflectGrpcServices,
+    SelectGrpcService(String),
+    SelectGrpcMethod(String),
+    GenerateGrpcSample,
+    WrapSoapEnvelope(SoapVersion),
+    OpenWsdlImport,
 }
 
 pub struct RequestEditorView;
@@ -147,6 +168,12 @@ impl RequestEditorView {
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
         is_body_format_dropdown_open: bool,
+        graphql_schema: Option<&GraphQLSchema>,
+        is_graphql_introspecting: bool,
+        show_graphql_schema: bool,
+        grpc_schema: Option<&ProtoSchema>,
+        is_ws_connected: bool,
+        ws_composer_text: &str,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -239,6 +266,12 @@ impl RequestEditorView {
                         spec_buffer,
                         spec_error,
                         is_body_format_dropdown_open,
+                        graphql_schema,
+                        is_graphql_introspecting,
+                        show_graphql_schema,
+                        grpc_schema,
+                        is_ws_connected,
+                        ws_composer_text,
                         cx,
                         on_action,
                     )),
@@ -390,6 +423,12 @@ impl RequestEditorView {
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
         is_body_format_dropdown_open: bool,
+        graphql_schema: Option<&GraphQLSchema>,
+        is_graphql_introspecting: bool,
+        show_graphql_schema: bool,
+        grpc_schema: Option<&ProtoSchema>,
+        is_ws_connected: bool,
+        ws_composer_text: &str,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -423,6 +462,12 @@ impl RequestEditorView {
                 active_input,
                 inputs,
                 is_body_format_dropdown_open,
+                graphql_schema,
+                is_graphql_introspecting,
+                show_graphql_schema,
+                grpc_schema,
+                is_ws_connected,
+                ws_composer_text,
                 border,
                 muted,
                 normal,

@@ -1,7 +1,11 @@
 //! Core HTTP Request Dispatcher and Execution Engine.
 
 use anyhow::{anyhow, Result};
-use aura_core::model::{AuthConfig, AuraRequest, AuraResponse, BodyType, HttpMethod};
+use aura_core::graphql::{parse_introspection_response, GraphQLSchema, INTROSPECTION_QUERY};
+use aura_core::grpc::parse_proto_file;
+use aura_core::model::{
+    AuthConfig, AuraRequest, AuraResponse, BodyType, HttpMethod, RequestProtocol, SseEvent,
+};
 use aura_core::security::{
     apply_auth, resolve_aws_profile_credentials, sign_aws_sigv4, AwsSigV4Credentials,
 };
@@ -256,6 +260,8 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
                     assertions: Vec::new(),
                     console_logs: all_console_logs,
                     script_errors,
+                    sse_events: Vec::new(),
+                    stream_messages: Vec::new(),
                 });
             }
         }
@@ -264,6 +270,23 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     // Update context with potentially mutated variables
     let mut active_context = context.clone();
     active_context.request_vars = working_vars.clone();
+
+    // Protocol dispatch for gRPC and SSE when explicitly selected
+    if req.protocol == RequestProtocol::Grpc {
+        let proto_schema = req.grpc.as_ref().and_then(|g| {
+            let src = g.proto_content.clone().or_else(|| {
+                g.proto_path
+                    .as_deref()
+                    .and_then(|p| std::fs::read_to_string(p).ok())
+            })?;
+            parse_proto_file(&src).ok()
+        });
+        return crate::grpc::execute_grpc_call(req, proto_schema.as_ref(), &active_context, None)
+            .await;
+    }
+    if req.protocol == RequestProtocol::Sse {
+        return crate::sse::execute_sse_request(req, &active_context, None).await;
+    }
 
     // 2. Interpolate URL and query parameters
     let rendered_url = active_context.render(&req.url);
@@ -524,6 +547,34 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
             request_builder = request_builder.multipart(form);
             summary
         }
+        BodyType::GraphQL { query, variables } => {
+            let rendered_query = active_context.render(query);
+            let rendered_vars = active_context.render(variables);
+            let vars_json: serde_json::Value = if rendered_vars.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(&rendered_vars).unwrap_or_else(|_| serde_json::json!({}))
+            };
+            let payload = serde_json::json!({
+                "query": rendered_query,
+                "variables": vars_json,
+            })
+            .to_string();
+            let summary = format!(
+                "GraphQL ({} bytes): {}",
+                payload.len(),
+                truncate_for_log(&payload, MAX_LOG_PAYLOAD_LEN)
+            );
+            if !header_pairs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                header_pairs.push(("Content-Type".to_string(), "application/json".to_string()));
+            }
+            body_bytes_for_signing = payload.as_bytes().to_vec();
+            request_builder = request_builder.body(payload);
+            summary
+        }
         BodyType::None => "None".to_string(),
     };
 
@@ -758,6 +809,18 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         "Received HTTP response"
     );
 
+    let is_sse = resp_headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.to_ascii_lowercase().contains("text/event-stream"));
+    let sse_events: Vec<SseEvent> = if is_sse {
+        let mut parser = crate::sse::SseStreamParser::new();
+        let mut evs = parser.push_chunk(&body_str);
+        evs.extend(parser.finish());
+        evs
+    } else {
+        Vec::new()
+    };
+
     Ok(AuraResponse {
         status,
         status_text,
@@ -769,7 +832,25 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         assertions,
         console_logs: all_console_logs,
         script_errors,
+        sse_events,
+        stream_messages: Vec::new(),
     })
+}
+
+pub async fn fetch_graphql_introspection(
+    req: &AuraRequest,
+    context: &TemplateContext,
+) -> Result<GraphQLSchema> {
+    let mut introspect_req = req.clone();
+    introspect_req.method = HttpMethod::POST;
+    introspect_req.protocol = RequestProtocol::Graphql;
+    introspect_req.scripts = Default::default();
+    introspect_req.body = BodyType::GraphQL {
+        query: INTROSPECTION_QUERY.to_string(),
+        variables: "{}".to_string(),
+    };
+    let resp = execute_request(&introspect_req, context).await?;
+    parse_introspection_response(&resp.body)
 }
 
 #[cfg(test)]
