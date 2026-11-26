@@ -58,12 +58,8 @@ impl WorkspaceService {
     ) -> Result<PathBuf> {
         tokio::fs::create_dir_all(parent_dir).await?;
 
-        let file_name = if name.ends_with(".aura") {
-            name.to_string()
-        } else {
-            format!("{}.aura", name)
-        };
-
+        let base_stem = name.trim_end_matches(".aura");
+        let file_name = Self::resolve_unique_request_name(parent_dir, base_stem);
         let file_path = parent_dir.join(&file_name);
         let req_name = file_name.trim_end_matches(".aura");
         let req = AuraRequest::new(req_name, method, "https://postman-echo.com/get");
@@ -76,6 +72,21 @@ impl WorkspaceService {
 
         tracing::info!(target: "aura_ui::workspace", path = %file_path.display(), "Created new request file");
         Ok(file_path)
+    }
+
+    fn resolve_unique_request_name(parent_dir: &Path, base_stem: &str) -> String {
+        let initial = format!("{}.aura", base_stem);
+        if !parent_dir.join(&initial).exists() {
+            return initial;
+        }
+        let mut n = 2usize;
+        loop {
+            let candidate = format!("{} {}.aura", base_stem, n);
+            if !parent_dir.join(&candidate).exists() {
+                return candidate;
+            }
+            n += 1;
+        }
     }
 
     /// Asynchronously creates a folder and updates `workspace.json`.

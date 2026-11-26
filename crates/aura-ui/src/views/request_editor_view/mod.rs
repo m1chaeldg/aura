@@ -70,6 +70,7 @@ pub enum RequestEditorAction {
     RunTests,
     // Variables
     AddVariableDirect,
+    ToggleVariable(usize),
     RemoveVariable(usize),
     // Settings
     ToggleSettingFollowRedirects,
@@ -122,7 +123,7 @@ impl RequestEditorView {
         _active_method: HttpMethod,
         active_tab: EditorTab,
         request: Option<&AuraRequest>,
-        variable_rows: &[(String, String)],
+        variable_rows: &[(String, String, bool)],
         setting_timeout_error: Option<&str>,
         setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
@@ -300,7 +301,7 @@ impl RequestEditorView {
     fn render_panel_content<V: 'static>(
         tab: EditorTab,
         request: Option<&AuraRequest>,
-        variable_rows: &[(String, String)],
+        variable_rows: &[(String, String, bool)],
         setting_timeout_error: Option<&str>,
         setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,

@@ -19,15 +19,21 @@ pub struct WorkspaceTab {
     pub spec_buffer: Option<String>,
     pub spec_error: Option<String>,
     #[serde(skip)]
-    pub variable_rows: Vec<(String, String)>,
+    pub variable_rows: Vec<(String, String, bool)>,
 }
 
 impl WorkspaceTab {
     pub fn new(request: AuraRequest) -> Self {
-        let mut variable_rows: Vec<(String, String)> = request
+        let mut variable_rows: Vec<(String, String, bool)> = request
             .variables
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.clone(), v.clone(), true))
+            .chain(
+                request
+                    .disabled_variables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone(), false)),
+            )
             .collect();
         variable_rows.sort_by(|a, b| a.0.cmp(&b.0));
         Self {
@@ -47,20 +53,33 @@ impl WorkspaceTab {
 
     pub fn sync_variables_from_rows(&mut self) {
         self.request.variables.clear();
-        for (k, v) in &self.variable_rows {
+        self.request.disabled_variables.clear();
+        for (k, v, enabled) in &self.variable_rows {
             let trimmed = k.trim();
             if !trimmed.is_empty() {
-                self.request.variables.insert(trimmed.to_string(), v.clone());
+                if *enabled {
+                    self.request.variables.insert(trimmed.to_string(), v.clone());
+                } else {
+                    self.request
+                        .disabled_variables
+                        .insert(trimmed.to_string(), v.clone());
+                }
             }
         }
     }
 
     pub fn sync_rows_from_variables(&mut self) {
-        let mut rows: Vec<(String, String)> = self
+        let mut rows: Vec<(String, String, bool)> = self
             .request
             .variables
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.clone(), v.clone(), true))
+            .chain(
+                self.request
+                    .disabled_variables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone(), false)),
+            )
             .collect();
         rows.sort_by(|a, b| a.0.cmp(&b.0));
         self.variable_rows = rows;

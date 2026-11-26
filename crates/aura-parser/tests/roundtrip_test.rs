@@ -185,3 +185,18 @@ fn test_roundtrip_all_body_types() {
         panic!("Expected BodyType::Binary");
     }
 }
+
+#[test]
+fn test_disabled_variables_roundtrip_with_tilde() {
+    let input = "version = \"1.0\"\nname = \"Var Tilde\"\nmethod = \"GET\"\nurl = \"http://api.test/vars\"\n\n[variables]\nactive_var = \"yes\"\nmuted_var~ = \"no\"\n";
+    let req = aura_parser::parse_request(input).expect("parse_request");
+    assert_eq!(req.variables.get("active_var").map(String::as_str), Some("yes"));
+    assert_eq!(
+        req.disabled_variables.get("muted_var").map(String::as_str),
+        Some("no")
+    );
+
+    let spec = aura_parser::request_to_spec(&req);
+    assert!(spec.contains("active_var = \"yes\""));
+    assert!(spec.contains("muted_var~ = \"no\""));
+}

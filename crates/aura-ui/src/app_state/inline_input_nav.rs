@@ -191,14 +191,14 @@ impl AuraAppState {
                     tab.update_spec_buffer(curr);
                 }
                 ActiveInputTarget::VariableKey(idx) => {
-                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((k, _, _)) = tab.variable_rows.get_mut(idx) {
                         k.push_str(text);
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
                     }
                 }
                 ActiveInputTarget::VariableValue(idx) => {
-                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((_, v, _)) = tab.variable_rows.get_mut(idx) {
                         v.push_str(text);
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);

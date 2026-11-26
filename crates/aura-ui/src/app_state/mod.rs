@@ -568,6 +568,44 @@ mod tests {
     }
 
     #[test]
+    fn test_toggle_variable_row_moves_between_enabled_and_disabled() {
+        let mut state = AuraAppState::new();
+        state.new_request();
+        state.add_variable_row();
+        state.set_input_text_for(ActiveInputTarget::VariableKey(0), "api_key".to_string());
+        state.set_input_text_for(ActiveInputTarget::VariableValue(0), "secret".to_string());
+
+        assert_eq!(
+            state.tabs[0].request.variables.get("api_key").map(String::as_str),
+            Some("secret")
+        );
+        assert!(state.tabs[0].request.disabled_variables.is_empty());
+
+        state.toggle_variable_row(0);
+        assert!(!state.tabs[0].variable_rows[0].2);
+        assert!(state.tabs[0].request.variables.is_empty());
+        assert_eq!(
+            state.tabs[0]
+                .request
+                .disabled_variables
+                .get("api_key")
+                .map(String::as_str),
+            Some("secret")
+        );
+
+        let spec = aura_parser::request_to_spec(&state.tabs[0].request);
+        assert!(spec.contains("api_key~ = \"secret\""));
+
+        state.toggle_variable_row(0);
+        assert!(state.tabs[0].variable_rows[0].2);
+        assert_eq!(
+            state.tabs[0].request.variables.get("api_key").map(String::as_str),
+            Some("secret")
+        );
+        assert!(state.tabs[0].request.disabled_variables.is_empty());
+    }
+
+    #[test]
     fn test_run_active_tests_uses_duration_and_variables() {
         let mut state = AuraAppState::new();
         state.new_request();

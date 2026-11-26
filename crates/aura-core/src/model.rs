@@ -350,6 +350,8 @@ pub struct AuraRequest {
     #[serde(default)]
     pub variables: HashMap<String, String>,
     #[serde(default)]
+    pub disabled_variables: HashMap<String, String>,
+    #[serde(default)]
     pub body: BodyType,
     #[serde(default)]
     pub auth: AuthConfig,
@@ -371,6 +373,7 @@ impl AuraRequest {
             params: Vec::new(),
             headers: Vec::new(),
             variables: HashMap::new(),
+            disabled_variables: HashMap::new(),
             body: BodyType::None,
             auth: AuthConfig::default(),
             scripts: ScriptConfig::default(),
@@ -722,8 +725,13 @@ impl From<AuraFileRequest> for AuraRequest {
         }
 
         let mut variables = HashMap::new();
+        let mut disabled_variables = HashMap::new();
         for (k, v) in r.variables {
-            variables.insert(k, v);
+            if k.ends_with('~') || k.starts_with('~') {
+                disabled_variables.insert(k.trim_matches('~').to_string(), v);
+            } else {
+                variables.insert(k, v);
+            }
         }
 
         let auth = r.auth.unwrap_or(AuthConfig::Inherit);
@@ -750,6 +758,7 @@ impl From<AuraFileRequest> for AuraRequest {
             params,
             headers,
             variables,
+            disabled_variables,
             body: r.body,
             auth,
             scripts,
@@ -790,6 +799,9 @@ impl From<AuraRequest> for AuraFileRequest {
         let mut variables = IndexMap::new();
         for (k, v) in req.variables {
             variables.insert(k, v);
+        }
+        for (k, v) in req.disabled_variables {
+            variables.insert(format!("{}~", k), v);
         }
 
         let auth = match req.auth {

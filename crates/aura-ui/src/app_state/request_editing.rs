@@ -154,9 +154,19 @@ impl AuraAppState {
 
     pub fn add_variable_row(&mut self) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
-            tab.variable_rows.push((String::new(), String::new()));
+            tab.variable_rows.push((String::new(), String::new(), true));
             tab.sync_variables_from_rows();
             tab.mark_dirty(true);
+        }
+    }
+
+    pub fn toggle_variable_row(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let Some((_, _, enabled)) = tab.variable_rows.get_mut(index) {
+                *enabled = !*enabled;
+                tab.sync_variables_from_rows();
+                tab.mark_dirty(true);
+            }
         }
     }
 

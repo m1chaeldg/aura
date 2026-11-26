@@ -125,6 +125,17 @@ impl CstDocument {
                             }
                         }
                     }
+                    "variables" => {
+                        for sub in &table.items {
+                            if let CstTableItem::KeyValue(kv) = sub {
+                                if kv.key.ends_with('~') || kv.key.starts_with('~') {
+                                    let clean_key = kv.key.trim_matches('~').to_string();
+                                    req.disabled_variables
+                                        .insert(clean_key, kv.value.as_str().to_string());
+                                }
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

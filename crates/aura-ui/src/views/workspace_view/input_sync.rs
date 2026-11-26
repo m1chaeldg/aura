@@ -203,7 +203,7 @@ impl AuraWorkspaceView {
                 );
             }
 
-            for (idx, (k, v)) in tab.variable_rows.iter().enumerate() {
+            for (idx, (k, v, _)) in tab.variable_rows.iter().enumerate() {
                 inputs.ensure_input(
                     InputKey::VariableKey(idx),
                     k,

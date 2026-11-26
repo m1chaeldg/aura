@@ -4,6 +4,7 @@ use crate::input_registry::{InputKey, InputRegistry};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::Sizable;
@@ -11,7 +12,7 @@ use gpui_kit::component::Sizable;
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn render_variables_panel<V: 'static>(
-        variable_rows: &[(String, String)],
+        variable_rows: &[(String, String, bool)],
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         border: Rgba,
@@ -89,11 +90,13 @@ impl RequestEditorView {
                         ),
                 )
             })
-            .children(variable_rows.iter().enumerate().map(|(idx, (key, val))| {
+            .children(variable_rows.iter().enumerate().map(|(idx, (key, val, enabled))| {
+                let enabled = *enabled;
                 let is_key_focused =
                     matches!(active_input, Some(ActiveInputTarget::VariableKey(i)) if *i == idx);
                 let is_val_focused =
                     matches!(active_input, Some(ActiveInputTarget::VariableValue(i)) if *i == idx);
+                let view_entity = cx.entity().clone();
 
                 div()
                     .id(ElementId::NamedInteger("variable-row".into(), idx as u64))
@@ -103,13 +106,33 @@ impl RequestEditorView {
                     .px_3()
                     .py_1p5()
                     .rounded_md()
-                    .bg(rgb(0x272729))
+                    .bg(if enabled {
+                        rgb(0x272729)
+                    } else {
+                        rgb(0x202022)
+                    })
                     .border_1()
                     .border_color(if is_key_focused || is_val_focused {
                         rgb(0x0066cc)
                     } else {
                         border
                     })
+                    // Enabled Checkbox
+                    .child(
+                        Checkbox::new(ElementId::NamedInteger("toggle-var".into(), idx as u64))
+                            .checked(enabled)
+                            .small()
+                            .on_click(move |_, window, app| {
+                                let _ = view_entity.update(app, |this, cx| {
+                                    on_action(
+                                        this,
+                                        RequestEditorAction::ToggleVariable(idx),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
+                    )
                     .child(Self::render_inline_input(
                         ElementId::NamedInteger("edit-var-key".into(), idx as u64),
                         inputs.get_input(&InputKey::VariableKey(idx)),
@@ -118,7 +141,13 @@ impl RequestEditorView {
                         false,
                         rgb(0x222224),
                         rgb(0x38383a),
-                        if is_key_focused { rgb(0xffffff) } else { normal },
+                        if is_key_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
                     ))
                     .child(div().text_xs().text_color(muted).child("="))
                     .child(Self::render_inline_input(
@@ -129,7 +158,13 @@ impl RequestEditorView {
                         false,
                         rgb(0x222224),
                         rgb(0x38383a),
-                        if is_val_focused { rgb(0xffffff) } else { normal },
+                        if is_val_focused {
+                            rgb(0xffffff)
+                        } else if enabled {
+                            normal
+                        } else {
+                            muted
+                        },
                     ))
                     .child(
                         Button::new(ElementId::NamedInteger("remove-var".into(), idx as u64))

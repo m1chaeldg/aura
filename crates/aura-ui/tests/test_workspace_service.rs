@@ -65,6 +65,28 @@ async fn test_workspace_service_async_crud_and_metadata_sync() {
 }
 
 #[tokio::test]
+async fn test_create_request_resolves_unique_names() {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path();
+    let service = WorkspaceService::new();
+
+    let first = service
+        .create_request(root, root, "Untitled Request", HttpMethod::GET)
+        .await
+        .expect("first create");
+    let second = service
+        .create_request(root, root, "Untitled Request", HttpMethod::GET)
+        .await
+        .expect("second create");
+
+    assert_ne!(first, second);
+    assert!(first.ends_with("Untitled Request.aura"));
+    assert!(second.ends_with("Untitled Request 2.aura"));
+    assert!(first.is_file());
+    assert!(second.is_file());
+}
+
+#[tokio::test]
 async fn test_watcher_echo_suppression() {
     // Review Focus #5
     let service = WorkspaceService::new();

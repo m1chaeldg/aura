@@ -225,6 +225,9 @@ impl AuraWorkspaceView {
                     crate::app_state::ActiveInputTarget::VariableKey(new_idx),
                 ));
             }
+            RequestEditorAction::ToggleVariable(idx) => {
+                self.state.toggle_variable_row(idx);
+            }
             RequestEditorAction::RemoveVariable(idx) => {
                 self.state.remove_variable_row(idx);
             }

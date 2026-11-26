@@ -287,8 +287,12 @@ impl SidebarView {
                                             .label("⋯")
                                             .xsmall()
                                             .ghost()
-                                            .on_mouse_down(MouseButton::Left, move |event, window, app| {
-                                                let clamped = clamp_menu_pos(event.position, window);
+                                            .on_mouse_down(MouseButton::Left, |_, _, app| {
+                                                app.stop_propagation();
+                                            })
+                                            .on_click(move |event, window, app| {
+                                                app.stop_propagation();
+                                                let clamped = clamp_menu_pos(event.position(), window);
                                                 let _ = v_more.update(app, |this, cx| {
                                                     on_context_menu(this, &p_more, true, clamped, window, cx);
                                                 });
@@ -442,8 +446,12 @@ impl SidebarView {
                                             .label("⋯")
                                             .xsmall()
                                             .ghost()
-                                            .on_mouse_down(MouseButton::Left, move |event, window, app| {
-                                                let clamped = clamp_menu_pos(event.position, window);
+                                            .on_mouse_down(MouseButton::Left, |_, _, app| {
+                                                app.stop_propagation();
+                                            })
+                                            .on_click(move |event, window, app| {
+                                                app.stop_propagation();
+                                                let clamped = clamp_menu_pos(event.position(), window);
                                                 let _ = v2.update(app, |this, cx| {
                                                     on_context_menu(this, &d2, false, clamped, window, cx);
                                                 });

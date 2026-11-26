@@ -228,14 +228,14 @@ impl AuraAppState {
                     tab.update_spec_buffer(curr);
                 }
                 ActiveInputTarget::VariableKey(idx) => {
-                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((k, _, _)) = tab.variable_rows.get_mut(idx) {
                         k.push(c);
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
                     }
                 }
                 ActiveInputTarget::VariableValue(idx) => {
-                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((_, v, _)) = tab.variable_rows.get_mut(idx) {
                         v.push(c);
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
@@ -439,14 +439,14 @@ impl AuraAppState {
                     tab.update_spec_buffer(curr);
                 }
                 ActiveInputTarget::VariableKey(idx) => {
-                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((k, _, _)) = tab.variable_rows.get_mut(idx) {
                         k.pop();
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
                     }
                 }
                 ActiveInputTarget::VariableValue(idx) => {
-                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((_, v, _)) = tab.variable_rows.get_mut(idx) {
                         v.pop();
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
@@ -548,10 +548,10 @@ impl AuraAppState {
                 Some(tab.spec_buffer.clone().unwrap_or_else(|| aura_parser::request_to_spec(&tab.request)))
             }
             ActiveInputTarget::VariableKey(idx) => {
-                tab.variable_rows.get(*idx).map(|(k, _)| k.clone())
+                tab.variable_rows.get(*idx).map(|(k, _, _)| k.clone())
             }
             ActiveInputTarget::VariableValue(idx) => {
-                tab.variable_rows.get(*idx).map(|(_, v)| v.clone())
+                tab.variable_rows.get(*idx).map(|(_, v, _)| v.clone())
             }
             ActiveInputTarget::SettingTimeout => Some(
                 self.setting_timeout_draft
@@ -736,14 +736,14 @@ impl AuraAppState {
                     tab.update_spec_buffer(text);
                 }
                 ActiveInputTarget::VariableKey(idx) => {
-                    if let Some((k, _)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((k, _, _)) = tab.variable_rows.get_mut(idx) {
                         *k = text;
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);
                     }
                 }
                 ActiveInputTarget::VariableValue(idx) => {
-                    if let Some((_, v)) = tab.variable_rows.get_mut(idx) {
+                    if let Some((_, v, _)) = tab.variable_rows.get_mut(idx) {
                         *v = text;
                         tab.sync_variables_from_rows();
                         tab.mark_dirty(true);

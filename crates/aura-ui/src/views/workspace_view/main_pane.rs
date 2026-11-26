@@ -38,8 +38,7 @@ impl AuraWorkspaceView {
                         cx.notify();
                     },
                     |this, _window, cx| {
-                        this.state.new_request();
-                        cx.notify();
+                        this.spawn_create_new_request(cx);
                     },
                 ))
                 .when(active_tab.is_none(), |el| {
@@ -80,8 +79,7 @@ impl AuraWorkspaceView {
                     .primary()
                     .rounded(ButtonRounded::Medium)
                     .on_click(cx.listener(|this, _, _window, cx| {
-                        this.state.new_request();
-                        cx.notify();
+                        this.spawn_create_new_request(cx);
                     })),
             )
     }

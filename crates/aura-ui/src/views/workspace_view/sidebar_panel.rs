@@ -33,8 +33,7 @@ impl AuraWorkspaceView {
                     cx.notify();
                 },
                 |this, _window, cx| {
-                    this.state.new_request();
-                    cx.notify();
+                    this.spawn_create_new_request(cx);
                 },
                 |this, folder_path, _window, cx| {
                     this.state
@@ -71,6 +70,22 @@ impl AuraWorkspaceView {
             ))
     }
 
+    pub(super) fn spawn_create_new_request(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.state.workspace_store.workspace_root.clone() else {
+            self.state.new_request();
+            cx.notify();
+            return;
+        };
+
+        let target_dir = match self.state.workspace_store.selected_path.as_ref() {
+            Some(p) if p.starts_with(&root) && p.is_dir() => p.clone(),
+            Some(p) if p.starts_with(&root) => p.parent().unwrap_or(&root).to_path_buf(),
+            _ => root,
+        };
+
+        Self::spawn_create_request_in_folder(self, &target_dir, cx);
+    }
+
     fn spawn_create_request_in_folder(
         this: &mut Self,
         folder_path: &std::path::Path,
@@ -91,6 +106,7 @@ impl AuraWorkspaceView {
                     let _ = this.update(&mut cx, |this, cx| {
                         let _ = this.state.open_file_in_tab(&p);
                         let _ = this.state.reconcile_workspace_sync();
+                        this.state.workspace_store.select_node(p);
                         cx.notify();
                     });
                 }
