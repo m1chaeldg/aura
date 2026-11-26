@@ -50,5 +50,7 @@ async fn test_execute_request_network_error_handled_gracefully() {
     let res = execute_request(&req, &context).await;
     assert!(res.is_err());
     let err_msg = res.unwrap_err().to_string();
-    assert!(err_msg.contains("Network error"));
+    assert!(err_msg.contains("Network error"), "unexpected: {err_msg}");
+    assert!(err_msg.contains("Possible cause:"), "unexpected: {err_msg}");
+    assert!(err_msg.contains("->"), "expected cause chain in: {err_msg}");
 }

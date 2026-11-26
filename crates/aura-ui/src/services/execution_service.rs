@@ -61,7 +61,13 @@ impl ExecutionService {
             res = execute_request(&request, &context) => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
                 if let Err(ref e) = res {
-                    tracing::error!(target: "aura_ui::execution", error = %e, "Request execution failed");
+                    tracing::error!(
+                        target: "aura_ui::execution",
+                        method = %request.method,
+                        url = %request.url,
+                        error = %format!("{e:#}"),
+                        "Request execution failed"
+                    );
                 }
                 res
             }
