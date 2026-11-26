@@ -291,6 +291,8 @@ pub struct AuraAppState {
     pub is_method_dropdown_open: bool,
     pub is_log_viewer_open: bool,
     #[serde(default)]
+    pub is_log_viewer_text_mode: bool,
+    #[serde(default)]
     pub is_sidebar_collapsed: bool,
     pub log_filter_level: Option<aura_engine::LogLevel>,
     pub log_filter_subsystem: Option<String>,
@@ -358,6 +360,7 @@ impl Default for AuraAppState {
             is_command_palette_open: false,
             is_method_dropdown_open: false,
             is_log_viewer_open: false,
+            is_log_viewer_text_mode: false,
             is_sidebar_collapsed: false,
             log_filter_level: None,
             log_filter_subsystem: None,

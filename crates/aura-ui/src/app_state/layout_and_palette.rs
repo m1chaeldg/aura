@@ -103,6 +103,30 @@ impl AuraAppState {
         )
     }
 
+    /// Set whether the log viewer renders as a copyable textbox instead of a table
+    pub fn set_log_viewer_text_mode(&mut self, text_mode: bool) {
+        self.is_log_viewer_text_mode = text_mode;
+    }
+
+    /// Format filtered log entries as plain text for textbox display or clipboard copy
+    pub fn format_filtered_logs_text(&self) -> String {
+        self.get_filtered_logs()
+            .iter()
+            .rev()
+            .take(200)
+            .map(|entry| {
+                format!(
+                    "[{}] [{:<5}] [{}] {}",
+                    entry.timestamp.format("%H:%M:%S%.3f"),
+                    entry.level.as_str(),
+                    entry.subsystem,
+                    entry.message
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Clear all logs in the ring buffer
     pub fn clear_logs(&mut self) {
         aura_engine::LogBroadcaster::global().clear();

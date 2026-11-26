@@ -520,6 +520,18 @@ impl AuraWorkspaceView {
             }
         }
 
+        if self.state.is_log_viewer_open && self.state.is_log_viewer_text_mode {
+            let log_text = self.state.format_filtered_logs_text();
+            inputs.ensure_textarea(
+                InputKey::LogViewerText,
+                &log_text,
+                "No log entries matching criteria.",
+                window,
+                cx,
+                Self::handle_textarea_event,
+            );
+        }
+
         self.inputs = inputs;
         self.sync_sidebar_tree(cx);
     }

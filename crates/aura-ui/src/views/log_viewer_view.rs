@@ -7,6 +7,7 @@ use gpui::*;
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
+use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::sheet::Sheet;
 use gpui_kit::component::tag::{Tag, TagVariant};
@@ -17,6 +18,7 @@ pub struct LogViewerView;
 impl LogViewerView {
     pub fn render(
         state: &AuraAppState,
+        log_textarea: Option<&Entity<TextareaState>>,
         window: &mut Window,
         cx: &mut Context<AuraWorkspaceView>,
     ) -> impl IntoElement {
@@ -57,14 +59,69 @@ impl LogViewerView {
                     ))),
             )
             .child(
-                Button::new("clear-logs-btn")
-                    .label("🗑 Clear")
-                    .small()
-                    .rounded(ButtonRounded::Medium)
-                    .on_click(cx.listener(|this, _, _window, cx| {
-                        this.state.clear_logs();
-                        cx.notify();
-                    })),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child({
+                                let btn = Button::new("log-mode-table")
+                                    .label("Table")
+                                    .xsmall()
+                                    .rounded(ButtonRounded::Small)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.set_log_viewer_text_mode(false);
+                                        cx.notify();
+                                    }));
+                                if !state.is_log_viewer_text_mode {
+                                    btn.primary()
+                                } else {
+                                    btn.secondary()
+                                }
+                            })
+                            .child({
+                                let btn = Button::new("log-mode-text")
+                                    .label("Text")
+                                    .xsmall()
+                                    .rounded(ButtonRounded::Small)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.set_log_viewer_text_mode(true);
+                                        cx.notify();
+                                    }));
+                                if state.is_log_viewer_text_mode {
+                                    btn.primary()
+                                } else {
+                                    btn.secondary()
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new("copy-logs-btn")
+                            .label("📋 Copy")
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                let text = this.state.format_filtered_logs_text();
+                                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                this.state.status_message =
+                                    Some("Copied logs to clipboard".to_string());
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("clear-logs-btn")
+                            .label("🗑 Clear")
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.clear_logs();
+                                cx.notify();
+                            })),
+                    ),
             );
 
         let footer_el = div()
@@ -105,9 +162,12 @@ impl LogViewerView {
                     .child(
                         div()
                             .flex()
+                            .flex_wrap()
                             .items_center()
                             .justify_between()
-                            .px_5()
+                            .gap_x_4()
+                            .gap_y_1p5()
+                            .px_3()
                             .py_2()
                             .bg(surface_tile_1)
                             // Level Filter Pills
@@ -191,102 +251,196 @@ impl LogViewerView {
                             ),
                     )
                     .child(Separator::horizontal())
-                    // Log Entries Table Header
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .px_5()
-                            .py_1p5()
-                            .bg(surface_tile_2)
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(text_muted)
-                            .child(div().w(px(90.0)).child("Timestamp"))
-                            .child(div().w_20().child("Level"))
-                            .child(div().w(px(140.0)).child("Subsystem"))
-                            .child(div().flex_1().child("Message")),
-                    )
-                    .child(Separator::horizontal())
-                    // Log Entries List
-                    .child(
-                        div()
-                            .id("log-entries-scroll")
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .overflow_y_scroll()
-                            .bg(surface_tile_3)
-                            .children(if filtered_logs.is_empty() {
-                                vec![Empty::new()
-                                    .header(EmptyHeader::new().description(
-                                        EmptyDescription::new().child("No log entries matching criteria."),
-                                    ))
-                                    .into_any_element()]
-                            } else {
-                                filtered_logs
-                                    .iter()
-                                    .rev()
-                                    .take(200)
-                                    .enumerate()
-                                    .map(|(idx, entry)| {
-                                        let tag_variant = match entry.level {
-                                            LogLevel::TRACE => TagVariant::Secondary,
-                                            LogLevel::DEBUG => TagVariant::Secondary,
-                                            LogLevel::INFO => TagVariant::Primary,
-                                            LogLevel::WARN => TagVariant::Warning,
-                                            LogLevel::ERROR => TagVariant::Danger,
-                                        };
-                                        let time_str =
-                                            entry.timestamp.format("%H:%M:%S%.3f").to_string();
-
-                                        div()
-                                            .flex()
-                                            .items_start()
-                                            .px_5()
-                                            .py_1p5()
-                                            .border_b_1()
-                                            .border_color(rgb(0x2a2a2d))
-                                            .hover(|s| s.bg(rgb(0x27272b)))
-                                            .text_xs()
-                                            .child(
-                                                div()
-                                                    .w(px(90.0))
-                                                    .text_color(text_muted)
-                                                    .child(time_str),
-                                            )
-                                            .child(
-                                                div().w_20().flex().items_center().child(
-                                                    Tag::new()
-                                                        .with_variant(tag_variant)
-                                                        .xsmall()
-                                                        .child(entry.level.as_str()),
-                                                ),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w(px(140.0))
-                                                    .text_color(accent_blue)
-                                                    .overflow_hidden()
-                                                    .child(entry.subsystem.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .text_color(text_color)
-                                                    .child(SelectableText::new(
-                                                        ElementId::NamedInteger(
-                                                            "log-entry-msg".into(),
-                                                            idx as u64,
-                                                        ),
-                                                        entry.message.clone(),
-                                                    )),
-                                            )
-                                            .into_any_element()
-                                    })
-                                    .collect()
-                            }),
-                    ),
+                    .child(if state.is_log_viewer_text_mode {
+                        Self::render_text_body(state, &filtered_logs, log_textarea, surface_tile_3)
+                    } else {
+                        Self::render_table_body(
+                            &filtered_logs,
+                            surface_tile_2,
+                            surface_tile_3,
+                            accent_blue,
+                            text_color,
+                            text_muted,
+                        )
+                    }),
             )
+    }
+
+    fn render_text_body(
+        state: &AuraAppState,
+        filtered_logs: &[aura_engine::LogEntry],
+        log_textarea: Option<&Entity<TextareaState>>,
+        surface_tile_3: Rgba,
+    ) -> AnyElement {
+        if filtered_logs.is_empty() {
+            return div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .bg(surface_tile_3)
+                .child(
+                    Empty::new().header(EmptyHeader::new().description(
+                        EmptyDescription::new().child("No log entries matching criteria."),
+                    )),
+                )
+                .into_any_element();
+        }
+
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .p_3()
+            .bg(surface_tile_3)
+            .child(if let Some(ta) = log_textarea {
+                Textarea::new(ta)
+                    .readonly(true)
+                    .size_full()
+                    .font_family("monospace")
+                    .text_xs()
+                    .into_any_element()
+            } else {
+                div()
+                    .p_2()
+                    .font_family("monospace")
+                    .text_xs()
+                    .text_color(rgb(0xf5f5f7))
+                    .child(state.format_filtered_logs_text())
+                    .into_any_element()
+            })
+            .into_any_element()
+    }
+
+    fn render_table_body(
+        filtered_logs: &[aura_engine::LogEntry],
+        surface_tile_2: Rgba,
+        surface_tile_3: Rgba,
+        accent_blue: Rgba,
+        text_color: Rgba,
+        text_muted: Rgba,
+    ) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            // Log Entries Table Header
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .w_full()
+                    .flex_shrink_0()
+                    .px_3()
+                    .py_1()
+                    .bg(surface_tile_2)
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(text_muted)
+                    .child(div().w(px(76.0)).flex_shrink_0().child("Timestamp"))
+                    .child(div().w(px(54.0)).flex_shrink_0().child("Level"))
+                    .child(div().w(px(88.0)).flex_shrink_0().child("Subsystem"))
+                    .child(div().flex_1().min_w_0().child("Message")),
+            )
+            .child(Separator::horizontal())
+            // Log Entries List
+            .child(
+                div()
+                    .id("log-entries-scroll")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .overflow_y_scroll()
+                    .bg(surface_tile_3)
+                    .children(if filtered_logs.is_empty() {
+                        vec![Empty::new()
+                            .header(EmptyHeader::new().description(
+                                EmptyDescription::new().child("No log entries matching criteria."),
+                            ))
+                            .into_any_element()]
+                    } else {
+                        filtered_logs
+                            .iter()
+                            .rev()
+                            .take(200)
+                            .enumerate()
+                            .map(|(idx, entry)| {
+                                let tag_variant = match entry.level {
+                                    LogLevel::TRACE => TagVariant::Secondary,
+                                    LogLevel::DEBUG => TagVariant::Secondary,
+                                    LogLevel::INFO => TagVariant::Primary,
+                                    LogLevel::WARN => TagVariant::Warning,
+                                    LogLevel::ERROR => TagVariant::Danger,
+                                };
+                                let time_str =
+                                    entry.timestamp.format("%H:%M:%S%.3f").to_string();
+                                let msg = entry.message.trim_end().to_string();
+
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .gap_3()
+                                    .w_full()
+                                    .flex_shrink_0()
+                                    .px_3()
+                                    .py_1()
+                                    .border_b_1()
+                                    .border_color(rgb(0x2a2a2d))
+                                    .hover(|s| s.bg(rgb(0x27272b)))
+                                    .text_xs()
+                                    .child(
+                                        div()
+                                            .w(px(76.0))
+                                            .flex_shrink_0()
+                                            .font_family("monospace")
+                                            .text_color(text_muted)
+                                            .child(time_str),
+                                    )
+                                    .child(
+                                        div()
+                                            .w(px(54.0))
+                                            .flex_shrink_0()
+                                            .flex()
+                                            .items_center()
+                                            .child(
+                                                Tag::new()
+                                                    .with_variant(tag_variant)
+                                                    .xsmall()
+                                                    .child(entry.level.as_str()),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .w(px(88.0))
+                                            .flex_shrink_0()
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .text_color(accent_blue)
+                                            .child(entry.subsystem.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .text_color(text_color)
+                                            .child(SelectableText::new(
+                                                ElementId::NamedInteger(
+                                                    "log-entry-msg".into(),
+                                                    idx as u64,
+                                                ),
+                                                msg,
+                                            )),
+                                    )
+                                    .into_any_element()
+                            })
+                            .collect()
+                    }),
+            )
+            .into_any_element()
     }
 }

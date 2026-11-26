@@ -214,7 +214,8 @@ impl Render for AuraWorkspaceView {
                 ))
             })
             .when(self.state.is_log_viewer_open, |el| {
-                el.child(LogViewerView::render(&self.state, window, cx))
+                let log_textarea = self.inputs.get_textarea(&InputKey::LogViewerText);
+                el.child(LogViewerView::render(&self.state, log_textarea, window, cx))
             });
 
         let root = self.apply_workspace_modals(root, cx);

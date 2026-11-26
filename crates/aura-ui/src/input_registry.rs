@@ -45,6 +45,7 @@ pub enum InputKey {
     ResponseBody,
     ResponseRaw,
     ResponseJson,
+    LogViewerText,
 }
 
 impl InputKey {
@@ -81,7 +82,8 @@ impl InputKey {
             | InputKey::EditorDialogField(_)
             | InputKey::ResponseBody
             | InputKey::ResponseRaw
-            | InputKey::ResponseJson => None,
+            | InputKey::ResponseJson
+            | InputKey::LogViewerText => None,
         }
     }
 }
