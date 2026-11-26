@@ -3,8 +3,11 @@
 use crate::app_state::AuraAppState;
 use aura_core::model::HttpMethod;
 use gpui::*;
+use gpui_kit::component::badge::Badge;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::Selectable;
+use gpui_kit::component::tag::{Tag, TagVariant};
+use gpui_kit::component::{Selectable, Sizable};
 
 pub struct TabBarView;
 
@@ -18,47 +21,37 @@ impl TabBarView {
     ) -> impl IntoElement {
         let border_color = rgb(0x333333);
         let amber_color = rgb(0xf5a623);
-        let text_muted = rgb(0x7a7a7a);
 
         let mut tab_bar = TabBar::new("workspace-tab-bar");
 
         for (idx, tab) in state.tabs.iter().enumerate() {
             let is_active = idx == state.active_tab_index;
-            let method_color = match tab.method {
-                HttpMethod::GET => rgb(0x0066cc),
-                HttpMethod::POST => rgb(0x28a745),
-                HttpMethod::PUT => rgb(0xf5a623),
-                HttpMethod::PATCH => rgb(0x8e44ad),
-                HttpMethod::DELETE => rgb(0xe74c3c),
-                _ => rgb(0x7a7a7a),
+            let tag_variant = match tab.method {
+                HttpMethod::GET => TagVariant::Primary,
+                HttpMethod::POST => TagVariant::Success,
+                HttpMethod::PUT => TagVariant::Warning,
+                HttpMethod::PATCH => TagVariant::Info,
+                HttpMethod::DELETE => TagVariant::Danger,
+                _ => TagVariant::Secondary,
             };
 
             let tab_id_close = tab.id.clone();
 
-            let prefix_badge = div()
-                .px_1()
-                .rounded_sm()
-                .bg(rgb(0x1b1b1d))
-                .text_xs()
-                .text_color(method_color)
+            let prefix_badge = Tag::new()
+                .with_variant(tag_variant)
+                .outline()
+                .xsmall()
                 .child(tab.method.as_str());
 
             let mut suffix_area = div().flex().items_center().gap_1();
             if tab.is_dirty {
-                suffix_area = suffix_area.child(div().w_2().h_2().rounded_full().bg(amber_color));
+                suffix_area = suffix_area.child(Badge::new().dot().color(amber_color));
             }
             suffix_area = suffix_area.child(
-                div()
-                    .id(ElementId::NamedInteger("close-tab".into(), idx as u64))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w_4()
-                    .h_4()
-                    .rounded_full()
-                    .text_xs()
-                    .text_color(text_muted)
-                    .child("×")
+                Button::new(ElementId::NamedInteger("close-tab".into(), idx as u64))
+                    .label("×")
+                    .xsmall()
+                    .ghost()
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_close_tab(this, &tab_id_close, window, cx);
                     })),
@@ -94,19 +87,11 @@ impl TabBarView {
             .border_color(border_color)
             .child(tab_bar)
             .child(
-                div()
-                    .id("new-request-btn")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w_6()
-                    .h_6()
-                    .rounded_md()
-                    .bg(rgb(0x333333))
-                    .text_xs()
-                    .text_color(rgb(0xffffff))
-                    .cursor_pointer()
-                    .child("+")
+                Button::new("new-request-btn")
+                    .label("+")
+                    .xsmall()
+                    .secondary()
+                    .rounded(ButtonRounded::Medium)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         on_new_request(this, window, cx);
                     })),

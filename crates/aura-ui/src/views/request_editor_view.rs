@@ -7,9 +7,13 @@ use aura_core::model::{AuraRequest, AuthConfig, BodyType, HttpMethod, TestAssert
 use base64::Engine;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::Selectable;
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::{Selectable, Sizable};
 
 #[derive(Debug, Clone)]
 pub enum RequestEditorAction {
@@ -100,8 +104,8 @@ impl RequestEditorView {
 
     #[allow(clippy::too_many_arguments)]
     pub fn render<V: 'static>(
-        split_ratio: f32,
-        is_horizontal: bool,
+        _split_ratio: f32,
+        _is_horizontal: bool,
         _active_title: &str,
         _active_method: HttpMethod,
         active_tab: EditorTab,
@@ -130,11 +134,10 @@ impl RequestEditorView {
         div()
             .flex()
             .flex_col()
+            .size_full()
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .when(is_horizontal, |el| el.w(gpui::relative(split_ratio)).flex_shrink_0())
-            .when(!is_horizontal, |el| el.h(gpui::relative(split_ratio)).flex_shrink_0())
             .bg(rgb(0x1d1d1f))
             .border_r_1()
             .border_color(border_color)
@@ -205,35 +208,36 @@ impl RequestEditorView {
         id: impl Into<ElementId>,
         input: Option<&Entity<InputState>>,
         fallback: &str,
-        is_focused: bool,
+        _is_focused: bool,
         mask_toggle: bool,
         bg: Rgba,
         border: Rgba,
         text_color: Rgba,
-    ) -> Stateful<Div> {
-        let el_id = id.into();
-        let box_div = div()
-            .id(el_id.clone())
-            .flex_1()
-            .px_2()
-            .py_0p5()
-            .rounded_sm()
-            .bg(if is_focused { rgb(0x1d1d1f) } else { bg })
-            .border_1()
-            .border_color(if is_focused { rgb(0x0071e3) } else { border });
-
+    ) -> AnyElement {
         if let Some(state) = input {
             let mut inp = Input::new(state)
-                .appearance(false)
-                .w_full()
-                .text_xs()
-                .text_color(text_color);
+                .id(id)
+                .xsmall()
+                .flex_1()
+                .w_full();
             if mask_toggle {
                 inp = inp.mask_toggle();
             }
-            box_div.child(inp)
+            div().flex_1().child(inp).into_any_element()
         } else {
-            box_div.text_xs().text_color(text_color).child(fallback.to_string())
+            div()
+                .id(id)
+                .flex_1()
+                .px_2()
+                .py_0p5()
+                .rounded_sm()
+                .bg(bg)
+                .border_1()
+                .border_color(border)
+                .text_xs()
+                .text_color(text_color)
+                .child(fallback.to_string())
+                .into_any_element()
         }
     }
 
@@ -242,36 +246,31 @@ impl RequestEditorView {
         ta: Option<&Entity<TextareaState>>,
         fallback: &str,
         height: Pixels,
-        is_focused: bool,
+        _is_focused: bool,
         border: Rgba,
         text_color: Rgba,
-    ) -> Stateful<Div> {
-        let el_id = id.into();
-        let box_div = div()
-            .id(el_id)
-            .p_2()
-            .rounded_md()
-            .bg(rgb(0x18181a))
-            .border_1()
-            .border_color(if is_focused { rgb(0x0071e3) } else { border });
-
+    ) -> AnyElement {
         if let Some(state) = ta {
-            box_div.child(
-                Textarea::new(state)
-                    .appearance(false)
-                    .h(height)
-                    .w_full()
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(text_color),
-            )
+            Textarea::new(state)
+                .h(height)
+                .w_full()
+                .font_family("monospace")
+                .text_xs()
+                .into_any_element()
         } else {
-            box_div
+            div()
+                .id(id)
+                .p_2()
+                .rounded_md()
+                .bg(rgb(0x18181a))
+                .border_1()
+                .border_color(border)
                 .min_h(height)
                 .font_family("monospace")
                 .text_xs()
                 .text_color(text_color)
                 .child(fallback.to_string())
+                .into_any_element()
         }
     }
 
@@ -429,31 +428,17 @@ impl RequestEditorView {
                                     .child("REQUEST HEADERS"),
                             )
                             .child(
-                                div()
-                                    .px_1p5()
-                                    .py_0p5()
-                                    .rounded_sm()
-                                    .bg(rgb(0x272729))
-                                    .text_xs()
-                                    .text_color(muted)
+                                Tag::secondary()
+                                    .xsmall()
                                     .child(format!("{}", headers.len())),
                             ),
                     )
                     .child(
-                        div()
-                            .id("add-header-btn")
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(rgb(0x0066cc))
-                            .hover(|s| s.bg(rgb(0x0071e3)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(rgb(0xffffff))
-                            .child("+ Add Header")
+                        Button::new("add-header-btn")
+                            .label("+ Add Header")
+                            .primary()
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(this, RequestEditorAction::AddHeaderDirect, window, cx);
                             })),
@@ -492,31 +477,18 @@ impl RequestEditorView {
             // Empty state or table
             .when(headers.is_empty(), |el| {
                 el.child(
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap_2()
-                        .child(div().text_xs().text_color(muted).child(
-                            "No custom headers defined. Click '+ Add Header' or pick a preset.",
+                    Empty::new()
+                        .header(EmptyHeader::new().description(
+                            EmptyDescription::new().child(
+                                "No custom headers defined. Click '+ Add Header' or pick a preset.",
+                            ),
                         ))
                         .child(
-                            div()
-                                .id("btn-add-first-header")
-                                .px_3()
-                                .py_1()
-                                .rounded_sm()
-                                .bg(rgb(0x333333))
-                                .hover(|s| s.bg(rgb(0x444444)))
-                                .cursor_pointer()
-                                .text_xs()
-                                .text_color(rgb(0xffffff))
-                                .child("+ Add First Header")
+                            Button::new("btn-add-first-header")
+                                .label("+ Add First Header")
+                                .secondary()
+                                .small()
+                                .rounded(ButtonRounded::Medium)
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     on_action(
                                         this,
@@ -536,6 +508,7 @@ impl RequestEditorView {
                     matches!(active_input, Some(ActiveInputTarget::HeaderKey(i)) if *i == idx);
                 let is_val_focused =
                     matches!(active_input, Some(ActiveInputTarget::HeaderValue(i)) if *i == idx);
+                let view_entity = cx.entity().clone();
 
                 div()
                     .id(ElementId::NamedInteger("header-row".into(), idx as u64))
@@ -558,15 +531,19 @@ impl RequestEditorView {
                     })
                     // Enabled Checkbox
                     .child(
-                        div()
-                            .id(ElementId::NamedInteger("toggle-header".into(), idx as u64))
-                            .cursor_pointer()
-                            .text_sm()
-                            .text_color(if enabled { rgb(0x28a745) } else { muted })
-                            .child(if enabled { "☑" } else { "☐" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(this, RequestEditorAction::ToggleHeader(idx), window, cx);
-                            })),
+                        Checkbox::new(ElementId::NamedInteger("toggle-header".into(), idx as u64))
+                            .checked(enabled)
+                            .small()
+                            .on_click(move |_, window, app| {
+                                let _ = view_entity.update(app, |this, cx| {
+                                    on_action(
+                                        this,
+                                        RequestEditorAction::ToggleHeader(idx),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
                     )
                     // Inline Editable Key Field
                     .child(Self::render_inline_input(
@@ -630,19 +607,11 @@ impl RequestEditorView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        div()
-            .id(label)
-            .px_2()
-            .py_0p5()
-            .rounded_sm()
-            .bg(rgb(0x272729))
-            .border_1()
-            .border_color(rgb(0x333333))
-            .hover(|s| s.bg(rgb(0x333333)).border_color(rgb(0x0066cc)))
-            .cursor_pointer()
-            .text_xs()
-            .text_color(rgb(0x2997ff))
-            .child(label)
+        Button::new(label)
+            .label(label)
+            .xsmall()
+            .secondary()
+            .rounded(ButtonRounded::Small)
             .on_click(cx.listener(move |this, _, window, cx| {
                 on_action(
                     this,
@@ -693,31 +662,17 @@ impl RequestEditorView {
                                     .child("QUERY PARAMETERS"),
                             )
                             .child(
-                                div()
-                                    .px_1p5()
-                                    .py_0p5()
-                                    .rounded_sm()
-                                    .bg(rgb(0x272729))
-                                    .text_xs()
-                                    .text_color(muted)
+                                Tag::secondary()
+                                    .xsmall()
                                     .child(format!("{}", params.len())),
                             ),
                     )
                     .child(
-                        div()
-                            .id("add-param-btn")
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(rgb(0x0066cc))
-                            .hover(|s| s.bg(rgb(0x0071e3)))
-                            .cursor_pointer()
-                            .text_xs()
-                            .text_color(rgb(0xffffff))
-                            .child("+ Add Parameter")
+                        Button::new("add-param-btn")
+                            .label("+ Add Parameter")
+                            .primary()
+                            .xsmall()
+                            .rounded(ButtonRounded::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 on_action(this, RequestEditorAction::AddParamDirect, window, cx);
                             })),
@@ -726,34 +681,16 @@ impl RequestEditorView {
             // Empty state or table
             .when(params.is_empty(), |el| {
                 el.child(
-                    div()
-                        .p_4()
-                        .rounded_md()
-                        .bg(rgb(0x222224))
-                        .border_1()
-                        .border_color(border)
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap_2()
+                    Empty::new()
+                        .header(EmptyHeader::new().description(
+                            EmptyDescription::new().child("No query parameters attached to URL."),
+                        ))
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("No query parameters attached to URL."),
-                        )
-                        .child(
-                            div()
-                                .id("btn-add-first-param")
-                                .px_3()
-                                .py_1()
-                                .rounded_sm()
-                                .bg(rgb(0x333333))
-                                .hover(|s| s.bg(rgb(0x444444)))
-                                .cursor_pointer()
-                                .text_xs()
-                                .text_color(rgb(0xffffff))
-                                .child("+ Add First Parameter")
+                            Button::new("btn-add-first-param")
+                                .label("+ Add First Parameter")
+                                .secondary()
+                                .small()
+                                .rounded(ButtonRounded::Medium)
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     on_action(
                                         this,
@@ -773,6 +710,7 @@ impl RequestEditorView {
                     matches!(active_input, Some(ActiveInputTarget::ParamKey(i)) if *i == idx);
                 let is_val_focused =
                     matches!(active_input, Some(ActiveInputTarget::ParamValue(i)) if *i == idx);
+                let view_entity = cx.entity().clone();
 
                 div()
                     .id(ElementId::NamedInteger("param-row".into(), idx as u64))
@@ -795,15 +733,19 @@ impl RequestEditorView {
                     })
                     // Checkbox
                     .child(
-                        div()
-                            .id(ElementId::NamedInteger("toggle-param".into(), idx as u64))
-                            .cursor_pointer()
-                            .text_sm()
-                            .text_color(if enabled { rgb(0x28a745) } else { muted })
-                            .child(if enabled { "☑" } else { "☐" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                on_action(this, RequestEditorAction::ToggleParam(idx), window, cx);
-                            })),
+                        Checkbox::new(ElementId::NamedInteger("toggle-param".into(), idx as u64))
+                            .checked(enabled)
+                            .small()
+                            .on_click(move |_, window, app| {
+                                let _ = view_entity.update(app, |this, cx| {
+                                    on_action(
+                                        this,
+                                        RequestEditorAction::ToggleParam(idx),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
                     )
                     // Inline Editable Key Field
                     .child(Self::render_inline_input(
@@ -906,52 +848,29 @@ impl RequestEditorView {
                         "Multipart" => "Multipart Form",
                         other => other,
                     };
-                    div()
-                        .id(fmt)
-                        .px_2p5()
-                        .py_1()
-                        .rounded_sm()
-                        .bg(if is_active {
-                            rgb(0x0066cc)
-                        } else {
-                            rgb(0x272729)
-                        })
-                        .border_1()
-                        .border_color(if is_active { rgb(0x0071e3) } else { border })
-                        .hover(|s| s.bg(rgb(0x333333)))
-                        .cursor_pointer()
-                        .text_xs()
-                        .text_color(if is_active { rgb(0xffffff) } else { muted })
-                        .child(display_name)
+                    let btn = Button::new(fmt)
+                        .label(display_name)
+                        .xsmall()
+                        .rounded(ButtonRounded::Small)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             on_action(this, RequestEditorAction::SetBodyType(fmt), window, cx);
-                        }))
+                        }));
+                    if is_active {
+                        btn.primary()
+                    } else {
+                        btn.secondary()
+                    }
                 }),
             ))
             // Body Content based on Format
             .child(match body {
-                Some(BodyType::None) | None => div()
-                    .p_6()
-                    .rounded_md()
-                    .bg(rgb(0x222224))
-                    .border_1()
-                    .border_color(border)
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("This request does not have a body."),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(0x555555))
-                            .child("Select JSON, Form, or Raw above to send payload data."),
-                    ),
+                Some(BodyType::None) | None => div().child(
+                    Empty::new().header(EmptyHeader::new().description(
+                        EmptyDescription::new().child(
+                            "This request does not have a body. Select JSON, Form, or Raw above to send payload data.",
+                        ),
+                    )),
+                ),
                 Some(BodyType::Json(content)) => Self::render_full_height_body_editor(
                     "JSON (application/json)",
                     content,
@@ -1272,25 +1191,25 @@ impl RequestEditorView {
                     } else {
                         border
                     })
-                    .child(
-                        div()
-                            .id(ElementId::NamedInteger(
-                                "toggle-form-param".into(),
-                                idx as u64,
-                            ))
-                            .cursor_pointer()
-                            .text_sm()
-                            .text_color(if enabled { rgb(0x28a745) } else { muted })
-                            .child(if enabled { "☑" } else { "☐" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
+                    .child({
+                        let view_entity = cx.entity().clone();
+                        Checkbox::new(ElementId::NamedInteger(
+                            "toggle-form-param".into(),
+                            idx as u64,
+                        ))
+                        .checked(enabled)
+                        .small()
+                        .on_click(move |_, window, app| {
+                            let _ = view_entity.update(app, |this, cx| {
                                 on_action(
                                     this,
                                     RequestEditorAction::ToggleFormParam(idx),
                                     window,
                                     cx,
                                 );
-                            })),
-                    )
+                            });
+                        })
+                    })
                     .child(Self::render_inline_input(
                         ElementId::NamedInteger("edit-form-key".into(), idx as u64),
                         inputs.get_input(&InputKey::FormParamKey(idx)),

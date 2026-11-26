@@ -1,6 +1,7 @@
 use crate::app_state::AuraAppState;
-use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::list::ListItem;
+use gpui_kit::component::separator::Separator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarMenuAction {
@@ -73,7 +74,7 @@ impl ContextMenuView {
                         cx,
                         on_action,
                     ))
-                    .child(Self::render_divider())
+                    .child(Separator::horizontal().my_1())
                     .child(Self::render_menu_item(
                         "Duplicate",
                         Some("Ctrl+D"),
@@ -101,7 +102,7 @@ impl ContextMenuView {
                         cx,
                         on_action,
                     ))
-                    .child(Self::render_divider())
+                    .child(Separator::horizontal().my_1())
                     .child(Self::render_menu_item(
                         "Rename",
                         Some("F2"),
@@ -141,62 +142,44 @@ impl ContextMenuView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, SidebarMenuAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
-        let text_color = if is_disabled {
-            rgb(0x555555)
-        } else if is_danger {
-            rgb(0xeeeeee)
-        } else {
-            rgb(0xdddddd)
-        };
-
-        let hover_bg = if is_disabled {
-            rgb(0x252528)
-        } else if is_danger {
-            rgb(0xe74c3c)
-        } else {
-            rgb(0x0066cc)
-        };
-
-        let hover_text = if is_disabled {
-            rgb(0x555555)
-        } else {
-            rgb(0xffffff)
-        };
-
-        let mut row = div()
-            .id(label)
-            .flex()
-            .items_center()
-            .justify_between()
+        let mut item = ListItem::new(label)
+            .disabled(is_disabled)
             .px_2()
             .py_1()
             .rounded_sm()
             .text_xs()
-            .text_color(text_color);
-
-        if !is_disabled {
-            row = row
-                .cursor_pointer()
-                .hover(move |s| s.bg(hover_bg).text_color(hover_text))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    on_action(this, action, window, cx);
-                }));
-        }
-
-        row.child(div().child(label)).when_some(shortcut, |el, sc| {
-            el.child(
+            .child(
                 div()
+                    .text_color(if is_disabled {
+                        rgb(0x555555)
+                    } else if is_danger {
+                        rgb(0xe74c3c)
+                    } else {
+                        rgb(0xdddddd)
+                    })
+                    .child(label),
+            );
+
+        if let Some(sc) = shortcut {
+            item = item.suffix(move |_, _| {
+                div()
+                    .text_xs()
                     .text_color(if is_disabled {
                         rgb(0x444444)
                     } else {
                         rgb(0x888888)
                     })
-                    .child(sc),
-            )
-        })
-    }
+                    .child(sc)
+                    .into_any_element()
+            });
+        }
 
-    fn render_divider() -> impl IntoElement {
-        div().h(px(1.0)).bg(rgb(0x333333)).my_1()
+        if !is_disabled {
+            item = item.on_click(cx.listener(move |this, _, window, cx| {
+                on_action(this, action, window, cx);
+            }));
+        }
+
+        item
     }
 }

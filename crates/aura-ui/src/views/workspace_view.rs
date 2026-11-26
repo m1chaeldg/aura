@@ -5,14 +5,23 @@ use crate::input_registry::{InputKey, InputRegistry};
 use crate::stores::LayoutOrientation;
 use crate::views::{
     CommandPaletteView, ContextMenuView, LogViewerView, RequestEditorAction, RequestEditorView,
-    RequestHeaderView, ResponsePaneView, SidebarMenuAction, SidebarView, SplitResizerView,
-    TabBarView,
+    RequestHeaderView, ResponsePaneView, SidebarMenuAction, SidebarView, TabBarView,
 };
 
 use aura_core::model::{AuthConfig, BodyType, HttpMethod};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
+use gpui_kit::component::list::ListItem;
+use gpui_kit::component::resizable::{h_resizable, resizable_panel, v_resizable};
+use gpui_kit::component::separator::Separator;
+use gpui_kit::component::status_bar::StatusBar;
+use gpui_kit::component::tag::Tag;
+use gpui_kit::component::tree::TreeState;
+use gpui_kit::component::{Sizable, TitleBar};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub struct AuraWorkspaceView {
     pub state: AuraAppState,
@@ -21,7 +30,9 @@ pub struct AuraWorkspaceView {
     #[allow(dead_code)]
     watcher_cancel: Option<tokio_util::sync::CancellationToken>,
     pub auto_save_seq: u64,
-    pub divider_drag_start: Option<(f32, f32, f32)>,
+    pub sidebar_tree_state: Entity<TreeState>,
+    pub sidebar_tree_meta: Rc<HashMap<String, crate::views::sidebar_view::SidebarNodeMeta>>,
+    pub sidebar_tree_sig: String,
 }
 
 impl AuraWorkspaceView {
@@ -32,7 +43,9 @@ impl AuraWorkspaceView {
             focus_handle: Some(cx.focus_handle()),
             watcher_cancel: None,
             auto_save_seq: 0,
-            divider_drag_start: None,
+            sidebar_tree_state: cx.new(|cx| TreeState::new(cx)),
+            sidebar_tree_meta: Rc::new(HashMap::new()),
+            sidebar_tree_sig: String::new(),
         };
         let prefs = crate::preferences::AuraPreferences::load();
         view.state.auto_save_enabled = prefs.auto_save_enabled;
@@ -1233,46 +1246,33 @@ impl AuraWorkspaceView {
                     )
                     .child(div().text_xs().text_color(rgb(0xaaaaaa)).child(subtitle))
                     .child(body_el)
+                    .child(Separator::horizontal().mt_2())
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .justify_end()
                             .gap_2()
-                            .mt_3()
                             .child(
-                                div()
-                                    .id("cancel-editor-dialog-btn")
-                                    .px_3()
-                                    .py_1()
-                                    .bg(rgb(0x333333))
-                                    .hover(|s| s.bg(rgb(0x444444)))
-                                    .text_xs()
-                                    .text_color(rgb(0xffffff))
-                                    .rounded_sm()
-                                    .cursor_pointer()
+                                Button::new("cancel-editor-dialog-btn")
+                                    .label("Cancel")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.state.cancel_editor_dialog();
                                         cx.notify();
-                                    }))
-                                    .child("Cancel"),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("confirm-editor-dialog-btn")
-                                    .px_3()
-                                    .py_1()
-                                    .bg(rgb(0x0066cc))
-                                    .hover(|s| s.bg(rgb(0x0071e3)))
-                                    .text_xs()
-                                    .text_color(rgb(0xffffff))
-                                    .rounded_sm()
-                                    .cursor_pointer()
+                                Button::new("confirm-editor-dialog-btn")
+                                    .label("Save")
+                                    .primary()
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.state.confirm_editor_dialog();
                                         cx.notify();
-                                    }))
-                                    .child("Save"),
+                                    })),
                             ),
                     ),
             )
@@ -1285,30 +1285,19 @@ impl AuraWorkspaceView {
         is_focused: bool,
         placeholder: &'static str,
     ) -> Div {
-        let box_div = div()
-            .flex()
-            .items_center()
-            .px_2()
-            .py_1()
-            .bg(rgb(0x1d1d1f))
-            .border_1()
-            .border_color(if is_focused {
-                rgb(0x0066cc)
-            } else {
-                rgb(0x333333)
-            })
-            .rounded_sm();
-
         let field_el = if let Some(state) = input {
-            box_div.child(
-                Input::new(state)
-                    .appearance(false)
-                    .w_full()
-                    .text_xs()
-                    .text_color(rgb(0xffffff)),
-            )
+            Input::new(state)
+                .small()
+                .w_full()
+                .into_any_element()
         } else {
-            box_div
+            div()
+                .px_2()
+                .py_1()
+                .bg(rgb(0x1d1d1f))
+                .border_1()
+                .border_color(rgb(0x333333))
+                .rounded_sm()
                 .text_xs()
                 .text_color(if val.is_empty() {
                     rgb(0x666666)
@@ -1320,6 +1309,7 @@ impl AuraWorkspaceView {
                 } else {
                     val.to_string()
                 })
+                .into_any_element()
         };
 
         div()
@@ -1342,6 +1332,7 @@ impl AuraWorkspaceView {
 }
 
 impl Default for AuraWorkspaceView {
+    #[allow(unreachable_code)]
     fn default() -> Self {
         Self {
             state: AuraAppState::new(),
@@ -1349,7 +1340,9 @@ impl Default for AuraWorkspaceView {
             focus_handle: None,
             watcher_cancel: None,
             auto_save_seq: 0,
-            divider_drag_start: None,
+            sidebar_tree_state: unreachable!("AuraWorkspaceView::default() requires App context; use AuraWorkspaceView::new(cx)"),
+            sidebar_tree_meta: Rc::new(HashMap::new()),
+            sidebar_tree_sig: String::new(),
         }
     }
 }
@@ -2016,6 +2009,58 @@ impl AuraWorkspaceView {
         }
 
         self.inputs = inputs;
+        self.sync_sidebar_tree(cx);
+    }
+
+    fn sync_sidebar_tree(&mut self, cx: &mut Context<Self>) {
+        let mut sig = String::new();
+        for node in &self.state.workspace_store.tree {
+            append_tree_sig(node, &mut sig);
+        }
+        if sig.is_empty() {
+            for col in &self.state.collections {
+                sig.push_str(&col.id);
+                sig.push(':');
+                for req in &col.requests {
+                    sig.push_str(&req.id);
+                    sig.push(',');
+                }
+            }
+        }
+        if sig != self.sidebar_tree_sig {
+            self.sidebar_tree_sig = sig;
+            let (items, meta) = SidebarView::build_tree_items(&self.state);
+            self.sidebar_tree_meta = Rc::new(meta);
+            self.sidebar_tree_state.update(cx, |ts, cx| {
+                ts.set_items(items, cx);
+            });
+        }
+    }
+}
+
+fn append_tree_sig(node: &crate::stores::workspace_store::WorkspaceTreeNode, out: &mut String) {
+    match node {
+        crate::stores::workspace_store::WorkspaceTreeNode::Folder {
+            path,
+            is_expanded,
+            children,
+            ..
+        } => {
+            out.push_str("D:");
+            out.push_str(&path.to_string_lossy());
+            out.push(if *is_expanded { '1' } else { '0' });
+            out.push(';');
+            for c in children {
+                append_tree_sig(c, out);
+            }
+        }
+        crate::stores::workspace_store::WorkspaceTreeNode::Request { path, method, .. } => {
+            out.push_str("F:");
+            out.push_str(&path.to_string_lossy());
+            out.push(':');
+            out.push_str(method.as_str());
+            out.push(';');
+        }
     }
 }
 
@@ -2029,12 +2074,8 @@ impl Render for AuraWorkspaceView {
         let active_method = active_tab.map(|t| t.method).unwrap_or(HttpMethod::GET);
 
         let bg_color = rgb(0x1d1d1f);
-        let surface_color = rgb(0x272729);
-        let surface_tile_2 = rgb(0x2a2a2c);
         let text_color = rgb(0xf5f5f7);
         let text_muted = rgb(0x7a7a7a);
-        let border_color = rgb(0x333333);
-        let accent_blue = rgb(0x0066cc);
         let is_horizontal = self.state.orientation == LayoutOrientation::Horizontal;
         let split_pct = (self.state.split_ratio * 100.0).round() as u32;
         let is_in_flight = self.state.execution_service.is_in_flight();
@@ -2052,40 +2093,6 @@ impl Render for AuraWorkspaceView {
             .bg(bg_color)
             .text_color(text_color)
             .track_focus(&focus)
-            .when(self.state.is_dragging_divider && is_horizontal, |el| el.cursor_col_resize())
-            .when(self.state.is_dragging_divider && !is_horizontal, |el| el.cursor_row_resize())
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
-                if this.state.is_dragging_divider {
-                    this.state.is_dragging_divider = false;
-                    this.divider_drag_start = None;
-                    this.save_preferences_sync();
-                    cx.notify();
-                }
-            }))
-            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
-                if this.state.is_dragging_divider {
-                    if let Some((start_x, start_y, start_ratio)) = this.divider_drag_start {
-                        let vp = window.viewport_size();
-                        let is_horizontal = this.state.orientation == LayoutOrientation::Horizontal;
-                        if is_horizontal {
-                            let sidebar_w = 255.0f32;
-                            let available_w = (f32::from(vp.width) - sidebar_w).max(200.0);
-                            let current_x: f32 = event.position.x.into();
-                            let delta = current_x - start_x;
-                            let new_ratio = (start_ratio + (delta / available_w)).clamp(0.2, 0.8);
-                            this.state.set_split_ratio(new_ratio);
-                        } else {
-                            let chrome_h = 150.0f32;
-                            let available_h = (f32::from(vp.height) - chrome_h).max(200.0);
-                            let current_y: f32 = event.position.y.into();
-                            let delta = current_y - start_y;
-                            let new_ratio = (start_ratio + (delta / available_h)).clamp(0.2, 0.8);
-                            this.state.set_split_ratio(new_ratio);
-                        }
-                        cx.notify();
-                    }
-                }
-            }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
                 if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
                     && (event.keystroke.key == "s" || event.keystroke.key == "S")
@@ -2166,240 +2173,200 @@ impl Render for AuraWorkspaceView {
             }))
             // Title Bar
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_4()
-                    .py_2()
-                    .bg(surface_color)
-                    .border_b_1()
-                    .border_color(border_color)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .w_6()
-                                    .h_6()
-                                    .rounded_md()
-                                    .bg(accent_blue)
-                                    .child(div().text_xs().text_color(rgb(0xffffff)).child("A")),
-                            )
-                            .child(div().text_sm().child("Aura REST API Client v0.1.0"))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(text_muted)
-                                    .child("(GPUI + deno_core)"),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(surface_tile_2)
-                                    .border_1()
-                                    .border_color(border_color)
-                                    .text_xs()
-                                    .text_color(text_color)
-                                    .child("⌘ Command Palette"),
-                            )
-                            .child(
-                                div()
-                                    .id("toggle-layout-btn")
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(surface_tile_2)
-                                    .border_1()
-                                    .border_color(border_color)
-                                    .text_xs()
-                                    .text_color(text_color)
-                                    .child(if is_horizontal {
-                                        "◫ Side-by-Side"
-                                    } else {
-                                        "⬒ Stacked"
-                                    })
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.state.toggle_orientation();
-                                        this.save_preferences_sync();
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .id("open-workspace-btn")
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(surface_tile_2)
-                                    .border_1()
-                                    .border_color(border_color)
-                                    .hover(|s| s.bg(rgb(0x333333)))
-                                    .text_xs()
-                                    .text_color(text_color)
-                                    .child("📁 Open Workspace")
-                                    .on_click(cx.listener(|_this, _, _window, cx| {
-                                        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-                                            let mut cx = cx.clone();
-                                            async move {
-                                                if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
-                                                    this.update(&mut cx, |this, cx| {
-                                                        if let Ok(()) = this.state.open_workspace_sync(&folder) {
-                                                            this.start_workspace_watcher(folder, cx);
-                                                            cx.notify();
-                                                        }
-                                                    }).ok();
+                TitleBar::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .w_full()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_3()
+                                .child(
+                                    Tag::primary()
+                                        .small()
+                                        .child("A"),
+                                )
+                                .child(div().text_sm().child("Aura REST API Client v0.1.0"))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(text_muted)
+                                        .child("(GPUI + deno_core)"),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    Button::new("cmd-palette-btn")
+                                        .label("⌘ Command Palette")
+                                        .small()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.state.toggle_command_palette();
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("toggle-layout-btn")
+                                        .label(if is_horizontal {
+                                            "◫ Side-by-Side"
+                                        } else {
+                                            "⬒ Stacked"
+                                        })
+                                        .small()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.state.toggle_orientation();
+                                            this.save_preferences_sync();
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("open-workspace-btn")
+                                        .label("📁 Open Workspace")
+                                        .small()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(|_this, _, _window, cx| {
+                                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                                let mut cx = cx.clone();
+                                                async move {
+                                                    if let Some(folder) = crate::services::WorkspaceService::pick_folder().await {
+                                                        this.update(&mut cx, |this, cx| {
+                                                            if let Ok(()) = this.state.open_workspace_sync(&folder) {
+                                                                this.start_workspace_watcher(folder, cx);
+                                                                cx.notify();
+                                                            }
+                                                        }).ok();
+                                                    }
                                                 }
-                                            }
-                                        }).detach();
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .id("toggle-logs-btn")
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(if self.state.is_log_viewer_open { accent_blue } else { surface_tile_2 })
-                                    .border_1()
-                                    .border_color(border_color)
-                                    .hover(|s| s.bg(rgb(0x333333)))
-                                    .text_xs()
-                                    .text_color(text_color)
-                                    .child("🪵 Logs")
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.state.toggle_log_viewer();
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(rgb(0x333333))
-                                    .text_xs()
-                                    .text_color(rgb(0xcccccc))
-                                    .child("Zero Telemetry • Offline Sandboxed"),
-                            ),
-                    ),
+                                            }).detach();
+                                        })),
+                                )
+                                .child({
+                                    let btn = Button::new("toggle-logs-btn")
+                                        .label("🪵 Logs")
+                                        .small()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.state.toggle_log_viewer();
+                                            cx.notify();
+                                        }));
+                                    if self.state.is_log_viewer_open {
+                                        btn.primary()
+                                    } else {
+                                        btn
+                                    }
+                                })
+                                .child(
+                                    Tag::secondary()
+                                        .small()
+                                        .child("Zero Telemetry • Offline Sandboxed"),
+                                ),
+                        ),
+                ),
             )
             // Body: Sidebar + Main Content Area
             .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_1()
-                    .child(SidebarView::render(
-                        &self.state,
-                        self.inputs.get_input(&InputKey::InlineRename),
-                        cx,
-                        |this, col_id, req_id_or_path, _window, cx| {
-                            if col_id.is_empty() {
-                                let path = std::path::PathBuf::from(req_id_or_path);
-                                this.state.workspace_store.select_node(path.clone());
-                                let _ = this.state.open_file_in_tab(&path);
-                            } else {
-                                this.state.open_collection_request(col_id, req_id_or_path);
-                            }
-                            cx.notify();
-                        },
-                        |this, _window, cx| {
-                            this.state.new_request();
-                            cx.notify();
-                        },
-                        |this, folder_path, _window, cx| {
-                            this.state.workspace_store.select_node(folder_path.to_path_buf());
-                            this.state.toggle_folder(folder_path);
-                            cx.notify();
-                        },
-                        |this, target_path, is_folder, pos, _window, cx| {
-                            this.state.workspace_store.select_node(target_path.to_path_buf());
-                            this.state.workspace_store.open_context_menu(target_path.to_path_buf(), is_folder, pos);
-                            cx.notify();
-                        },
-                        |this, folder_path, _window, cx| {
-                            let root = this.state.workspace_store.workspace_root.clone();
-                            let srv = this.state.workspace_service.clone();
-                            let folder = folder_path.to_path_buf();
-                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-                                let mut cx = cx.clone();
-                                async move {
-                                    if let Some(r) = root {
-                                        if let Ok(p) = srv.create_request(&r, &folder, "Untitled Request", HttpMethod::GET).await {
-                                            let _ = this.update(&mut cx, |this, cx| {
-                                                let _ = this.state.open_file_in_tab(&p);
-                                                let _ = this.state.reconcile_workspace_sync();
-                                                cx.notify();
-                                            });
-                                        }
-                                    }
-                                }
-                            })
-                            .detach();
-                        },
-                        |this, item_path, _window, cx| {
-                            let root = this.state.workspace_store.workspace_root.clone();
-                            let srv = this.state.workspace_service.clone();
-                            let item = item_path.to_path_buf();
-                            cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-                                let mut cx = cx.clone();
-                                async move {
-                                    if let Some(r) = root {
-                                        if let Ok(p) = srv.duplicate_item(&r, &item).await {
-                                            let _ = this.update(&mut cx, |this, cx| {
-                                                if p.is_file() {
-                                                    let _ = this.state.open_file_in_tab(&p);
-                                                }
-                                                let _ = this.state.reconcile_workspace_sync();
-                                                cx.notify();
-                                            });
-                                        }
-                                    }
-                                }
-                            })
-                            .detach();
-                        },
-                        |this, dragging_path, target_parent, placement, _window, cx| {
-                            this.handle_drop_item(
-                                dragging_path.to_path_buf(),
-                                target_parent.to_path_buf(),
-                                placement,
-                                cx,
-                            );
-                        },
-                    ))
+                h_resizable("workspace-main-split")
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .child(TabBarView::render(
+                        resizable_panel()
+                            .size(px(250.))
+                            .size_range(px(180.)..px(450.))
+                            .child(SidebarView::render(
+                                &self.state,
+                                &self.sidebar_tree_state,
+                                self.sidebar_tree_meta.clone(),
+                                self.inputs.get_input(&InputKey::InlineRename),
+                                cx,
+                                |this, col_id, req_id_or_path, _window, cx| {
+                                    if col_id.is_empty() {
+                                        let path = std::path::PathBuf::from(req_id_or_path);
+                                        this.state.workspace_store.select_node(path.clone());
+                                        let _ = this.state.open_file_in_tab(&path);
+                                    } else {
+                                        this.state.open_collection_request(col_id, req_id_or_path);
+                                    }
+                                    cx.notify();
+                                },
+                                |this, _window, cx| {
+                                    this.state.new_request();
+                                    cx.notify();
+                                },
+                                |this, folder_path, _window, cx| {
+                                    this.state.workspace_store.select_node(folder_path.to_path_buf());
+                                    this.state.toggle_folder(folder_path);
+                                    cx.notify();
+                                },
+                                |this, target_path, is_folder, pos, _window, cx| {
+                                    this.state.workspace_store.select_node(target_path.to_path_buf());
+                                    this.state.workspace_store.open_context_menu(target_path.to_path_buf(), is_folder, pos);
+                                    cx.notify();
+                                },
+                                |this, folder_path, _window, cx| {
+                                    let root = this.state.workspace_store.workspace_root.clone();
+                                    let srv = this.state.workspace_service.clone();
+                                    let folder = folder_path.to_path_buf();
+                                    cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                        let mut cx = cx.clone();
+                                        async move {
+                                            if let Some(r) = root {
+                                                if let Ok(p) = srv.create_request(&r, &folder, "Untitled Request", HttpMethod::GET).await {
+                                                    let _ = this.update(&mut cx, |this, cx| {
+                                                        let _ = this.state.open_file_in_tab(&p);
+                                                        let _ = this.state.reconcile_workspace_sync();
+                                                        cx.notify();
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .detach();
+                                },
+                                |this, item_path, _window, cx| {
+                                    let root = this.state.workspace_store.workspace_root.clone();
+                                    let srv = this.state.workspace_service.clone();
+                                    let item = item_path.to_path_buf();
+                                    cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                                        let mut cx = cx.clone();
+                                        async move {
+                                            if let Some(r) = root {
+                                                if let Ok(p) = srv.duplicate_item(&r, &item).await {
+                                                    let _ = this.update(&mut cx, |this, cx| {
+                                                        if p.is_file() {
+                                                            let _ = this.state.open_file_in_tab(&p);
+                                                        }
+                                                        let _ = this.state.reconcile_workspace_sync();
+                                                        cx.notify();
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .detach();
+                                },
+                                |this, dragging_path, target_parent, placement, _window, cx| {
+                                    this.handle_drop_item(
+                                        dragging_path.to_path_buf(),
+                                        target_parent.to_path_buf(),
+                                        placement,
+                                        cx,
+                                    );
+                                },
+                            )),
+                    )
+                    .child(
+                        resizable_panel().child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .size_full()
+                                .child(TabBarView::render(
                                 &self.state,
                                 cx,
                                 |this, idx, _window, cx| {
@@ -2445,15 +2412,9 @@ impl Render for AuraWorkspaceView {
                                     this.dispatch_save_active_tab(false, cx);
                                 },
                             ))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .min_h_0()
-                                    .overflow_hidden()
-                                    .when(is_horizontal, |el| el.flex_row())
-                                    .when(!is_horizontal, |el| el.flex_col())
+                            .child({
+                                let editor_panel = resizable_panel()
+                                    .size_range(px(180.)..Pixels::MAX)
                                     .child(RequestEditorView::render(
                                         self.state.split_ratio,
                                         is_horizontal,
@@ -2471,27 +2432,9 @@ impl Render for AuraWorkspaceView {
                                         |this, action, _window, cx| {
                                             this.handle_request_editor_action(action, cx);
                                         },
-                                    ))
-                                    .child(SplitResizerView::render(
-                                        is_horizontal,
-                                        self.state.is_dragging_divider,
-                                        cx,
-                                        |this, event, _window, cx| {
-                                            if event.click_count >= 2 {
-                                                this.state.reset_divider();
-                                                this.divider_drag_start = None;
-                                                this.state.is_dragging_divider = false;
-                                                this.save_preferences_sync();
-                                                cx.notify();
-                                            } else {
-                                                let px_val: f32 = event.position.x.into();
-                                                let py_val: f32 = event.position.y.into();
-                                                this.divider_drag_start = Some((px_val, py_val, this.state.split_ratio));
-                                                this.state.is_dragging_divider = true;
-                                                cx.notify();
-                                            }
-                                        },
-                                    ))
+                                    ));
+                                let response_panel = resizable_panel()
+                                    .size_range(px(180.)..Pixels::MAX)
                                     .child(ResponsePaneView::render(
                                         self.state.split_ratio,
                                         is_horizontal,
@@ -2510,58 +2453,46 @@ impl Render for AuraWorkspaceView {
                                             this.state.toggle_response_body_mode();
                                             cx.notify();
                                         },
-                                    )),
-                            ),
+                                    ));
+                                if is_horizontal {
+                                    h_resizable("editor-response-split")
+                                        .child(editor_panel)
+                                        .child(response_panel)
+                                } else {
+                                    v_resizable("editor-response-split")
+                                        .child(editor_panel)
+                                        .child(response_panel)
+                                }
+                            }),
+                        ),
                     ),
             )
             // Status Bar
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_4()
-                    .py_1()
-                    .bg(surface_color)
-                    .border_t_1()
-                    .border_color(border_color)
-                    .text_xs()
-                    .text_color(text_muted)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .child(
-                                self.state
-                                    .status_message
-                                    .clone()
-                                    .unwrap_or_else(|| "Ready".to_string()),
-                            )
-                            .child("•")
-                            .child("Workspace: Local Disk Synced")
-                            .child("•")
-                            .child("deno_core: Offline"),
+                StatusBar::new()
+                    .left(
+                        self.state
+                            .status_message
+                            .clone()
+                            .unwrap_or_else(|| "Ready".to_string()),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(format!(
-                                "Layout: {} ({}%) [Reset: Ctrl+R]",
-                                if is_horizontal {
-                                    "Side-by-Side"
-                                } else {
-                                    "Stacked"
-                                },
-                                split_pct
-                            ))
-                            .child("•")
-                            .child(format!("Keymap: {}", self.state.keybinding_preset.name()))
-                            .child("•")
-                            .child("Aura v0.1.0"),
-                    ),
+                    .left(Separator::vertical().h(px(12.)))
+                    .left("Workspace: Local Disk Synced")
+                    .left(Separator::vertical().h(px(12.)))
+                    .left("deno_core: Offline")
+                    .right(format!(
+                        "Layout: {} ({}%) [Reset: Ctrl+R]",
+                        if is_horizontal {
+                            "Side-by-Side"
+                        } else {
+                            "Stacked"
+                        },
+                        split_pct
+                    ))
+                    .right(Separator::vertical().h(px(12.)))
+                    .right(format!("Keymap: {}", self.state.keybinding_preset.name()))
+                    .right(Separator::vertical().h(px(12.)))
+                    .right("Aura v0.1.0"),
             )
             .when(self.state.is_command_palette_open, |el| {
                 let search_input = self
@@ -2615,45 +2546,32 @@ impl Render for AuraWorkspaceView {
                                             item_name
                                         )),
                                 )
+                                .child(Separator::horizontal())
                                 .child(
                                     div()
                                         .flex()
                                         .items_center()
                                         .justify_end()
                                         .gap_2()
-                                        .mt_2()
                                         .child(
-                                            div()
-                                                .id("cancel-delete-btn")
-                                                .px_3()
-                                                .py_1()
-                                                .bg(rgb(0x333333))
-                                                .hover(|s| s.bg(rgb(0x444444)))
-                                                .text_xs()
-                                                .text_color(rgb(0xffffff))
-                                                .rounded_sm()
-                                                .cursor_pointer()
+                                            Button::new("cancel-delete-btn")
+                                                .label("Cancel")
+                                                .small()
+                                                .rounded(ButtonRounded::Medium)
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.state.cancel_delete();
                                                     cx.notify();
-                                                }))
-                                                .child("Cancel"),
+                                                })),
                                         )
                                         .child(
-                                            div()
-                                                .id("confirm-delete-btn")
-                                                .px_3()
-                                                .py_1()
-                                                .bg(rgb(0xe74c3c))
-                                                .hover(|s| s.bg(rgb(0xc0392b)))
-                                                .text_xs()
-                                                .text_color(rgb(0xffffff))
-                                                .rounded_sm()
-                                                .cursor_pointer()
+                                            Button::new("confirm-delete-btn")
+                                                .label("Delete")
+                                                .danger()
+                                                .small()
+                                                .rounded(ButtonRounded::Medium)
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.confirm_delete_action(cx);
-                                                }))
-                                                .child("Delete"),
+                                                })),
                                         ),
                                 ),
                         ),
@@ -2718,66 +2636,45 @@ impl Render for AuraWorkspaceView {
                                         .flex()
                                         .items_center()
                                         .justify_between()
-                                        .px_2()
-                                        .py_1()
-                                        .bg(rgb(0x1d1d1f))
-                                        .border_1()
-                                        .border_color(rgb(0x0066cc))
-                                        .rounded_sm()
                                         .gap_2()
                                         .child(div().flex_1().child(if let Some(inp) = self.inputs.get_input(&InputKey::RenameDialog) {
                                             Input::new(inp)
-                                                .appearance(false)
+                                                .small()
                                                 .w_full()
-                                                .text_sm()
-                                                .text_color(rgb(0xffffff))
                                                 .into_any_element()
                                         } else {
                                             div().text_sm().text_color(rgb(0xffffff)).child(current_val.clone()).into_any_element()
                                         }))
                                         .when(!rename_state.is_folder, |el| {
-                                            el.child(div().text_xs().text_color(rgb(0x777777)).child(".aura"))
+                                            el.child(Tag::secondary().small().child(".aura"))
                                         }),
                                 )
+                                .child(Separator::horizontal())
                                 .child(
                                     div()
                                         .flex()
                                         .items_center()
                                         .justify_end()
                                         .gap_2()
-                                        .mt_2()
                                         .child(
-                                            div()
-                                                .id("cancel-rename-btn")
-                                                .px_3()
-                                                .py_1()
-                                                .bg(rgb(0x333333))
-                                                .hover(|s| s.bg(rgb(0x444444)))
-                                                .text_xs()
-                                                .text_color(rgb(0xffffff))
-                                                .rounded_sm()
-                                                .cursor_pointer()
+                                            Button::new("cancel-rename-btn")
+                                                .label("Cancel")
+                                                .small()
+                                                .rounded(ButtonRounded::Medium)
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.state.cancel_rename();
                                                     cx.notify();
-                                                }))
-                                                .child("Cancel"),
+                                                })),
                                         )
                                         .child(
-                                            div()
-                                                .id("confirm-rename-btn")
-                                                .px_3()
-                                                .py_1()
-                                                .bg(rgb(0x0066cc))
-                                                .hover(|s| s.bg(rgb(0x0071e3)))
-                                                .text_xs()
-                                                .text_color(rgb(0xffffff))
-                                                .rounded_sm()
-                                                .cursor_pointer()
+                                            Button::new("confirm-rename-btn")
+                                                .label("Rename")
+                                                .primary()
+                                                .small()
+                                                .rounded(ButtonRounded::Medium)
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.confirm_rename_action(cx);
-                                                }))
-                                                .child("Rename"),
+                                                })),
                                         ),
                                 ),
                         ),
@@ -2835,29 +2732,15 @@ impl Render for AuraWorkspaceView {
                                                 .child("Esc to cancel"),
                                         ),
                                 )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .px_2()
-                                        .py_1()
-                                        .bg(rgb(0x1d1d1f))
-                                        .border_1()
-                                        .border_color(rgb(0x333333))
-                                        .rounded_sm()
-                                        .gap_2()
-                                        .child(div().text_xs().text_color(rgb(0x0066cc)).child("🔍"))
-                                        .child(div().flex_1().child(if let Some(inp) = self.inputs.get_input(&InputKey::MoveToSearch) {
-                                            Input::new(inp)
-                                                .appearance(false)
-                                                .w_full()
-                                                .text_xs()
-                                                .text_color(rgb(0xffffff))
-                                                .into_any_element()
-                                        } else {
-                                            div().text_xs().text_color(rgb(0xffffff)).child(move_dialog.search_query.clone()).into_any_element()
-                                        })),
-                                )
+                                .child(if let Some(inp) = self.inputs.get_input(&InputKey::MoveToSearch) {
+                                    Input::new(inp)
+                                        .small()
+                                        .cleanable(true)
+                                        .w_full()
+                                        .into_any_element()
+                                } else {
+                                    div().text_xs().text_color(rgb(0xffffff)).child(move_dialog.search_query.clone()).into_any_element()
+                                })
                                 .child(
                                     div()
                                         .flex()
@@ -2869,22 +2752,8 @@ impl Render for AuraWorkspaceView {
                                             let is_sel = idx == sel_idx;
                                             let dest_path = dest.path.clone();
                                             let source_path = move_dialog.source_path.clone();
-                                            div()
-                                                .id(ElementId::NamedInteger("move-to-dest".into(), idx as u64))
-                                                .flex()
-                                                .items_center()
-                                                .justify_between()
-                                                .px_3()
-                                                .py_1p5()
-                                                .rounded_sm()
-                                                .cursor_pointer()
-                                                .bg(if is_sel {
-                                                    rgb(0x27374d)
-                                                } else {
-                                                    rgb(0x272729)
-                                                })
-                                                .hover(|s| s.bg(rgb(0x333338)))
-                                                .when(is_sel, |s| s.border_l_2().border_color(rgb(0x0066cc)))
+                                            ListItem::new(ElementId::NamedInteger("move-to-dest".into(), idx as u64))
+                                                .selected(is_sel)
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     this.state.cancel_move_to();
                                                     this.handle_drop_item(
@@ -2900,24 +2769,17 @@ impl Render for AuraWorkspaceView {
                                                         .items_center()
                                                         .gap_2()
                                                         .text_xs()
-                                                        .text_color(if is_sel {
-                                                            rgb(0xffffff)
-                                                        } else {
-                                                            rgb(0xcccccc)
-                                                        })
                                                         .child(if dest.is_root { "🏠" } else { "📁" })
                                                         .child(dest.display_name.clone()),
                                                 )
                                         })),
                                 )
+                                .child(Separator::horizontal())
                                 .child(
                                     div()
                                         .flex()
                                         .items_center()
                                         .justify_between()
-                                        .pt_2()
-                                        .border_t_1()
-                                        .border_color(rgb(0x333333))
                                         .child(
                                             div()
                                                 .text_xs()
@@ -2929,37 +2791,24 @@ impl Render for AuraWorkspaceView {
                                                 .flex()
                                                 .gap_2()
                                                 .child(
-                                                    div()
-                                                        .id("cancel-move-to-btn")
-                                                        .px_3()
-                                                        .py_1()
-                                                        .bg(rgb(0x333333))
-                                                        .hover(|s| s.bg(rgb(0x444444)))
-                                                        .text_xs()
-                                                        .text_color(rgb(0xffffff))
-                                                        .rounded_sm()
-                                                        .cursor_pointer()
+                                                    Button::new("cancel-move-to-btn")
+                                                        .label("Cancel")
+                                                        .small()
+                                                        .rounded(ButtonRounded::Medium)
                                                         .on_click(cx.listener(|this, _, _, cx| {
                                                             this.state.cancel_move_to();
                                                             cx.notify();
-                                                        }))
-                                                        .child("Cancel"),
+                                                        })),
                                                 )
                                                 .child(
-                                                    div()
-                                                        .id("confirm-move-to-btn")
-                                                        .px_3()
-                                                        .py_1()
-                                                        .bg(rgb(0x0066cc))
-                                                        .hover(|s| s.bg(rgb(0x0071e3)))
-                                                        .text_xs()
-                                                        .text_color(rgb(0xffffff))
-                                                        .rounded_sm()
-                                                        .cursor_pointer()
+                                                    Button::new("confirm-move-to-btn")
+                                                        .label("Move")
+                                                        .primary()
+                                                        .small()
+                                                        .rounded(ButtonRounded::Medium)
                                                         .on_click(cx.listener(|this, _, _, cx| {
                                                             this.confirm_move_to_action(cx);
-                                                        }))
-                                                        .child("Move"),
+                                                        })),
                                                 ),
                                         ),
                                 ),

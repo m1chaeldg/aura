@@ -36,8 +36,9 @@ fn aura_main() -> Result<()> {
         aura_ui::init_kit(cx);
         let window_options = WindowOptions::default();
 
-        let _ = gpui_kit::open_window(window_options, cx, |_window, cx| {
-            cx.new(AuraWorkspaceView::new)
+        let _ = gpui_kit::open_window(window_options, cx, |window, cx| {
+            let view = cx.new(AuraWorkspaceView::new);
+            cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
         });
     });
 
