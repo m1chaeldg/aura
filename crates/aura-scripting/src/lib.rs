@@ -182,9 +182,12 @@ impl AuraScriptRuntime {
             });
         }
 
-        self.runtime
+        if let Err(err) = self
+            .runtime
             .execute_script("user_script.js", script.to_string())
-            .context("JavaScript execution error")?;
+        {
+            return Err(anyhow::anyhow!("{err:#}"));
+        }
 
         // Drain async tests
         let drain_script = r#"

@@ -532,19 +532,23 @@ mod tests {
     fn test_settings_validation_rejects_invalid_and_accepts_valid() {
         let mut state = AuraAppState::new();
         state.new_request();
-        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 0);
 
         assert!(!state.update_setting_timeout("abc"));
         assert!(state.setting_timeout_error.is_some());
-        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 0);
 
         assert!(!state.update_setting_timeout("50"));
         assert!(state.setting_timeout_error.is_some());
-        assert_eq!(state.tabs[0].request.settings.timeout_ms, 30_000);
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 0);
 
         assert!(state.update_setting_timeout("5000"));
         assert!(state.setting_timeout_error.is_none());
         assert_eq!(state.tabs[0].request.settings.timeout_ms, 5000);
+
+        assert!(state.update_setting_timeout("0"));
+        assert!(state.setting_timeout_error.is_none());
+        assert_eq!(state.tabs[0].request.settings.timeout_ms, 0);
 
         assert!(!state.update_setting_max_redirects("99"));
         assert!(state.setting_max_redirects_error.is_some());
@@ -644,6 +648,7 @@ mod tests {
             timestamp: chrono::Utc::now(),
             assertions: Vec::new(),
             console_logs: Vec::new(),
+            script_errors: Vec::new(),
         });
 
         let count = state.run_active_tests().expect("tests should run");

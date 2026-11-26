@@ -55,13 +55,34 @@ impl AuraAppState {
                         resp.duration_ms,
                     )
                     .map_err(|e| format!("Response injection error: {e}"))?;
-                let test_res = script_rt
-                    .run(&tab.request.scripts.tests)
-                    .map_err(|e| format!("Test execution error: {e}"))?;
-                let count = test_res.test_assertions.len();
-                resp.assertions = test_res.test_assertions;
-                resp.console_logs.extend(test_res.console_logs);
-                Ok(count)
+                match script_rt.run(&tab.request.scripts.tests) {
+                    Ok(test_res) => {
+                        let count = test_res.test_assertions.len();
+                        resp.assertions = test_res.test_assertions;
+                        resp.console_logs.extend(test_res.console_logs);
+                        resp.script_errors.retain(|e| e.stage != "Test Script");
+                        Ok(count)
+                    }
+                    Err(e) => {
+                        let msg = format!("{e:#}");
+                        tracing::error!(
+                            target: "aura_ui::tests",
+                            error = %msg,
+                            "Manual test script execution failed"
+                        );
+                        resp.script_errors.retain(|e| e.stage != "Test Script");
+                        resp.script_errors.push(aura_core::model::ScriptError {
+                            stage: "Test Script".to_string(),
+                            message: msg.clone(),
+                        });
+                        resp.console_logs.push(aura_core::model::ConsoleMessage {
+                            level: "ERROR".to_string(),
+                            message: format!("Test script error: {msg}"),
+                            timestamp: chrono::Utc::now(),
+                        });
+                        Err(format!("Test execution error: {msg}"))
+                    }
+                }
             } else {
                 Err("No response available. Send the request first.".to_string())
             }
@@ -89,11 +110,12 @@ impl AuraAppState {
         self.setting_timeout_draft = Some(text.to_string());
         let trimmed = text.trim();
         if trimmed.is_empty() {
-            self.setting_timeout_error = Some("Timeout is required (100 - 300000 ms)".to_string());
+            self.setting_timeout_error =
+                Some("Timeout is required (0 = unlimited, or 100 - 300000 ms)".to_string());
             return false;
         }
         match trimmed.parse::<u64>() {
-            Ok(v) if (100..=300_000).contains(&v) => {
+            Ok(v) if v == 0 || (100..=300_000).contains(&v) => {
                 self.setting_timeout_error = None;
                 if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
                     if tab.request.settings.timeout_ms != v {
@@ -104,11 +126,13 @@ impl AuraAppState {
                 true
             }
             Ok(_) => {
-                self.setting_timeout_error = Some("Timeout must be between 100 and 300000 ms".to_string());
+                self.setting_timeout_error =
+                    Some("Timeout must be 0 (unlimited) or 100 - 300000 ms".to_string());
                 false
             }
             Err(_) => {
-                self.setting_timeout_error = Some("Timeout must be a valid integer (100 - 300000)".to_string());
+                self.setting_timeout_error =
+                    Some("Timeout must be a valid integer (0 = unlimited, or 100 - 300000)".to_string());
                 false
             }
         }

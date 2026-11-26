@@ -37,22 +37,40 @@ impl ExecutionService {
         self.token.read().clone()
     }
 
-    /// Execute request asynchronously off the main thread with cooperative cancellation
+    /// Marks execution as in-flight synchronously and returns a fresh cancellation token.
+    /// Calling this before spawning ensures the UI immediately flips Send -> Cancel.
+    pub fn begin_flight(&self) -> CancellationToken {
+        let mut guard = self.token.write();
+        *guard = CancellationToken::new();
+        self.is_in_flight.store(true, Ordering::SeqCst);
+        guard.clone()
+    }
+
+    /// Execute request asynchronously off the main thread with cooperative cancellation.
     pub async fn dispatch(
         &self,
         request: AuraRequest,
         context: TemplateContext,
     ) -> Result<AuraResponse> {
-        let cancel_token = {
-            let mut guard = self.token.write();
-            *guard = CancellationToken::new();
-            guard.clone()
-        };
+        let cancel_token = self.begin_flight();
+        self.dispatch_with_token(request, context, cancel_token).await
+    }
 
+    /// Execute request using a pre-allocated cancellation token from `begin_flight()`.
+    pub async fn dispatch_with_token(
+        &self,
+        request: AuraRequest,
+        context: TemplateContext,
+        cancel_token: CancellationToken,
+    ) -> Result<AuraResponse> {
         tracing::info!(
             target: "aura_ui::execution",
             method = %request.method,
             url = %request.url,
+            timeout_ms = request.settings.timeout_ms,
+            has_pre_script = !request.scripts.pre_request.trim().is_empty(),
+            has_post_script = !request.scripts.post_response.trim().is_empty(),
+            has_tests = !request.scripts.tests.trim().is_empty(),
             "Dispatching async request in execution service"
         );
         self.is_in_flight.store(true, Ordering::SeqCst);
@@ -60,20 +78,38 @@ impl ExecutionService {
         tokio::select! {
             res = execute_request(&request, &context) => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
-                if let Err(ref e) = res {
-                    tracing::error!(
-                        target: "aura_ui::execution",
-                        method = %request.method,
-                        url = %request.url,
-                        error = %format!("{e:#}"),
-                        "Request execution failed"
-                    );
+                match &res {
+                    Ok(resp) => {
+                        tracing::info!(
+                            target: "aura_ui::execution",
+                            method = %request.method,
+                            url = %request.url,
+                            status = resp.status,
+                            duration_ms = resp.duration_ms,
+                            script_errors = resp.script_errors.len(),
+                            "Execution service completed request"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            target: "aura_ui::execution",
+                            method = %request.method,
+                            url = %request.url,
+                            error = %format!("{e:#}"),
+                            "Request execution failed"
+                        );
+                    }
                 }
                 res
             }
             _ = cancel_token.cancelled() => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
-                tracing::warn!(target: "aura_ui::execution", "Request execution cancelled cooperatively");
+                tracing::warn!(
+                    target: "aura_ui::execution",
+                    method = %request.method,
+                    url = %request.url,
+                    "Request execution cancelled cooperatively"
+                );
                 Err(anyhow::anyhow!("Request execution cancelled"))
             }
         }
@@ -81,7 +117,7 @@ impl ExecutionService {
 
     /// Cooperative abort via CancellationToken
     pub fn cancel(&self) {
-        tracing::info!(target: "aura_ui::execution", "Request cancellation requested");
+        tracing::warn!(target: "aura_ui::execution", "Request cancellation requested");
         self.token.read().cancel();
         self.is_in_flight.store(false, Ordering::SeqCst);
     }

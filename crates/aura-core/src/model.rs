@@ -310,7 +310,7 @@ fn default_max_redirects() -> usize {
     10
 }
 fn default_timeout() -> u64 {
-    30_000
+    0
 }
 
 impl Default for RequestSettings {
@@ -320,7 +320,7 @@ impl Default for RequestSettings {
             verify_ssl: true,
             follow_redirects: true,
             max_redirects: 10,
-            timeout_ms: 30_000,
+            timeout_ms: 0,
         }
     }
 }
@@ -452,6 +452,12 @@ pub struct ConsoleMessage {
 }
 
 /// HTTP Response from client engine
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScriptError {
+    pub stage: String,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuraResponse {
     pub status: u16,
@@ -464,6 +470,8 @@ pub struct AuraResponse {
     pub assertions: Vec<TestAssertion>,
     #[serde(default)]
     pub console_logs: Vec<ConsoleMessage>,
+    #[serde(default)]
+    pub script_errors: Vec<ScriptError>,
 }
 
 impl AuraResponse {

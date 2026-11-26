@@ -216,7 +216,19 @@ impl ResponsePaneView {
                                     .outline()
                                     .small()
                                     .child(format!("📦 {}", Self::format_size(resp.size_bytes))),
-                            ),
+                            )
+                            .when(!resp.script_errors.is_empty(), |el| {
+                                el.child(
+                                    Tag::new()
+                                        .with_variant(TagVariant::Danger)
+                                        .small()
+                                        .child(format!(
+                                            "⚠ {} Script Error{}",
+                                            resp.script_errors.len(),
+                                            if resp.script_errors.len() == 1 { "" } else { "s" }
+                                        )),
+                                )
+                            }),
                     )
                     .child(
                         Button::new("body-mode-toggle-btn")
@@ -232,6 +244,10 @@ impl ResponsePaneView {
                             })),
                     ),
             )
+            // Script Error Notification & Details Banner
+            .when(!resp.script_errors.is_empty(), |el| {
+                el.child(Self::render_script_errors_banner(&resp.script_errors))
+            })
             // Tabs Bar
             .child(
                 div()
@@ -278,6 +294,51 @@ impl ResponsePaneView {
                         muted,
                     )),
             )
+    }
+
+    fn render_script_errors_banner(errors: &[aura_core::model::ScriptError]) -> Div {
+        div()
+            .flex()
+            .flex_col()
+            .gap_1p5()
+            .px_3()
+            .py_2()
+            .bg(rgb(0x3a1818))
+            .border_b_1()
+            .border_color(rgb(0xe74c3c))
+            .children(errors.iter().enumerate().map(|(idx, err)| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Tag::new()
+                                    .with_variant(TagVariant::Danger)
+                                    .xsmall()
+                                    .child(format!("⚠ {} Error", err.stage)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .p_2()
+                            .rounded_sm()
+                            .bg(rgb(0x261212))
+                            .border_1()
+                            .border_color(rgb(0x7a2b2b))
+                            .font_family("monospace")
+                            .text_xs()
+                            .text_color(rgb(0xff9b9b))
+                            .child(SelectableText::new(
+                                ElementId::NamedInteger("resp-script-err".into(), idx as u64),
+                                err.message.clone(),
+                            )),
+                    )
+            }))
     }
 
     #[allow(clippy::too_many_arguments)]

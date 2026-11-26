@@ -4,23 +4,41 @@ use gpui::*;
 impl AuraWorkspaceView {
     /// Dispatches active HTTP request via execution service off the main thread.
     pub fn dispatch_send_request(&mut self, cx: &mut Context<Self>) {
+        if self.state.execution_service.is_in_flight() {
+            tracing::warn!(
+                target: "aura_ui::execution",
+                "Send ignored because a request is already in flight"
+            );
+            return;
+        }
+
         let active_tab = match self.state.tabs.get(self.state.active_tab_index) {
             Some(t) => t.clone(),
             None => return,
         };
         let execution_service = self.state.execution_service.clone();
+        let cancel_token = execution_service.begin_flight();
         let tab_id = active_tab.id.clone();
         let request = active_tab.request.clone();
         let mut context = aura_core::templating::TemplateContext::default();
         context.request_vars = request.variables.clone();
 
+        tracing::info!(
+            target: "aura_ui::execution",
+            tab_id = %tab_id,
+            method = %request.method,
+            url = %request.url,
+            "UI dispatched request; Send button switched to Cancel"
+        );
         self.state.status_message = Some(format!("Sending {} {}...", request.method, request.url));
         cx.notify();
 
         cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
-                let result = execution_service.dispatch(request, context).await;
+                let result = execution_service
+                    .dispatch_with_token(request, context, cancel_token)
+                    .await;
                 let _ = this.update(&mut cx, |this, cx| {
                     match result {
                         Ok(resp) => {
@@ -30,19 +48,32 @@ impl AuraWorkspaceView {
                                 let passed = resp.assertions.iter().filter(|a| a.passed).count();
                                 format!(" • {passed}/{} Tests Passed", resp.assertions.len())
                             };
-                            this.state.status_message = Some(format!(
-                                "Response: {} {} ({} ms, {}){}",
-                                resp.status,
-                                resp.status_text,
-                                resp.duration_ms,
-                                resp.formatted_size(),
-                                test_summary
-                            ));
+                            this.state.status_message = if let Some(first_err) = resp.script_errors.first() {
+                                Some(format!(
+                                    "⚠ {} error: {}",
+                                    first_err.stage, first_err.message
+                                ))
+                            } else {
+                                Some(format!(
+                                    "Response: {} {} ({} ms, {}){}",
+                                    resp.status,
+                                    resp.status_text,
+                                    resp.duration_ms,
+                                    resp.formatted_size(),
+                                    test_summary
+                                ))
+                            };
                             if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
                                 tab.response = Some(resp);
                             }
                         }
                         Err(e) => {
+                            tracing::warn!(
+                                target: "aura_ui::execution",
+                                tab_id = %tab_id,
+                                error = %e,
+                                "Request did not complete"
+                            );
                             this.state.status_message = Some(format!("Request failed: {e}"));
                         }
                     }

@@ -49,6 +49,7 @@ fn test_tests_panel_snippets_and_manual_evaluation() {
         timestamp: chrono::Utc::now(),
         assertions: Vec::new(),
         console_logs: Vec::new(),
+        script_errors: Vec::new(),
     });
 
     // Run tests directly on demand
@@ -61,4 +62,42 @@ fn test_tests_panel_snippets_and_manual_evaluation() {
     assert_eq!(assertions.len(), 1);
     assert_eq!(assertions[0].name, "Status Check > returns 200 OK");
     assert!(assertions[0].passed);
+}
+
+#[test]
+fn test_script_syntax_error_populates_response_script_errors() {
+    let mut state = AuraAppState::new();
+    state.new_request();
+    state.tabs[0].request.scripts.tests = "describe('broken', () => { const x = ; });".to_string();
+    state.tabs[0].response = Some(AuraResponse {
+        status: 200,
+        status_text: "OK".to_string(),
+        duration_ms: 10,
+        size_bytes: 2,
+        headers: HashMap::new(),
+        body: "{}".to_string(),
+        timestamp: chrono::Utc::now(),
+        assertions: Vec::new(),
+        console_logs: Vec::new(),
+        script_errors: Vec::new(),
+    });
+
+    let err = state.run_active_tests().expect_err("syntax error should fail");
+    assert!(err.contains("Test execution error"));
+    let resp = state.tabs[0].response.as_ref().unwrap();
+    assert_eq!(resp.script_errors.len(), 1);
+    assert_eq!(resp.script_errors[0].stage, "Test Script");
+    assert!(!resp.script_errors[0].message.is_empty());
+}
+
+#[test]
+fn test_execution_service_sync_flight_and_cancel_state() {
+    let service = aura_ui::ExecutionService::new();
+    assert!(!service.is_in_flight());
+    let token = service.begin_flight();
+    assert!(service.is_in_flight());
+    assert!(!token.is_cancelled());
+    service.cancel();
+    assert!(!service.is_in_flight());
+    assert!(token.is_cancelled());
 }

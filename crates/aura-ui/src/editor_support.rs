@@ -225,7 +225,7 @@ pub const SPEC_REFERENCE_ENTRIES: &[ReferenceEntry] = &[
         category: "Spec Sections",
         label: "[settings]",
         detail: "Request execution settings",
-        insert_text: "\n[settings]\ninherit_auth = true\nverify_ssl = true\nfollow_redirects = true\nmax_redirects = 10\ntimeout_ms = 30000\n",
+        insert_text: "\n[settings]\ninherit_auth = true\nverify_ssl = true\nfollow_redirects = true\nmax_redirects = 10\ntimeout_ms = 0\n",
         description: "Configures SSL, redirects, auth inheritance, and timeout.",
     },
     ReferenceEntry {

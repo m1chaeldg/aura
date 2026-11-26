@@ -121,6 +121,10 @@ impl AuraWorkspaceView {
                 this.dispatch_send_request(cx);
             },
             |this, _window, cx| {
+                tracing::info!(
+                    target: "aura_ui::execution",
+                    "User clicked Cancel button; aborting active request"
+                );
                 this.state.execution_service.cancel();
                 this.state.status_message = Some("Request cancelled by user".to_string());
                 cx.notify();

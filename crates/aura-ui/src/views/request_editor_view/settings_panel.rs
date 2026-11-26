@@ -21,7 +21,7 @@ impl RequestEditorView {
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> Div {
-        let timeout = request.map(|r| r.settings.timeout_ms).unwrap_or(30000);
+        let timeout = request.map(|r| r.settings.timeout_ms).unwrap_or(0);
         let redirects = request.map(|r| r.settings.follow_redirects).unwrap_or(true);
         let max_redirects = request.map(|r| r.settings.max_redirects).unwrap_or(10);
         let ssl = request.map(|r| r.settings.verify_ssl).unwrap_or(true);
@@ -126,7 +126,7 @@ impl RequestEditorView {
                                         div()
                                             .text_xs()
                                             .text_color(muted)
-                                            .child("Valid range: 100 – 300000 ms"),
+                                            .child("0 = unlimited (no timeout), or 100 – 300000 ms"),
                                     ),
                             )
                             .child(

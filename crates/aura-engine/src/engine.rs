@@ -90,9 +90,15 @@ fn describe_reqwest_error(
     };
 
     let possible_cause = match kind {
-        "Timeout" => format!(
-            "Request timed out after {timeout_ms}ms. The server may be slow or unreachable, or timeout_ms may need to be increased."
-        ),
+        "Timeout" => {
+            if timeout_ms == 0 {
+                "Request timed out at the OS/network layer.".to_string()
+            } else {
+                format!(
+                    "Request timed out after {timeout_ms}ms. The server may be slow or unreachable, or timeout_ms may need to be increased."
+                )
+            }
+        }
         "Connect" => {
             if lower.contains("dns")
                 || lower.contains("failed to lookup")
@@ -143,6 +149,7 @@ fn describe_reqwest_error(
 /// 5. Post-response scripting & test assertion evaluation (deno_core)
 pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Result<AuraResponse> {
     let mut all_console_logs = Vec::new();
+    let mut script_errors = Vec::new();
     let mut working_vars = context.request_vars.clone();
     for (k, v) in &context.environment_vars {
         working_vars.entry(k.clone()).or_insert_with(|| v.clone());
@@ -154,9 +161,44 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     // 1. Run Pre-Request script if present
     if !req.scripts.pre_request.is_empty() {
         let mut script_rt = AuraScriptRuntime::new(working_vars.clone())?;
-        let res = script_rt.run(&req.scripts.pre_request)?;
-        working_vars = res.variables;
-        all_console_logs.extend(res.console_logs);
+        match script_rt.run(&req.scripts.pre_request) {
+            Ok(res) => {
+                working_vars = res.variables;
+                all_console_logs.extend(res.console_logs);
+            }
+            Err(e) => {
+                let msg = format!("{e:#}");
+                tracing::error!(
+                    target: "aura_engine::scripting",
+                    stage = "pre_request",
+                    method = %req.method,
+                    url = %req.url,
+                    error = %msg,
+                    "Pre-request script failed"
+                );
+                all_console_logs.push(aura_core::model::ConsoleMessage {
+                    level: "ERROR".to_string(),
+                    message: format!("Pre-request script error: {msg}"),
+                    timestamp: chrono::Utc::now(),
+                });
+                script_errors.push(aura_core::model::ScriptError {
+                    stage: "Pre-request Script".to_string(),
+                    message: msg,
+                });
+                return Ok(AuraResponse {
+                    status: 0,
+                    status_text: "Pre-request Script Error".to_string(),
+                    duration_ms: 0,
+                    size_bytes: 0,
+                    headers: HashMap::new(),
+                    body: String::new(),
+                    timestamp: chrono::Utc::now(),
+                    assertions: Vec::new(),
+                    console_logs: all_console_logs,
+                    script_errors,
+                });
+            }
+        }
     }
 
     // Update context with potentially mutated variables
@@ -197,10 +239,13 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         "Dispatching HTTP request"
     );
 
-    // Build Reqwest Client
-    let client_builder = reqwest::Client::builder()
-        .danger_accept_invalid_certs(!req.settings.verify_ssl)
-        .timeout(std::time::Duration::from_millis(req.settings.timeout_ms));
+    // Build Reqwest Client (timeout_ms == 0 means unlimited / no timeout)
+    let mut client_builder = reqwest::Client::builder()
+        .danger_accept_invalid_certs(!req.settings.verify_ssl);
+    if req.settings.timeout_ms > 0 {
+        client_builder =
+            client_builder.timeout(std::time::Duration::from_millis(req.settings.timeout_ms));
+    }
 
     let client_builder = if req.settings.follow_redirects {
         client_builder.redirect(reqwest::redirect::Policy::limited(
@@ -459,11 +504,26 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
                     all_console_logs.extend(res.console_logs);
                     assertions.extend(res.test_assertions);
                 }
-                Err(e) => all_console_logs.push(aura_core::model::ConsoleMessage {
-                    level: "ERROR".to_string(),
-                    message: format!("Post-response script error: {e}"),
-                    timestamp: chrono::Utc::now(),
-                }),
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    tracing::error!(
+                        target: "aura_engine::scripting",
+                        stage = "post_response",
+                        method = %req.method,
+                        url = %rendered_url,
+                        error = %msg,
+                        "Post-response script failed"
+                    );
+                    all_console_logs.push(aura_core::model::ConsoleMessage {
+                        level: "ERROR".to_string(),
+                        message: format!("Post-response script error: {msg}"),
+                        timestamp: chrono::Utc::now(),
+                    });
+                    script_errors.push(aura_core::model::ScriptError {
+                        stage: "Post-response Script".to_string(),
+                        message: msg,
+                    });
+                }
             }
         }
 
@@ -474,17 +534,29 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
                     assertions.extend(test_res.test_assertions);
                 }
                 Err(e) => {
-                    let msg = format!("Test script error: {e}");
+                    let msg = format!("{e:#}");
+                    tracing::error!(
+                        target: "aura_engine::scripting",
+                        stage = "tests",
+                        method = %req.method,
+                        url = %rendered_url,
+                        error = %msg,
+                        "Test script failed"
+                    );
                     all_console_logs.push(aura_core::model::ConsoleMessage {
                         level: "ERROR".to_string(),
-                        message: msg.clone(),
+                        message: format!("Test script error: {msg}"),
                         timestamp: chrono::Utc::now(),
                     });
                     assertions.push(aura_core::model::TestAssertion {
                         name: "Test Script Execution".to_string(),
                         passed: false,
-                        message: Some(msg),
+                        message: Some(msg.clone()),
                         duration_ms: 0,
+                    });
+                    script_errors.push(aura_core::model::ScriptError {
+                        stage: "Test Script".to_string(),
+                        message: msg,
                     });
                 }
             }
@@ -498,6 +570,7 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         size_bytes = size_bytes,
         assertions_count = assertions.len(),
         assertions_failed = assertions.iter().filter(|a| !a.passed).count(),
+        script_errors = script_errors.len(),
         "Received HTTP response"
     );
 
@@ -511,6 +584,7 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         timestamp: chrono::Utc::now(),
         assertions,
         console_logs: all_console_logs,
+        script_errors,
     })
 }
 
