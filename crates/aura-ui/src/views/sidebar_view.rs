@@ -3,6 +3,7 @@
 use crate::app_state::AuraAppState;
 use crate::stores::workspace_store::{DragPlacement, WorkspaceTreeNode};
 use aura_core::model::HttpMethod;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
@@ -30,6 +31,17 @@ pub enum SidebarNodeMeta {
         req_id_or_path: String,
         disk_path: Option<std::path::PathBuf>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum SidebarEnvAction {
+    New,
+    Paste,
+    Edit(String),
+    Activate(String),
+    Duplicate(String),
+    Copy(String),
+    Delete(String),
 }
 
 pub struct SidebarView;
@@ -112,6 +124,7 @@ impl SidebarView {
             )
             + 'static
             + Copy,
+        on_env_action: impl Fn(&mut V, SidebarEnvAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
         let text_muted = rgb(0x7a7a7a);
         let green_color = rgb(0x28a745);
@@ -558,6 +571,232 @@ impl SidebarView {
                             .content(content_el),
                     ),
             )
+            .child({
+                let has_clip = state.clipboard_environment.is_some();
+                let active_env_id = state.active_environment_id.clone();
+                let envs: Vec<(String, String, usize)> = state
+                    .environments
+                    .iter()
+                    .map(|(_, e)| (e.id.clone(), e.name.clone(), e.variables.len()))
+                    .collect();
+
+                div()
+                    .flex_shrink_0()
+                    .border_t_1()
+                    .border_color(rgb(0x333333))
+                    .px_2()
+                    .py_2()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .px_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(text_muted)
+                                    .child(format!("ENVIRONMENTS ({})", envs.len())),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when(has_clip, |el| {
+                                        el.child(
+                                            Button::new("sidebar-env-paste-btn")
+                                                .label("Paste")
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_env_action(
+                                                        this,
+                                                        SidebarEnvAction::Paste,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                    })
+                                    .child(
+                                        Button::new("sidebar-env-new-btn")
+                                            .label("+")
+                                            .xsmall()
+                                            .ghost()
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                on_env_action(
+                                                    this,
+                                                    SidebarEnvAction::New,
+                                                    window,
+                                                    cx,
+                                                );
+                                            })),
+                                    ),
+                            ),
+                    )
+                    .when(envs.is_empty(), |el| {
+                        el.child(
+                            div()
+                                .px_1()
+                                .text_xs()
+                                .text_color(rgb(0x666666))
+                                .child("No environments yet"),
+                        )
+                    })
+                    .child(
+                        div()
+                            .max_h(px(140.0))
+                            .id("sidebar-envs-scroll")
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .children(envs.into_iter().enumerate().map(|(idx, (eid, ename, var_count))| {
+                                let is_active = active_env_id.as_deref() == Some(eid.as_str());
+                                let eid_edit = eid.clone();
+                                let eid_act = eid.clone();
+                                let eid_dup = eid.clone();
+                                let eid_copy = eid.clone();
+                                let eid_del = eid.clone();
+
+                                div()
+                                    .id(ElementId::NamedInteger("sidebar-env-row".into(), idx as u64))
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(if is_active {
+                                        rgb(0x2a2d34)
+                                    } else {
+                                        rgb(0x222224)
+                                    })
+                                    .hover(|s| s.bg(rgb(0x2c2c30)))
+                                    .child(
+                                        div()
+                                            .id(ElementId::NamedInteger(
+                                                "sidebar-env-edit".into(),
+                                                idx as u64,
+                                            ))
+                                            .flex()
+                                            .items_center()
+                                            .gap_1p5()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .cursor_pointer()
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                on_env_action(
+                                                    this,
+                                                    SidebarEnvAction::Edit(eid_edit.clone()),
+                                                    window,
+                                                    cx,
+                                                );
+                                            }))
+                                            .child(
+                                                div()
+                                                    .w(px(6.0))
+                                                    .h(px(6.0))
+                                                    .rounded_full()
+                                                    .bg(if is_active {
+                                                        green_color
+                                                    } else {
+                                                        rgb(0x555555)
+                                                    }),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(if is_active {
+                                                        rgb(0xffffff)
+                                                    } else {
+                                                        rgb(0xcccccc)
+                                                    })
+                                                    .truncate()
+                                                    .child(format!("{ename} ({var_count})")),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_0p5()
+                                            .child(
+                                                Button::new(ElementId::NamedInteger(
+                                                    "sidebar-env-act".into(),
+                                                    idx as u64,
+                                                ))
+                                                .label(if is_active { "●" } else { "○" })
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_env_action(
+                                                        this,
+                                                        SidebarEnvAction::Activate(eid_act.clone()),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                            )
+                                            .child(
+                                                Button::new(ElementId::NamedInteger(
+                                                    "sidebar-env-dup".into(),
+                                                    idx as u64,
+                                                ))
+                                                .label("⧉")
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_env_action(
+                                                        this,
+                                                        SidebarEnvAction::Duplicate(eid_dup.clone()),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                            )
+                                            .child(
+                                                Button::new(ElementId::NamedInteger(
+                                                    "sidebar-env-copy".into(),
+                                                    idx as u64,
+                                                ))
+                                                .label("⎘")
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_env_action(
+                                                        this,
+                                                        SidebarEnvAction::Copy(eid_copy.clone()),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                            )
+                                            .child(
+                                                Button::new(ElementId::NamedInteger(
+                                                    "sidebar-env-del".into(),
+                                                    idx as u64,
+                                                ))
+                                                .label("×")
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_env_action(
+                                                        this,
+                                                        SidebarEnvAction::Delete(eid_del.clone()),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                            ),
+                                    )
+                            })),
+                    )
+            })
             .child(
                 div()
                     .flex_shrink_0()

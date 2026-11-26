@@ -96,11 +96,14 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthAwsField(field_idx) => {
                     if let aura_core::model::AuthConfig::AwsSigV4 {
+                        profile,
+                        credentials_path,
                         access_key,
                         secret_key,
                         region,
                         service,
                         session_token,
+                        ..
                     } = &mut tab.request.auth
                     {
                         match field_idx {
@@ -108,6 +111,14 @@ impl AuraAppState {
                             1 => secret_key.push_str(text),
                             2 => region.push_str(text),
                             3 => service.push_str(text),
+                            5 => profile.push_str(text),
+                            6 => {
+                                if let Some(cp) = credentials_path {
+                                    cp.push_str(text);
+                                } else {
+                                    *credentials_path = Some(text.to_string());
+                                }
+                            }
                             _ => {
                                 if let Some(st) = session_token {
                                     st.push_str(text);

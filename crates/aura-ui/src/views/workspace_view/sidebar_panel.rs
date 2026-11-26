@@ -1,6 +1,6 @@
 use super::AuraWorkspaceView;
 use crate::input_registry::InputKey;
-use crate::views::SidebarView;
+use crate::views::{SidebarEnvAction, SidebarView};
 use aura_core::model::HttpMethod;
 use gpui::*;
 use gpui_kit::component::resizable::{resizable_panel, ResizablePanel};
@@ -66,6 +66,30 @@ impl AuraWorkspaceView {
                         placement,
                         cx,
                     );
+                },
+                |this, env_action, _window, cx| {
+                    match env_action {
+                        SidebarEnvAction::New => this.state.open_new_environment_editor(),
+                        SidebarEnvAction::Paste => {
+                            let _ = this.state.paste_environment();
+                        }
+                        SidebarEnvAction::Edit(id) => this.state.open_environment_editor(&id),
+                        SidebarEnvAction::Activate(id) => {
+                            if this.state.active_environment_id.as_deref() == Some(id.as_str()) {
+                                this.state.set_active_environment(None);
+                            } else {
+                                this.state.set_active_environment(Some(id));
+                            }
+                        }
+                        SidebarEnvAction::Duplicate(id) => {
+                            let _ = this.state.duplicate_environment(&id);
+                        }
+                        SidebarEnvAction::Copy(id) => this.state.copy_environment(&id),
+                        SidebarEnvAction::Delete(id) => {
+                            let _ = this.state.delete_environment(&id);
+                        }
+                    }
+                    cx.notify();
                 },
             ))
     }

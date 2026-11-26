@@ -1,10 +1,12 @@
 //! Visualize (BI) panel for `ResponsePaneView`: KPI cards, Group-By builder, and Bar/Line/Donut charts.
 
 use super::{ResponsePaneAction, ResponsePaneView};
+use crate::services::response_bi_service::PivotTable;
 use crate::services::{
     AggregationOp, ChartSeriesPoint, ChartType, ResponseBiService, ResponseDataService,
 };
 use aura_core::model::AuraResponse;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
@@ -27,6 +29,7 @@ impl ResponsePaneView {
         agg_op: AggregationOp,
         x_col_pref: Option<&str>,
         y_col_pref: Option<&str>,
+        pivot_col_pref: Option<&str>,
         border: Rgba,
         muted: Rgba,
         cx: &mut Context<V>,
@@ -93,7 +96,31 @@ impl ResponsePaneView {
         };
 
         let cols_for_x = dataset.columns.clone();
+        let cols_for_pivot = dataset.columns.clone();
         let num_cols_for_y = summary.numeric_columns.clone();
+        let pivot_col = pivot_col_pref
+            .filter(|c| dataset.columns.iter().any(|dc| dc == c))
+            .map(str::to_string)
+            .or_else(|| {
+                dataset
+                    .columns
+                    .iter()
+                    .find(|c| *c != &x_col)
+                    .cloned()
+            })
+            .unwrap_or_else(|| x_col.clone());
+
+        let pivot_data = if chart_type == ChartType::Pivot {
+            Some(ResponseBiService::compute_pivot_table(
+                &dataset,
+                &x_col,
+                &pivot_col,
+                y_col.as_deref(),
+                effective_op,
+            ))
+        } else {
+            None
+        };
 
         div()
             .flex()
@@ -115,7 +142,8 @@ impl ResponsePaneView {
                             .gap_1()
                             .child(chart_btn("bi-chart-bar", "Bar", ChartType::Bar))
                             .child(chart_btn("bi-chart-line", "Line", ChartType::Line))
-                            .child(chart_btn("bi-chart-donut", "Donut", ChartType::Donut)),
+                            .child(chart_btn("bi-chart-donut", "Donut", ChartType::Donut))
+                            .child(chart_btn("bi-chart-pivot", "Pivot", ChartType::Pivot)),
                     )
                     .child(
                         div()
@@ -125,7 +153,11 @@ impl ResponsePaneView {
                             .flex_wrap()
                             .child(
                                 Button::new("bi-x-col-btn")
-                                    .label(format!("Group: {x_col}"))
+                                    .label(if chart_type == ChartType::Pivot {
+                                        format!("Row: {x_col}")
+                                    } else {
+                                        format!("Group: {x_col}")
+                                    })
                                     .xsmall()
                                     .secondary()
                                     .rounded(ButtonRounded::Small)
@@ -138,6 +170,25 @@ impl ResponsePaneView {
                                         );
                                     })),
                             )
+                            .when(chart_type == ChartType::Pivot, |el| {
+                                el.child(
+                                    Button::new("bi-pivot-col-btn")
+                                        .label(format!("Col: {pivot_col}"))
+                                        .xsmall()
+                                        .secondary()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            on_action(
+                                                this,
+                                                ResponsePaneAction::CycleBiPivotCol(
+                                                    cols_for_pivot.clone(),
+                                                ),
+                                                window,
+                                                cx,
+                                            );
+                                        })),
+                                )
+                            })
                             .child(
                                 Button::new("bi-y-col-btn")
                                     .label(format!(
@@ -226,6 +277,9 @@ impl ResponsePaneView {
                         ChartType::Bar => Self::render_bar_chart(&points, muted),
                         ChartType::Line => Self::render_line_chart(&points, border, muted),
                         ChartType::Donut => Self::render_donut_chart(&points, muted),
+                        ChartType::Pivot => {
+                            Self::render_pivot_table(pivot_data.as_ref().unwrap(), border, muted)
+                        }
                     }),
             )
     }
@@ -447,6 +501,167 @@ impl ResponsePaneView {
                                     )),
                             )
                     })),
+            )
+    }
+
+    fn render_pivot_table(pivot: &PivotTable, border: Rgba, muted: Rgba) -> Div {
+        if pivot.rows.is_empty() || pivot.col_headers.is_empty() {
+            return div()
+                .text_xs()
+                .text_color(muted)
+                .child("No data to pivot.");
+        }
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .overflow_x_hidden()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(muted)
+                    .child(format!(
+                        "PIVOT: {} × {} ({} rows × {} cols)",
+                        pivot.row_field,
+                        pivot.col_field,
+                        pivot.rows.len(),
+                        pivot.col_headers.len()
+                    )),
+            )
+            // Header row
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .bg(rgb(0x2a2a2c))
+                    .border_1()
+                    .border_color(border)
+                    .rounded_t_sm()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(
+                        div()
+                            .w(px(130.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .text_color(rgb(0x2997ff))
+                            .child(format!("{} \\ {}", pivot.row_field, pivot.col_field)),
+                    )
+                    .children(pivot.col_headers.iter().map(|ch| {
+                        div()
+                            .flex_1()
+                            .min_w(px(72.0))
+                            .px_2()
+                            .py_1()
+                            .text_color(rgb(0xd4d4d4))
+                            .truncate()
+                            .child(ch.clone())
+                    }))
+                    .child(
+                        div()
+                            .w(px(80.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .text_color(rgb(0xf5a623))
+                            .child("Total"),
+                    ),
+            )
+            // Data rows
+            .children(pivot.rows.iter().enumerate().map(|(r_idx, (r_label, vals, r_tot))| {
+                let row_bg = if r_idx % 2 == 0 {
+                    rgb(0x222224)
+                } else {
+                    rgb(0x252528)
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .bg(row_bg)
+                    .border_x_1()
+                    .border_b_1()
+                    .border_color(border)
+                    .text_xs()
+                    .child(
+                        div()
+                            .w(px(130.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .text_color(rgb(0xffffff))
+                            .truncate()
+                            .child(r_label.clone()),
+                    )
+                    .children(vals.iter().map(|cell| {
+                        div()
+                            .flex_1()
+                            .min_w(px(72.0))
+                            .px_2()
+                            .py_1()
+                            .font_family("monospace")
+                            .text_color(if cell.is_some() {
+                                rgb(0xcccccc)
+                            } else {
+                                muted
+                            })
+                            .child(cell.map(format_num).unwrap_or_else(|| "—".to_string()))
+                    }))
+                    .child(
+                        div()
+                            .w(px(80.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .font_family("monospace")
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(0xf5a623))
+                            .child(format_num(*r_tot)),
+                    )
+            }))
+            // Totals row
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .bg(rgb(0x2a2a2c))
+                    .border_x_1()
+                    .border_b_1()
+                    .border_color(border)
+                    .rounded_b_sm()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(
+                        div()
+                            .w(px(130.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .text_color(rgb(0xf5a623))
+                            .child("Total"),
+                    )
+                    .children(pivot.col_totals.iter().map(|ct| {
+                        div()
+                            .flex_1()
+                            .min_w(px(72.0))
+                            .px_2()
+                            .py_1()
+                            .font_family("monospace")
+                            .text_color(rgb(0xf5a623))
+                            .child(format_num(*ct))
+                    }))
+                    .child(
+                        div()
+                            .w(px(80.0))
+                            .flex_shrink_0()
+                            .px_2()
+                            .py_1()
+                            .font_family("monospace")
+                            .text_color(rgb(0x28a745))
+                            .child(format_num(pivot.grand_total)),
+                    ),
             )
     }
 }

@@ -83,9 +83,23 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
                 out.push_str(&format!("value = \"{}\"\n", value.replace('"', "\\\"")));
                 out.push_str(&format!("in_header = {}\n", in_header));
             }
-            AuthConfig::AwsSigV4 { access_key, secret_key, region, service, session_token } => {
+            AuthConfig::AwsSigV4 {
+                use_profile,
+                profile,
+                credentials_path,
+                access_key,
+                secret_key,
+                region,
+                service,
+                session_token,
+            } => {
                 out.push_str("\n[auth]\n");
                 out.push_str("type = \"awssigv4\"\n");
+                out.push_str(&format!("use_profile = {}\n", use_profile));
+                out.push_str(&format!("profile = \"{}\"\n", profile.replace('"', "\\\"")));
+                if let Some(cp) = credentials_path {
+                    out.push_str(&format!("credentials_path = \"{}\"\n", cp.replace('"', "\\\"")));
+                }
                 out.push_str(&format!("access_key = \"{}\"\n", access_key.replace('"', "\\\"")));
                 out.push_str(&format!("secret_key = \"{}\"\n", secret_key.replace('"', "\\\"")));
                 out.push_str(&format!("region = \"{}\"\n", region.replace('"', "\\\"")));

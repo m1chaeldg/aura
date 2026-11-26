@@ -22,6 +22,7 @@ impl AuraWorkspaceView {
         let request = active_tab.request.clone();
         let mut context = aura_core::templating::TemplateContext::default();
         context.request_vars = request.variables.clone();
+        context.environment_vars = self.state.active_environment_vars();
 
         tracing::info!(
             target: "aura_ui::execution",

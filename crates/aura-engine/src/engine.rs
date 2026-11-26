@@ -1,8 +1,10 @@
 //! Core HTTP Request Dispatcher and Execution Engine.
 
 use anyhow::{anyhow, Result};
-use aura_core::model::{AuraRequest, AuraResponse, BodyType, HttpMethod};
-use aura_core::security::apply_auth;
+use aura_core::model::{AuthConfig, AuraRequest, AuraResponse, BodyType, HttpMethod};
+use aura_core::security::{
+    apply_auth, resolve_aws_profile_credentials, sign_aws_sigv4, AwsSigV4Credentials,
+};
 use aura_core::templating::TemplateContext;
 use aura_scripting::AuraScriptRuntime;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -141,6 +143,61 @@ fn describe_reqwest_error(
     }
 }
 
+fn render_auth_config(auth: &AuthConfig, ctx: &TemplateContext) -> AuthConfig {
+    match auth {
+        AuthConfig::Inherit => AuthConfig::Inherit,
+        AuthConfig::None => AuthConfig::None,
+        AuthConfig::Bearer { token } => AuthConfig::Bearer {
+            token: ctx.render(token),
+        },
+        AuthConfig::Basic { username, password } => AuthConfig::Basic {
+            username: ctx.render(username),
+            password: ctx.render(password),
+        },
+        AuthConfig::ApiKey {
+            key,
+            value,
+            in_header,
+        } => AuthConfig::ApiKey {
+            key: ctx.render(key),
+            value: ctx.render(value),
+            in_header: *in_header,
+        },
+        AuthConfig::AwsSigV4 {
+            use_profile,
+            profile,
+            credentials_path,
+            access_key,
+            secret_key,
+            region,
+            service,
+            session_token,
+        } => AuthConfig::AwsSigV4 {
+            use_profile: *use_profile,
+            profile: ctx.render(profile),
+            credentials_path: credentials_path.as_ref().map(|p| ctx.render(p)),
+            access_key: ctx.render(access_key),
+            secret_key: ctx.render(secret_key),
+            region: ctx.render(region),
+            service: ctx.render(service),
+            session_token: session_token.as_ref().map(|s| ctx.render(s)),
+        },
+        AuthConfig::OAuth2 {
+            grant_type,
+            access_token,
+            token_url,
+            client_id,
+            client_secret,
+        } => AuthConfig::OAuth2 {
+            grant_type: ctx.render(grant_type),
+            access_token: ctx.render(access_token),
+            token_url: token_url.as_ref().map(|u| ctx.render(u)),
+            client_id: client_id.as_ref().map(|c| ctx.render(c)),
+            client_secret: client_secret.as_ref().map(|s| ctx.render(s)),
+        },
+    }
+}
+
 /// Execute an AuraRequest with full lifecycle:
 /// 1. Pre-request scripting (deno_core)
 /// 2. Templating & variable interpolation
@@ -151,6 +208,9 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
     let mut all_console_logs = Vec::new();
     let mut script_errors = Vec::new();
     let mut working_vars = context.request_vars.clone();
+    for (k, v) in &req.variables {
+        working_vars.entry(k.clone()).or_insert_with(|| v.clone());
+    }
     for (k, v) in &context.environment_vars {
         working_vars.entry(k.clone()).or_insert_with(|| v.clone());
     }
@@ -227,17 +287,11 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         }
     }
 
-    // 4. Inject Auth
-    apply_auth(&req.auth, &mut header_pairs, &mut url_params);
-
-    tracing::info!(
-        target: "aura_engine::request",
-        method = %req.method,
-        url = %rendered_url,
-        headers_count = header_pairs.len(),
-        body_type = %req.body.type_name(),
-        "Dispatching HTTP request"
-    );
+    // 4. Interpolate & Inject Auth (non-SigV4 auth injects immediately; SigV4 signs after body/URL finalization)
+    let rendered_auth = render_auth_config(&req.auth, &active_context);
+    if !matches!(rendered_auth, AuthConfig::AwsSigV4 { .. }) {
+        apply_auth(&rendered_auth, &mut header_pairs, &mut url_params);
+    }
 
     // Build Reqwest Client (timeout_ms == 0 means unlimited / no timeout)
     let mut client_builder = reqwest::Client::builder()
@@ -267,15 +321,278 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         HttpMethod::OPTIONS => reqwest::Method::OPTIONS,
     };
 
-    let mut request_builder = client.request(req_method, &rendered_url);
-
-    let query_summary = format_kv_for_log(&url_params, false);
-    let headers_summary = format_kv_for_log(&header_pairs, true);
+    let mut request_builder = client.request(req_method.clone(), &rendered_url);
 
     // Add query parameters
     if !url_params.is_empty() {
         request_builder = request_builder.query(&url_params);
     }
+
+    // Add body and capture payload bytes + summary for SigV4 signing and diagnostics
+    let mut body_bytes_for_signing: Vec<u8> = Vec::new();
+    let payload_summary = match &req.body {
+        BodyType::Json(s) => {
+            let rendered_body = active_context.render(s);
+            let summary = format!(
+                "JSON ({} bytes): {}",
+                rendered_body.len(),
+                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
+            );
+            if !header_pairs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                header_pairs.push(("Content-Type".to_string(), "application/json".to_string()));
+            }
+            body_bytes_for_signing = rendered_body.as_bytes().to_vec();
+            request_builder = request_builder.body(rendered_body);
+            summary
+        }
+        BodyType::Xml(s) => {
+            let rendered_body = active_context.render(s);
+            let summary = format!(
+                "XML ({} bytes): {}",
+                rendered_body.len(),
+                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
+            );
+            if !header_pairs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                header_pairs.push(("Content-Type".to_string(), "application/xml".to_string()));
+            }
+            body_bytes_for_signing = rendered_body.as_bytes().to_vec();
+            request_builder = request_builder.body(rendered_body);
+            summary
+        }
+        BodyType::Text(s) => {
+            let rendered_body = active_context.render(s);
+            let summary = format!(
+                "Text ({} bytes): {}",
+                rendered_body.len(),
+                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
+            );
+            if !header_pairs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                header_pairs.push(("Content-Type".to_string(), "text/plain".to_string()));
+            }
+            body_bytes_for_signing = rendered_body.as_bytes().to_vec();
+            request_builder = request_builder.body(rendered_body);
+            summary
+        }
+        BodyType::Raw {
+            content,
+            content_type,
+        } => {
+            let rendered_body = active_context.render(content);
+            let rendered_ct = content_type
+                .as_deref()
+                .map(|c| active_context.render(c))
+                .unwrap_or_else(|| "text/plain".to_string());
+            let summary = format!(
+                "Raw[{}] ({} bytes): {}",
+                rendered_ct,
+                rendered_body.len(),
+                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
+            );
+            if !header_pairs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                header_pairs.push(("Content-Type".to_string(), rendered_ct));
+            }
+            body_bytes_for_signing = rendered_body.as_bytes().to_vec();
+            request_builder = request_builder.body(rendered_body);
+            summary
+        }
+        BodyType::Form(map) => {
+            let mut form_data = Vec::new();
+            for (k, v) in map {
+                form_data.push((active_context.render(k), active_context.render(v)));
+            }
+            let summary = format!(
+                "Form ({} fields): {}",
+                form_data.len(),
+                format_kv_for_log(&form_data, false)
+            );
+            let encoded = url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs(form_data.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                .finish();
+            body_bytes_for_signing = encoded.as_bytes().to_vec();
+            request_builder = request_builder.form(&form_data);
+            summary
+        }
+        BodyType::FormUrlEncoded(items) => {
+            let mut form_data = Vec::new();
+            for item in items {
+                if item.enabled {
+                    form_data.push((
+                        active_context.render(&item.key),
+                        active_context.render(&item.value),
+                    ));
+                }
+            }
+            let summary = format!(
+                "FormUrlEncoded ({} fields): {}",
+                form_data.len(),
+                format_kv_for_log(&form_data, false)
+            );
+            let encoded = url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs(form_data.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                .finish();
+            body_bytes_for_signing = encoded.as_bytes().to_vec();
+            request_builder = request_builder.form(&form_data);
+            summary
+        }
+        BodyType::Binary {
+            file_path,
+            content_type,
+        } => {
+            let rendered_path = active_context.render(file_path);
+            let rendered_ct = content_type.as_deref().map(|c| active_context.render(c));
+            match std::fs::read(&rendered_path) {
+                Ok(bytes) => {
+                    let len = bytes.len();
+                    if let Some(ct) = rendered_ct {
+                        if !header_pairs
+                            .iter()
+                            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                        {
+                            header_pairs.push(("Content-Type".to_string(), ct));
+                        }
+                    }
+                    body_bytes_for_signing = bytes.clone();
+                    request_builder = request_builder.body(bytes);
+                    format!("Binary (file={rendered_path}, {len} bytes)")
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        target: "aura_engine::request",
+                        file_path = %rendered_path,
+                        error = %err,
+                        "Failed to read binary body file"
+                    );
+                    format!("Binary (file={rendered_path}, read_error={err})")
+                }
+            }
+        }
+        BodyType::Multipart(fields) => {
+            let mut form = reqwest::multipart::Form::new();
+            let mut field_summaries = Vec::new();
+            for f in fields {
+                let field_name = active_context.render(&f.name);
+                if let Some(v) = &f.value {
+                    let rendered = active_context.render(v);
+                    field_summaries.push(format!(
+                        "{}={}",
+                        field_name,
+                        truncate_for_log(&rendered, 128)
+                    ));
+                    form = form.text(field_name, rendered);
+                } else if let Some(path) = &f.file_path {
+                    let rendered_path = active_context.render(path);
+                    match std::fs::read(&rendered_path) {
+                        Ok(bytes) => {
+                            field_summaries.push(format!(
+                                "{}=<file:{} ({} bytes)>",
+                                field_name,
+                                rendered_path,
+                                bytes.len()
+                            ));
+                            let part = reqwest::multipart::Part::bytes(bytes);
+                            form = form.part(field_name, part);
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                target: "aura_engine::request",
+                                field = %field_name,
+                                file_path = %rendered_path,
+                                error = %err,
+                                "Failed to read multipart file"
+                            );
+                            field_summaries.push(format!(
+                                "{}=<file:{rendered_path} read_error={err}>",
+                                field_name
+                            ));
+                        }
+                    }
+                }
+            }
+            let summary = format!("Multipart [{}]", field_summaries.join(", "));
+            request_builder = request_builder.multipart(form);
+            summary
+        }
+        BodyType::None => "None".to_string(),
+    };
+
+    // Perform AWS SigV4 signing if configured
+    if let AuthConfig::AwsSigV4 {
+        use_profile,
+        profile,
+        credentials_path,
+        access_key,
+        secret_key,
+        region,
+        service,
+        session_token,
+    } = &rendered_auth
+    {
+        let creds = if *use_profile {
+            resolve_aws_profile_credentials(
+                profile,
+                credentials_path.as_deref(),
+                region,
+                service,
+            )?
+        } else {
+            AwsSigV4Credentials {
+                access_key: access_key.clone(),
+                secret_key: secret_key.clone(),
+                session_token: session_token.clone(),
+                region: if region.trim().is_empty() {
+                    "us-east-1".to_string()
+                } else {
+                    region.clone()
+                },
+                service: if service.trim().is_empty() {
+                    "execute-api".to_string()
+                } else {
+                    service.clone()
+                },
+            }
+        };
+        let mut full_url = url::Url::parse(&rendered_url)
+            .map_err(|e| anyhow!("Invalid URL '{rendered_url}' for AWS SigV4: {e}"))?;
+        if !url_params.is_empty() {
+            let mut qp = full_url.query_pairs_mut();
+            for (k, v) in &url_params {
+                qp.append_pair(k, v);
+            }
+        }
+        sign_aws_sigv4(
+            req_method.as_str(),
+            full_url.as_str(),
+            &mut header_pairs,
+            &body_bytes_for_signing,
+            &creds,
+            chrono::Utc::now(),
+        )?;
+    }
+
+    let query_summary = format_kv_for_log(&url_params, false);
+    let headers_summary = format_kv_for_log(&header_pairs, false);
+
+    tracing::info!(
+        target: "aura_engine::request",
+        method = %req.method,
+        url = %rendered_url,
+        query_params = %query_summary,
+        headers = %headers_summary,
+        payload = %payload_summary,
+        "Dispatching HTTP request"
+    );
 
     // Add headers
     let mut header_map = HeaderMap::new();
@@ -296,151 +613,6 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         }
     }
     request_builder = request_builder.headers(header_map);
-
-    // Add body and capture payload summary for diagnostics
-    let payload_summary = match &req.body {
-        BodyType::Json(s) => {
-            let rendered_body = active_context.render(s);
-            let summary = format!(
-                "JSON ({} bytes): {}",
-                rendered_body.len(),
-                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
-            );
-            request_builder = request_builder
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .body(rendered_body);
-            summary
-        }
-        BodyType::Xml(s) => {
-            let rendered_body = active_context.render(s);
-            let summary = format!(
-                "XML ({} bytes): {}",
-                rendered_body.len(),
-                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
-            );
-            request_builder = request_builder
-                .header(reqwest::header::CONTENT_TYPE, "application/xml")
-                .body(rendered_body);
-            summary
-        }
-        BodyType::Text(s) => {
-            let rendered_body = active_context.render(s);
-            let summary = format!(
-                "Text ({} bytes): {}",
-                rendered_body.len(),
-                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
-            );
-            request_builder = request_builder
-                .header(reqwest::header::CONTENT_TYPE, "text/plain")
-                .body(rendered_body);
-            summary
-        }
-        BodyType::Raw {
-            content,
-            content_type,
-        } => {
-            let rendered_body = active_context.render(content);
-            let ct = content_type.as_deref().unwrap_or("text/plain");
-            let summary = format!(
-                "Raw[{ct}] ({} bytes): {}",
-                rendered_body.len(),
-                truncate_for_log(&rendered_body, MAX_LOG_PAYLOAD_LEN)
-            );
-            request_builder = request_builder
-                .header(reqwest::header::CONTENT_TYPE, ct)
-                .body(rendered_body);
-            summary
-        }
-        BodyType::Form(map) => {
-            let mut form_data = Vec::new();
-            for (k, v) in map {
-                form_data.push((active_context.render(k), active_context.render(v)));
-            }
-            let summary = format!(
-                "Form ({} fields): {}",
-                form_data.len(),
-                format_kv_for_log(&form_data, false)
-            );
-            request_builder = request_builder.form(&form_data);
-            summary
-        }
-        BodyType::FormUrlEncoded(items) => {
-            let mut form_data = Vec::new();
-            for item in items {
-                if item.enabled {
-                    form_data.push((
-                        active_context.render(&item.key),
-                        active_context.render(&item.value),
-                    ));
-                }
-            }
-            let summary = format!(
-                "FormUrlEncoded ({} fields): {}",
-                form_data.len(),
-                format_kv_for_log(&form_data, false)
-            );
-            request_builder = request_builder.form(&form_data);
-            summary
-        }
-        BodyType::Binary { file_path, .. } => match std::fs::read(file_path) {
-            Ok(bytes) => {
-                let len = bytes.len();
-                request_builder = request_builder.body(bytes);
-                format!("Binary (file={file_path}, {len} bytes)")
-            }
-            Err(err) => {
-                tracing::warn!(
-                    target: "aura_engine::request",
-                    file_path = %file_path,
-                    error = %err,
-                    "Failed to read binary body file"
-                );
-                format!("Binary (file={file_path}, read_error={err})")
-            }
-        },
-        BodyType::Multipart(fields) => {
-            let mut form = reqwest::multipart::Form::new();
-            let mut field_summaries = Vec::new();
-            for f in fields {
-                if let Some(v) = &f.value {
-                    let rendered = active_context.render(v);
-                    field_summaries.push(format!(
-                        "{}={}",
-                        f.name,
-                        truncate_for_log(&rendered, 128)
-                    ));
-                    form = form.text(f.name.clone(), rendered);
-                } else if let Some(path) = &f.file_path {
-                    match std::fs::read(path) {
-                        Ok(bytes) => {
-                            field_summaries.push(format!(
-                                "{}=<file:{} ({} bytes)>",
-                                f.name,
-                                path,
-                                bytes.len()
-                            ));
-                            let part = reqwest::multipart::Part::bytes(bytes);
-                            form = form.part(f.name.clone(), part);
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                target: "aura_engine::request",
-                                field = %f.name,
-                                file_path = %path,
-                                error = %err,
-                                "Failed to read multipart file"
-                            );
-                            field_summaries.push(format!("{}=<file:{path} read_error={err}>", f.name));
-                        }
-                    }
-                }
-            }
-            let summary = format!("Multipart [{}]", field_summaries.join(", "));
-            request_builder = request_builder.multipart(form);
-            summary
-        }
-        BodyType::None => "None".to_string(),
-    };
 
     // Execute Request & measure exact duration
     let start_time = Instant::now();
@@ -563,11 +735,23 @@ pub async fn execute_request(req: &AuraRequest, context: &TemplateContext) -> Re
         }
     }
 
+    let resp_headers_pairs: Vec<(String, String)> = resp_headers
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let resp_headers_summary = format_kv_for_log(&resp_headers_pairs, false);
+    let resp_body_summary = truncate_for_log(&body_str, MAX_LOG_PAYLOAD_LEN);
+
     tracing::info!(
         target: "aura_engine::response",
+        method = %req.method,
+        url = %rendered_url,
         status = status,
+        status_text = %status_text,
         duration_ms = duration_ms,
         size_bytes = size_bytes,
+        headers = %resp_headers_summary,
+        body = %resp_body_summary,
         assertions_count = assertions.len(),
         assertions_failed = assertions.iter().filter(|a| !a.passed).count(),
         script_errors = script_errors.len(),

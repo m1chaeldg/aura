@@ -24,6 +24,7 @@ impl AuraAppState {
 
         self.workspace_store
             .set_workspace(root.to_path_buf(), metadata, tree);
+        self.reload_environments_from_workspace();
         Ok(())
     }
 
@@ -107,6 +108,7 @@ impl AuraAppState {
             for id in ids_to_close {
                 self.close_tab(&id);
             }
+            self.reload_environments_from_workspace();
         }
         Ok(())
     }

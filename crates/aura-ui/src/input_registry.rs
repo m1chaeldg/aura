@@ -48,8 +48,14 @@ pub enum InputKey {
     ResponseBody,
     ResponseRaw,
     ResponseJson,
+    ResponseTests,
+    ResponseConsole,
     ResponseTableSearch,
     LogViewerText,
+    EnvName,
+    EnvVarKey(usize),
+    EnvVarValue(usize),
+    EnvCode,
 }
 
 impl InputKey {
@@ -60,7 +66,7 @@ impl InputKey {
             InputKey::PreRequestScript
             | InputKey::PostResponseScript
             | InputKey::TestScript => Some("javascript"),
-            InputKey::SpecText => Some("toml"),
+            InputKey::SpecText | InputKey::EnvCode => Some("toml"),
             _ => None,
         }
     }
@@ -99,8 +105,14 @@ impl InputKey {
             | InputKey::ResponseBody
             | InputKey::ResponseRaw
             | InputKey::ResponseJson
+            | InputKey::ResponseTests
+            | InputKey::ResponseConsole
             | InputKey::ResponseTableSearch
-            | InputKey::LogViewerText => None,
+            | InputKey::LogViewerText
+            | InputKey::EnvName
+            | InputKey::EnvVarKey(_)
+            | InputKey::EnvVarValue(_)
+            | InputKey::EnvCode => None,
         }
     }
 }

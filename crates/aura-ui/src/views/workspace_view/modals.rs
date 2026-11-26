@@ -1,11 +1,13 @@
 use super::AuraWorkspaceView;
+use crate::app_state::EnvironmentEditorMode;
 use crate::input_registry::InputKey;
 use crate::stores::workspace_store::DragPlacement;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::{Dialog, DialogFooter};
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Editor, Input};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::Sizable;
@@ -228,6 +230,448 @@ impl AuraWorkspaceView {
                                     .rounded(ButtonRounded::Medium)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.confirm_move_to_action(cx);
+                                    })),
+                            ),
+                    ),
+            )
+        })
+        .when_some(self.state.environment_editor.clone(), |el, env_ed| {
+            let is_existing = env_ed.original_path.is_some();
+            let env_id = env_ed.profile.id.clone();
+            let is_code_mode = env_ed.mode == EnvironmentEditorMode::Code;
+            let has_code_error = env_ed.code_error.is_some();
+            let view_close = cx.entity().clone();
+            let border = rgb(0x333333);
+
+            el.child(
+                Dialog::new(cx)
+                    .w(px(620.0))
+                    .title(if is_existing {
+                        "Edit Environment"
+                    } else {
+                        "New Environment"
+                    })
+                    .on_close(move |_, _window, app| {
+                        let _ = view_close.update(app, |this, cx| {
+                            this.state.close_environment_editor();
+                            cx.notify();
+                        });
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            // Mode switcher bar (UI Edit vs Code Editor)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .p_0p5()
+                                            .rounded_md()
+                                            .bg(rgb(0x1d1d1f))
+                                            .border_1()
+                                            .border_color(border)
+                                            .child(
+                                                div()
+                                                    .id("env-mode-ui-btn")
+                                                    .px_2p5()
+                                                    .py_1()
+                                                    .rounded_sm()
+                                                    .cursor_pointer()
+                                                    .text_xs()
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .bg(if !is_code_mode {
+                                                        rgb(0x0066cc)
+                                                    } else {
+                                                        rgba(0x00000000)
+                                                    })
+                                                    .text_color(if !is_code_mode {
+                                                        rgb(0xffffff)
+                                                    } else {
+                                                        rgb(0x9e9ea4)
+                                                    })
+                                                    .hover(|s| {
+                                                        if !is_code_mode {
+                                                            s
+                                                        } else {
+                                                            s.text_color(rgb(0xffffff))
+                                                        }
+                                                    })
+                                                    .child("UI Editor")
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.state.set_environment_editor_mode(
+                                                            EnvironmentEditorMode::Ui,
+                                                        );
+                                                        cx.notify();
+                                                    })),
+                                            )
+                                            .child(
+                                                div()
+                                                    .id("env-mode-code-btn")
+                                                    .px_2p5()
+                                                    .py_1()
+                                                    .rounded_sm()
+                                                    .cursor_pointer()
+                                                    .text_xs()
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .bg(if is_code_mode {
+                                                        rgb(0x0066cc)
+                                                    } else {
+                                                        rgba(0x00000000)
+                                                    })
+                                                    .text_color(if is_code_mode {
+                                                        rgb(0xffffff)
+                                                    } else {
+                                                        rgb(0x9e9ea4)
+                                                    })
+                                                    .hover(|s| {
+                                                        if is_code_mode {
+                                                            s
+                                                        } else {
+                                                            s.text_color(rgb(0xffffff))
+                                                        }
+                                                    })
+                                                    .child("Code Editor (TOML)")
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.state.set_environment_editor_mode(
+                                                            EnvironmentEditorMode::Code,
+                                                        );
+                                                        cx.notify();
+                                                    })),
+                                            ),
+                                    )
+                                    .when(is_code_mode, |bar| {
+                                        bar.child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(if has_code_error {
+                                                    div()
+                                                        .px_2()
+                                                        .py_0p5()
+                                                        .rounded_sm()
+                                                        .bg(rgb(0x4a1d1d))
+                                                        .border_1()
+                                                        .border_color(rgb(0xe74c3c))
+                                                        .text_xs()
+                                                        .text_color(rgb(0xff6b6b))
+                                                        .child("⚠ Invalid TOML")
+                                                } else {
+                                                    div()
+                                                        .px_2()
+                                                        .py_0p5()
+                                                        .rounded_sm()
+                                                        .bg(rgb(0x1d3a24))
+                                                        .border_1()
+                                                        .border_color(rgb(0x28a745))
+                                                        .text_xs()
+                                                        .text_color(rgb(0x4cd964))
+                                                        .child("✓ Valid TOML")
+                                                })
+                                                .child(
+                                                    Button::new("env-code-format-btn")
+                                                        .label("Format")
+                                                        .xsmall()
+                                                        .secondary()
+                                                        .rounded(ButtonRounded::Small)
+                                                        .on_click(cx.listener(|this, _, _, cx| {
+                                                            this.state
+                                                                .format_environment_code_buffer();
+                                                            cx.notify();
+                                                        })),
+                                                ),
+                                        )
+                                    }),
+                            )
+                            .when(!is_code_mode, |body| {
+                                body.child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(0x9e9ea4))
+                                                .child("ENVIRONMENT NAME"),
+                                        )
+                                        .child(
+                                            if let Some(inp) =
+                                                self.inputs.get_input(&InputKey::EnvName)
+                                            {
+                                                Input::new(inp).small().w_full().into_any_element()
+                                            } else {
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(rgb(0xffffff))
+                                                    .child(env_ed.profile.name.clone())
+                                                    .into_any_element()
+                                            },
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(0x9e9ea4))
+                                                .child(format!(
+                                                    "VARIABLES ({} • disabled keys save with ~)",
+                                                    env_ed.profile.variables.len()
+                                                )),
+                                        )
+                                        .child(
+                                            Button::new("env-add-var-btn")
+                                                .label("+ Add Variable")
+                                                .xsmall()
+                                                .primary()
+                                                .rounded(ButtonRounded::Small)
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    if let Some(ref mut ed) =
+                                                        this.state.environment_editor
+                                                    {
+                                                        ed.profile.variables.push(
+                                                            aura_core::model::VariableItem {
+                                                                key: String::new(),
+                                                                value: String::new(),
+                                                                enabled: true,
+                                                                is_secret: false,
+                                                            },
+                                                        );
+                                                        cx.notify();
+                                                    }
+                                                })),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .id("env-vars-scroll-list")
+                                        .max_h(px(260.0))
+                                        .overflow_y_scroll()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1p5()
+                                        .children(env_ed.profile.variables.iter().enumerate().map(
+                                            |(idx, var)| {
+                                                let enabled = var.enabled;
+                                                let view_cb = cx.entity().clone();
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .p_1p5()
+                                                    .rounded_sm()
+                                                    .bg(if enabled {
+                                                        rgb(0x272729)
+                                                    } else {
+                                                        rgb(0x202022)
+                                                    })
+                                                    .border_1()
+                                                    .border_color(border)
+                                                    .child(
+                                                        Checkbox::new(ElementId::NamedInteger(
+                                                            "env-var-chk".into(),
+                                                            idx as u64,
+                                                        ))
+                                                        .checked(enabled)
+                                                        .on_click(move |checked, _, app| {
+                                                            let _ = view_cb.update(app, |this, cx| {
+                                                                if let Some(ref mut ed) =
+                                                                    this.state.environment_editor
+                                                                {
+                                                                    if let Some(v) = ed
+                                                                        .profile
+                                                                        .variables
+                                                                        .get_mut(idx)
+                                                                    {
+                                                                        v.enabled = *checked;
+                                                                    }
+                                                                }
+                                                                cx.notify();
+                                                            });
+                                                        }),
+                                                    )
+                                                    .child(div().flex_1().child(
+                                                        if let Some(inp) = self
+                                                            .inputs
+                                                            .get_input(&InputKey::EnvVarKey(idx))
+                                                        {
+                                                            Input::new(inp)
+                                                                .xsmall()
+                                                                .w_full()
+                                                                .into_any_element()
+                                                        } else {
+                                                            div()
+                                                                .text_xs()
+                                                                .child(var.key.clone())
+                                                                .into_any_element()
+                                                        },
+                                                    ))
+                                                    .child(div().flex_1().child(
+                                                        if let Some(inp) = self
+                                                            .inputs
+                                                            .get_input(&InputKey::EnvVarValue(idx))
+                                                        {
+                                                            Input::new(inp)
+                                                                .xsmall()
+                                                                .w_full()
+                                                                .into_any_element()
+                                                        } else {
+                                                            div()
+                                                                .text_xs()
+                                                                .child(var.value.clone())
+                                                                .into_any_element()
+                                                        },
+                                                    ))
+                                                    .child(
+                                                        Button::new(ElementId::NamedInteger(
+                                                            "env-var-del".into(),
+                                                            idx as u64,
+                                                        ))
+                                                        .label("×")
+                                                        .xsmall()
+                                                        .ghost()
+                                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                                            if let Some(ref mut ed) =
+                                                                this.state.environment_editor
+                                                            {
+                                                                if idx < ed.profile.variables.len() {
+                                                                    ed.profile.variables.remove(idx);
+                                                                }
+                                                                cx.notify();
+                                                            }
+                                                        })),
+                                                    )
+                                            },
+                                        )),
+                                )
+                            })
+                            .when(is_code_mode, |body| {
+                                body.child(
+                                    div()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(if has_code_error {
+                                            rgb(0xe74c3c)
+                                        } else {
+                                            border
+                                        })
+                                        .overflow_hidden()
+                                        .child(
+                                            if let Some(ed) =
+                                                self.inputs.get_editor(&InputKey::EnvCode)
+                                            {
+                                                Editor::new(ed)
+                                                    .h(px(300.0))
+                                                    .w_full()
+                                                    .text_xs()
+                                                    .into_any_element()
+                                            } else {
+                                                div()
+                                                    .p_2()
+                                                    .h(px(300.0))
+                                                    .bg(rgb(0x18181a))
+                                                    .font_family("monospace")
+                                                    .text_xs()
+                                                    .text_color(rgb(0xd4d4d8))
+                                                    .child(env_ed.code_buffer.clone())
+                                                    .into_any_element()
+                                            },
+                                        ),
+                                )
+                                .when_some(env_ed.code_error.clone(), |b, err| {
+                                    b.child(
+                                        div()
+                                            .px_2p5()
+                                            .py_1p5()
+                                            .rounded_sm()
+                                            .bg(rgb(0x4a1d1d))
+                                            .border_1()
+                                            .border_color(rgb(0xe74c3c))
+                                            .text_xs()
+                                            .text_color(rgb(0xff6b6b))
+                                            .child(err),
+                                    )
+                                })
+                            }),
+                    )
+                    .footer(
+                        DialogFooter::new()
+                            .when(is_existing, |f| {
+                                let eid_dup = env_id.clone();
+                                let eid_copy = env_id.clone();
+                                let eid_del = env_id.clone();
+                                f.child(
+                                    Button::new("env-ed-dup-btn")
+                                        .label("Duplicate")
+                                        .small()
+                                        .secondary()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            let _ = this.state.duplicate_environment(&eid_dup);
+                                            this.state.close_environment_editor();
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("env-ed-copy-btn")
+                                        .label("Copy")
+                                        .small()
+                                        .secondary()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.state.copy_environment(&eid_copy);
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("env-ed-del-btn")
+                                        .label("Delete")
+                                        .small()
+                                        .danger()
+                                        .rounded(ButtonRounded::Medium)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            let _ = this.state.delete_environment(&eid_del);
+                                            this.state.close_environment_editor();
+                                            cx.notify();
+                                        })),
+                                )
+                            })
+                            .child(
+                                Button::new("env-ed-cancel-btn")
+                                    .label("Cancel")
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.close_environment_editor();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("env-ed-save-btn")
+                                    .label("Save")
+                                    .primary()
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        if let Err(e) = this.state.save_environment_editor() {
+                                            this.state.status_message =
+                                                Some(format!("Failed to save environment: {e}"));
+                                        }
+                                        cx.notify();
                                     })),
                             ),
                     ),

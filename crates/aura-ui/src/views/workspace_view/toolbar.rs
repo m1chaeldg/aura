@@ -1,6 +1,8 @@
 use super::AuraWorkspaceView;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::list::ListItem;
 use gpui_kit::component::sidebar::SidebarToggleButton;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::toolbar::{Toolbar, ToolbarGroup};
@@ -102,6 +104,154 @@ impl AuraWorkspaceView {
                         } else {
                             btn
                         }
+                    })
+                    .content({
+                        let active_env_label = self
+                            .state
+                            .active_environment()
+                            .map(|e| e.name.as_str())
+                            .unwrap_or("No Env");
+                        let is_env_open = self.state.is_env_dropdown_open;
+                        let active_env_id = self.state.active_environment_id.clone();
+                        let env_list: Vec<(String, String)> = self
+                            .state
+                            .environments
+                            .iter()
+                            .map(|(_, e)| (e.id.clone(), e.name.clone()))
+                            .collect();
+
+                        div()
+                            .relative()
+                            .child(
+                                Button::new("env-selector-dropdown-btn")
+                                    .label(format!("🌐 {active_env_label} ▾"))
+                                    .small()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.toggle_env_dropdown();
+                                        cx.notify();
+                                    })),
+                            )
+                            .when(is_env_open, |el| {
+                                let menu = div()
+                                    .id("env-selector-dropdown-menu")
+                                    .absolute()
+                                    .top_full()
+                                    .right_0()
+                                    .mt_1()
+                                    .w(px(210.0))
+                                    .bg(rgb(0x252528))
+                                    .border_1()
+                                    .border_color(rgb(0x333333))
+                                    .rounded_md()
+                                    .p_1()
+                                    .shadow_lg()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .on_mouse_down_out(cx.listener(|this, _, _window, cx| {
+                                        this.state.close_env_dropdown();
+                                        cx.notify();
+                                    }))
+                                    .child({
+                                        let is_none = active_env_id.is_none();
+                                        ListItem::new("env-opt-none")
+                                            .selected(is_none)
+                                            .px_2()
+                                            .py_1()
+                                            .rounded_sm()
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.state.set_active_environment(None);
+                                                cx.notify();
+                                            }))
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .w_full()
+                                                    .text_xs()
+                                                    .child(
+                                                        div()
+                                                            .text_color(rgb(0xaaaaaa))
+                                                            .child("No Environment"),
+                                                    )
+                                                    .when(is_none, |el| {
+                                                        el.child(
+                                                            div()
+                                                                .text_color(rgb(0x2997ff))
+                                                                .child("✓"),
+                                                        )
+                                                    }),
+                                            )
+                                    })
+                                    .children(env_list.into_iter().enumerate().map(
+                                        |(idx, (eid, ename))| {
+                                            let is_sel =
+                                                active_env_id.as_deref() == Some(eid.as_str());
+                                            let eid_click = eid.clone();
+                                            ListItem::new(ElementId::NamedInteger(
+                                                "env-opt".into(),
+                                                idx as u64,
+                                            ))
+                                            .selected(is_sel)
+                                            .px_2()
+                                            .py_1()
+                                            .rounded_sm()
+                                            .on_click(cx.listener(
+                                                move |this, _, _window, cx| {
+                                                    this.state.set_active_environment(Some(
+                                                        eid_click.clone(),
+                                                    ));
+                                                    cx.notify();
+                                                },
+                                            ))
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .w_full()
+                                                    .text_xs()
+                                                    .child(
+                                                        div()
+                                                            .text_color(if is_sel {
+                                                                rgb(0xffffff)
+                                                            } else {
+                                                                rgb(0xcccccc)
+                                                            })
+                                                            .truncate()
+                                                            .child(ename),
+                                                    )
+                                                    .when(is_sel, |el| {
+                                                        el.child(
+                                                            div()
+                                                                .text_color(rgb(0x2997ff))
+                                                                .child("✓"),
+                                                        )
+                                                    }),
+                                            )
+                                        },
+                                    ))
+                                    .child(div().h(px(1.0)).bg(rgb(0x333333)).my_1())
+                                    .child(
+                                        ListItem::new("env-opt-new")
+                                            .px_2()
+                                            .py_1()
+                                            .rounded_sm()
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.state.open_new_environment_editor();
+                                                cx.notify();
+                                            }))
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(rgb(0x2997ff))
+                                                    .child("+ New Environment..."),
+                                            ),
+                                    );
+                                el.child(deferred(menu).with_priority(1))
+                            })
                     })
                     .content(
                         Tag::secondary()

@@ -15,6 +15,7 @@ use gpui_kit::base::SelectableText;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::input::{Editor, EditorState, InputState};
+use gpui_kit::component::list::ListItem;
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{Selectable, Sizable};
@@ -27,6 +28,9 @@ pub enum ResponsePaneAction {
     SetBodyMode(ResponseBodyMode),
     ToggleBodyMode,
     CycleLanguage(ResponseLanguage),
+    ToggleLanguageDropdown,
+    DismissLanguageDropdown,
+    SetLanguage(ResponseLanguage),
     ToggleSoftWrap,
     CopyBody,
     CopyText { label: &'static str, text: String },
@@ -37,6 +41,7 @@ pub enum ResponsePaneAction {
     CycleBiAggOp,
     CycleBiXCol(Vec<String>),
     CycleBiYCol(Vec<String>),
+    CycleBiPivotCol(Vec<String>),
 }
 
 pub struct ResponsePaneView;
@@ -51,6 +56,53 @@ impl ResponsePaneView {
         let total = assertions.len();
         let passed = assertions.iter().filter(|a| a.passed).count();
         (passed, total)
+    }
+
+    pub fn format_tests_text(resp: &AuraResponse) -> String {
+        if resp.assertions.is_empty() {
+            return "// No test assertions executed.".to_string();
+        }
+        let (passed, total) = Self::assertion_counts(&resp.assertions);
+        let failed = total.saturating_sub(passed);
+        let mut lines = vec![format!(
+            "# Test Summary: {passed}/{total} passed, {failed} failed"
+        )];
+        for (idx, a) in resp.assertions.iter().enumerate() {
+            let badge = if a.passed { "[PASS]" } else { "[FAIL]" };
+            lines.push(format!(
+                "{:>2}. {} {} ({} ms)",
+                idx + 1,
+                badge,
+                a.name,
+                a.duration_ms
+            ));
+            if !a.passed {
+                if let Some(msg) = &a.message {
+                    for mline in msg.lines() {
+                        lines.push(format!("    Error: {mline}"));
+                    }
+                }
+            }
+        }
+        lines.join("\n")
+    }
+
+    pub fn format_console_text(resp: &AuraResponse) -> String {
+        if resp.console_logs.is_empty() {
+            return "// No console output recorded.".to_string();
+        }
+        resp.console_logs
+            .iter()
+            .map(|log| {
+                format!(
+                    "[{}] [{:<5}] {}",
+                    log.timestamp.format("%H:%M:%S%.3f"),
+                    log.level.to_uppercase(),
+                    log.message
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn status_color(status: u16) -> Rgba {
@@ -81,6 +133,7 @@ impl ResponsePaneView {
         active_tab: ResponseTab,
         body_mode: ResponseBodyMode,
         language_override: Option<ResponseLanguage>,
+        is_lang_dropdown_open: bool,
         soft_wrap: bool,
         tree_collapsed: &HashSet<String>,
         table_search: &str,
@@ -90,8 +143,11 @@ impl ResponsePaneView {
         bi_agg_op: AggregationOp,
         bi_x_col: Option<&str>,
         bi_y_col: Option<&str>,
+        bi_pivot_col: Option<&str>,
         body_editor: Option<&Entity<EditorState>>,
         raw_editor: Option<&Entity<EditorState>>,
+        tests_editor: Option<&Entity<EditorState>>,
+        console_editor: Option<&Entity<EditorState>>,
         table_search_input: Option<&Entity<InputState>>,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
@@ -115,6 +171,7 @@ impl ResponsePaneView {
                     active_tab,
                     body_mode,
                     language_override,
+                    is_lang_dropdown_open,
                     soft_wrap,
                     tree_collapsed,
                     table_search,
@@ -124,8 +181,11 @@ impl ResponsePaneView {
                     bi_agg_op,
                     bi_x_col,
                     bi_y_col,
+                    bi_pivot_col,
                     body_editor,
                     raw_editor,
+                    tests_editor,
+                    console_editor,
                     table_search_input,
                     border,
                     surface,
@@ -181,6 +241,7 @@ impl ResponsePaneView {
         active_tab: ResponseTab,
         body_mode: ResponseBodyMode,
         language_override: Option<ResponseLanguage>,
+        is_lang_dropdown_open: bool,
         soft_wrap: bool,
         tree_collapsed: &HashSet<String>,
         table_search: &str,
@@ -190,8 +251,11 @@ impl ResponsePaneView {
         bi_agg_op: AggregationOp,
         bi_x_col: Option<&str>,
         bi_y_col: Option<&str>,
+        bi_pivot_col: Option<&str>,
         body_editor: Option<&Entity<EditorState>>,
         raw_editor: Option<&Entity<EditorState>>,
+        tests_editor: Option<&Entity<EditorState>>,
+        console_editor: Option<&Entity<EditorState>>,
         table_search_input: Option<&Entity<InputState>>,
         border: Rgba,
         surface: Rgba,
@@ -347,6 +411,7 @@ impl ResponsePaneView {
                         effective_tab,
                         body_mode,
                         language_override,
+                        is_lang_dropdown_open,
                         soft_wrap,
                         tree_collapsed,
                         table_search,
@@ -356,8 +421,11 @@ impl ResponsePaneView {
                         bi_agg_op,
                         bi_x_col,
                         bi_y_col,
+                        bi_pivot_col,
                         body_editor,
                         raw_editor,
+                        tests_editor,
+                        console_editor,
                         table_search_input,
                         border,
                         muted,
@@ -412,6 +480,7 @@ impl ResponsePaneView {
         tab: ResponseTab,
         body_mode: ResponseBodyMode,
         language_override: Option<ResponseLanguage>,
+        is_lang_dropdown_open: bool,
         soft_wrap: bool,
         tree_collapsed: &HashSet<String>,
         table_search: &str,
@@ -421,8 +490,11 @@ impl ResponsePaneView {
         bi_agg_op: AggregationOp,
         bi_x_col: Option<&str>,
         bi_y_col: Option<&str>,
+        bi_pivot_col: Option<&str>,
         body_editor: Option<&Entity<EditorState>>,
         raw_editor: Option<&Entity<EditorState>>,
+        tests_editor: Option<&Entity<EditorState>>,
+        console_editor: Option<&Entity<EditorState>>,
         table_search_input: Option<&Entity<InputState>>,
         border: Rgba,
         muted: Rgba,
@@ -434,6 +506,7 @@ impl ResponsePaneView {
                 resp,
                 body_mode,
                 language_override,
+                is_lang_dropdown_open,
                 soft_wrap,
                 body_editor,
                 border,
@@ -457,14 +530,19 @@ impl ResponsePaneView {
                 Self::render_tree_panel(resp, tree_collapsed, border, muted, cx, on_action)
             }
             ResponseTab::Headers => Self::render_headers_tab(resp, border, muted),
-            ResponseTab::Tests => Self::render_tests_tab(resp, border, muted),
-            ResponseTab::Console => Self::render_console_tab(resp, border, muted),
+            ResponseTab::Tests => {
+                Self::render_tests_tab(resp, tests_editor, border, muted, cx, on_action)
+            }
+            ResponseTab::Console => {
+                Self::render_console_tab(resp, console_editor, border, muted, cx, on_action)
+            }
             ResponseTab::Visualize => Self::render_visualize_panel(
                 resp,
                 bi_chart_type,
                 bi_agg_op,
                 bi_x_col,
                 bi_y_col,
+                bi_pivot_col,
                 border,
                 muted,
                 cx,
@@ -478,6 +556,7 @@ impl ResponsePaneView {
         resp: &AuraResponse,
         body_mode: ResponseBodyMode,
         language_override: Option<ResponseLanguage>,
+        is_lang_dropdown_open: bool,
         soft_wrap: bool,
         body_editor: Option<&Entity<EditorState>>,
         border: Rgba,
@@ -533,21 +612,109 @@ impl ResponsePaneView {
                                 ResponseBodyMode::Compress,
                             ))
                             .child(mode_btn("resp-mode-raw", "Raw", ResponseBodyMode::Raw))
-                            .child(
-                                Button::new("resp-lang-cycle-btn")
-                                    .label(format!("Lang: {}", effective_lang.label()))
-                                    .xsmall()
-                                    .secondary()
-                                    .rounded(ButtonRounded::Small)
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        on_action(
-                                            this,
-                                            ResponsePaneAction::CycleLanguage(effective_lang),
-                                            window,
-                                            cx,
-                                        );
-                                    })),
-                            ),
+                            .child({
+                                const ALL_LANGS: [ResponseLanguage; 4] = [
+                                    ResponseLanguage::Json,
+                                    ResponseLanguage::Xml,
+                                    ResponseLanguage::Html,
+                                    ResponseLanguage::Text,
+                                ];
+                                div()
+                                    .relative()
+                                    .child(
+                                        Button::new("resp-lang-dropdown-btn")
+                                            .label(format!("Lang: {} ▾", effective_lang.label()))
+                                            .xsmall()
+                                            .secondary()
+                                            .rounded(ButtonRounded::Small)
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                on_action(
+                                                    this,
+                                                    ResponsePaneAction::ToggleLanguageDropdown,
+                                                    window,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .when(is_lang_dropdown_open, |el| {
+                                        let menu = div()
+                                            .id("resp-lang-dropdown-menu")
+                                            .absolute()
+                                            .top_full()
+                                            .left_0()
+                                            .mt_1()
+                                            .w(px(120.0))
+                                            .bg(rgb(0x252528))
+                                            .border_1()
+                                            .border_color(border)
+                                            .rounded_md()
+                                            .p_1()
+                                            .shadow_lg()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_0p5()
+                                            .on_mouse_down_out(cx.listener(
+                                                move |this, _, window, cx| {
+                                                    on_action(
+                                                        this,
+                                                        ResponsePaneAction::DismissLanguageDropdown,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            ))
+                                            .children(ALL_LANGS.iter().enumerate().map(
+                                                |(idx, &lang)| {
+                                                    let is_selected = lang == effective_lang;
+                                                    ListItem::new(ElementId::NamedInteger(
+                                                        "resp-lang-opt".into(),
+                                                        idx as u64,
+                                                    ))
+                                                    .selected(is_selected)
+                                                    .px_2()
+                                                    .py_1()
+                                                    .rounded_sm()
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            on_action(
+                                                                this,
+                                                                ResponsePaneAction::SetLanguage(
+                                                                    lang,
+                                                                ),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    ))
+                                                    .child(
+                                                        div()
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_between()
+                                                            .w_full()
+                                                            .text_xs()
+                                                            .child(
+                                                                div()
+                                                                    .text_color(if is_selected {
+                                                                        rgb(0xffffff)
+                                                                    } else {
+                                                                        rgb(0xcccccc)
+                                                                    })
+                                                                    .child(lang.label()),
+                                                            )
+                                                            .when(is_selected, |el| {
+                                                                el.child(
+                                                                    div()
+                                                                        .text_color(rgb(0x2997ff))
+                                                                        .child("✓"),
+                                                                )
+                                                            }),
+                                                    )
+                                                },
+                                            ));
+                                        el.child(deferred(menu).with_priority(1))
+                                    })
+                            }),
                     )
                     .child(
                         div()
@@ -753,122 +920,216 @@ impl ResponsePaneView {
             ))
     }
 
-    fn render_tests_tab(resp: &AuraResponse, border: Rgba, muted: Rgba) -> Div {
+    fn render_tests_tab<V: 'static>(
+        resp: &AuraResponse,
+        tests_editor: Option<&Entity<EditorState>>,
+        border: Rgba,
+        muted: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> Div {
+        let (passed, total) = Self::assertion_counts(&resp.assertions);
+        let failed = total.saturating_sub(passed);
+        let formatted_text = Self::format_tests_text(resp);
+
         div()
             .flex()
             .flex_col()
             .gap_2()
             .min_w_0()
-            .when(resp.assertions.is_empty(), |el| {
-                el.child(Empty::new().header(
-                    EmptyHeader::new()
-                        .description(EmptyDescription::new().child("No test assertions executed.")),
-                ))
-            })
-            .children(resp.assertions.iter().map(|a| {
+            .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_1()
-                    .p_2()
-                    .rounded_md()
-                    .bg(rgb(0x272729))
-                    .border_1()
-                    .border_color(border)
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .justify_between()
-                            .text_xs()
+                            .gap_2()
                             .child(
                                 div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        Tag::new()
-                                            .with_variant(if a.passed {
-                                                TagVariant::Success
-                                            } else {
-                                                TagVariant::Danger
-                                            })
-                                            .xsmall()
-                                            .child(if a.passed { "✓ PASS" } else { "✗ FAIL" }),
-                                    )
-                                    .child(div().text_color(rgb(0xffffff)).child(a.name.clone())),
-                            )
-                            .child(
-                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(muted)
-                                    .child(format!("{} ms", a.duration_ms)),
-                            ),
+                                    .child(format!("TEST RESULTS ({passed}/{total})")),
+                            )
+                            .when(total > 0, |el| {
+                                el.child(
+                                    Tag::new()
+                                        .with_variant(TagVariant::Success)
+                                        .xsmall()
+                                        .child(format!("✓ {passed} Passed")),
+                                )
+                                .when(failed > 0, |el| {
+                                    el.child(
+                                        Tag::new()
+                                            .with_variant(TagVariant::Danger)
+                                            .xsmall()
+                                            .child(format!("✗ {failed} Failed")),
+                                    )
+                                })
+                            }),
                     )
-                    .when(!a.passed && a.message.is_some(), |el| {
+                    .when(total > 0, |el| {
+                        let copy_text = formatted_text.clone();
                         el.child(
-                            div()
-                                .p_2()
-                                .rounded_sm()
-                                .bg(rgb(0x3a1d1d))
-                                .font_family("monospace")
-                                .text_xs()
-                                .text_color(rgb(0xff8888))
-                                .child(a.message.clone().unwrap_or_default()),
+                            Button::new("resp-copy-tests-btn")
+                                .label("Copy All")
+                                .xsmall()
+                                .secondary()
+                                .rounded(ButtonRounded::Small)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_action(
+                                        this,
+                                        ResponsePaneAction::CopyText {
+                                            label: "Test Results",
+                                            text: copy_text.clone(),
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                })),
                         )
-                    })
-            }))
+                    }),
+            )
+            .child(if resp.assertions.is_empty() {
+                Empty::new()
+                    .header(
+                        EmptyHeader::new()
+                            .description(EmptyDescription::new().child("No test assertions executed.")),
+                    )
+                    .into_any_element()
+            } else if let Some(ed) = tests_editor {
+                div()
+                    .h(px(360.0))
+                    .w_full()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(border)
+                    .overflow_hidden()
+                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
+                    .into_any_element()
+            } else {
+                div()
+                    .p_2()
+                    .font_family("monospace")
+                    .text_xs()
+                    .text_color(rgb(0xcccccc))
+                    .child(formatted_text)
+                    .into_any_element()
+            })
     }
 
-    fn render_console_tab(resp: &AuraResponse, border: Rgba, muted: Rgba) -> Div {
+    fn render_console_tab<V: 'static>(
+        resp: &AuraResponse,
+        console_editor: Option<&Entity<EditorState>>,
+        border: Rgba,
+        muted: Rgba,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, ResponsePaneAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> Div {
+        let total = resp.console_logs.len();
+        let warn_count = resp
+            .console_logs
+            .iter()
+            .filter(|l| l.level.eq_ignore_ascii_case("WARN"))
+            .count();
+        let err_count = resp
+            .console_logs
+            .iter()
+            .filter(|l| l.level.eq_ignore_ascii_case("ERROR"))
+            .count();
+        let formatted_text = Self::format_console_text(resp);
+
         div()
             .flex()
             .flex_col()
-            .gap_1()
+            .gap_2()
             .min_w_0()
-            .when(resp.console_logs.is_empty(), |el| {
-                el.child(Empty::new().header(
-                    EmptyHeader::new()
-                        .description(EmptyDescription::new().child("No console output recorded.")),
-                ))
-            })
-            .children(resp.console_logs.iter().enumerate().map(|(idx, log)| {
-                let tag_variant = match log.level.to_uppercase().as_str() {
-                    "WARN" => TagVariant::Warning,
-                    "ERROR" => TagVariant::Danger,
-                    _ => TagVariant::Info,
-                };
+            .child(
                 div()
                     .flex()
                     .items_center()
+                    .justify_between()
                     .gap_2()
-                    .p_2()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(muted)
+                                    .child(format!("CONSOLE OUTPUT ({total})")),
+                            )
+                            .when(warn_count > 0, |el| {
+                                el.child(
+                                    Tag::new()
+                                        .with_variant(TagVariant::Warning)
+                                        .xsmall()
+                                        .child(format!("{warn_count} Warn")),
+                                )
+                            })
+                            .when(err_count > 0, |el| {
+                                el.child(
+                                    Tag::new()
+                                        .with_variant(TagVariant::Danger)
+                                        .xsmall()
+                                        .child(format!("{err_count} Error")),
+                                )
+                            }),
+                    )
+                    .when(total > 0, |el| {
+                        let copy_text = formatted_text.clone();
+                        el.child(
+                            Button::new("resp-copy-console-btn")
+                                .label("Copy All")
+                                .xsmall()
+                                .secondary()
+                                .rounded(ButtonRounded::Small)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    on_action(
+                                        this,
+                                        ResponsePaneAction::CopyText {
+                                            label: "Console Logs",
+                                            text: copy_text.clone(),
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                })),
+                        )
+                    }),
+            )
+            .child(if resp.console_logs.is_empty() {
+                Empty::new()
+                    .header(
+                        EmptyHeader::new()
+                            .description(EmptyDescription::new().child("No console output recorded.")),
+                    )
+                    .into_any_element()
+            } else if let Some(ed) = console_editor {
+                div()
+                    .h(px(360.0))
+                    .w_full()
                     .rounded_md()
-                    .bg(rgb(0x272729))
                     .border_1()
                     .border_color(border)
+                    .overflow_hidden()
+                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
+                    .into_any_element()
+            } else {
+                div()
+                    .p_2()
+                    .font_family("monospace")
                     .text_xs()
-                    .min_w_0()
-                    .child(
-                        Tag::new()
-                            .with_variant(tag_variant)
-                            .xsmall()
-                            .child(log.level.to_uppercase()),
-                    )
-                    .child(
-                        div()
-                            .text_color(muted)
-                            .child(log.timestamp.format("%H:%M:%S%.3f").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_color(rgb(0xcccccc))
-                            .min_w_0()
-                            .overflow_x_hidden()
-                            .child(SelectableText::new(
-                                ElementId::NamedInteger("resp-console-msg".into(), idx as u64),
-                                log.message.clone(),
-                            )),
-                    )
-            }))
+                    .text_color(rgb(0xcccccc))
+                    .child(formatted_text)
+                    .into_any_element()
+            })
     }
 }

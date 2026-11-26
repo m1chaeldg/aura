@@ -66,6 +66,13 @@ impl AuraWorkspaceView {
             }
             RequestEditorAction::SetBodyType(name) => {
                 self.state.set_body_type(name);
+                self.state.close_body_format_dropdown();
+            }
+            RequestEditorAction::ToggleBodyFormatDropdown => {
+                self.state.toggle_body_format_dropdown();
+            }
+            RequestEditorAction::DismissBodyFormatDropdown => {
+                self.state.close_body_format_dropdown();
             }
             RequestEditorAction::OpenEditBody => {
                 self.state
@@ -206,6 +213,9 @@ impl AuraWorkspaceView {
                         tab.mark_dirty(true);
                     }
                 }
+            }
+            RequestEditorAction::ToggleAwsUseProfile(use_profile) => {
+                self.state.set_aws_use_profile(use_profile);
             }
             RequestEditorAction::FocusSpec => {
                 self.state

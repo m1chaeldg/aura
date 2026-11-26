@@ -43,6 +43,8 @@ pub enum RequestEditorAction {
     FocusParamVal(usize),
     // Body
     SetBodyType(&'static str),
+    ToggleBodyFormatDropdown,
+    DismissBodyFormatDropdown,
     OpenEditBody,
     FocusBody,
     FormatJsonBody,
@@ -61,6 +63,7 @@ pub enum RequestEditorAction {
     OpenEditAuth,
     FocusAuthField(ActiveInputTarget),
     ToggleApiKeyPlacement(bool),
+    ToggleAwsUseProfile(bool),
     // Scripts
     SelectScriptSubTab(ScriptSubTab),
     FocusScript(ScriptSubTab),
@@ -139,6 +142,7 @@ impl RequestEditorView {
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
+        is_body_format_dropdown_open: bool,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -229,6 +233,7 @@ impl RequestEditorView {
                         test_assertions,
                         spec_buffer,
                         spec_error,
+                        is_body_format_dropdown_open,
                         cx,
                         on_action,
                     )),
@@ -430,6 +435,7 @@ impl RequestEditorView {
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
+        is_body_format_dropdown_open: bool,
         cx: &mut Context<V>,
         on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
     ) -> impl IntoElement {
@@ -462,6 +468,7 @@ impl RequestEditorView {
                 request,
                 active_input,
                 inputs,
+                is_body_format_dropdown_open,
                 border,
                 muted,
                 normal,

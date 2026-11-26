@@ -518,6 +518,20 @@ impl AuraAppState {
         }
     }
 
+    pub fn set_aws_use_profile(&mut self, use_profile_val: bool) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let aura_core::model::AuthConfig::AwsSigV4 { use_profile, profile, .. } =
+                &mut tab.request.auth
+            {
+                *use_profile = use_profile_val;
+                if use_profile_val && profile.trim().is_empty() {
+                    *profile = "default".to_string();
+                }
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
     pub fn update_aws_sigv4(
         &mut self,
         access_key: String,
@@ -527,7 +541,19 @@ impl AuraAppState {
         session_token: Option<String>,
     ) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let (use_profile, profile, credentials_path) = match &tab.request.auth {
+                aura_core::model::AuthConfig::AwsSigV4 {
+                    use_profile,
+                    profile,
+                    credentials_path,
+                    ..
+                } => (*use_profile, profile.clone(), credentials_path.clone()),
+                _ => (false, "default".to_string(), None),
+            };
             tab.request.auth = aura_core::model::AuthConfig::AwsSigV4 {
+                use_profile,
+                profile,
+                credentials_path,
                 access_key,
                 secret_key,
                 region,

@@ -6,6 +6,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
+use gpui_kit::component::list::ListItem;
 use gpui_kit::component::Sizable;
 
 impl RequestEditorView {
@@ -14,6 +15,7 @@ impl RequestEditorView {
         request: Option<&AuraRequest>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
+        is_format_dropdown_open: bool,
         border: Rgba,
         muted: Rgba,
         normal: Rgba,
@@ -33,38 +35,107 @@ impl RequestEditorView {
             "Binary",
         ];
 
+        fn format_display(fmt: &str) -> &str {
+            match fmt {
+                "FormUrlEncoded" | "Form" => "Form (URL-Encoded)",
+                "Multipart" => "Multipart Form",
+                other => other,
+            }
+        }
+        let current_display = format_display(active_type);
+
+        let format_dropdown = div()
+            .relative()
+            .child(
+                Button::new("body-format-dropdown-btn")
+                    .label(format!("Body: {} ▾", current_display))
+                    .xsmall()
+                    .secondary()
+                    .rounded(ButtonRounded::Small)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        on_action(this, RequestEditorAction::ToggleBodyFormatDropdown, window, cx);
+                    })),
+            )
+            .when(is_format_dropdown_open, |el| {
+                let menu = div()
+                    .id("body-format-dropdown-menu")
+                    .absolute()
+                    .top_full()
+                    .left_0()
+                    .mt_1()
+                    .w(px(190.0))
+                    .bg(rgb(0x252528))
+                    .border_1()
+                    .border_color(border)
+                    .rounded_md()
+                    .p_1()
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .on_mouse_down_out(cx.listener(move |this, _, window, cx| {
+                        on_action(
+                            this,
+                            RequestEditorAction::DismissBodyFormatDropdown,
+                            window,
+                            cx,
+                        );
+                    }))
+                    .children(FORMATS.iter().enumerate().map(|(idx, &fmt)| {
+                        let is_selected = match fmt {
+                            "FormUrlEncoded" => {
+                                active_type == "FormUrlEncoded" || active_type == "Form"
+                            }
+                            _ => active_type == fmt,
+                        };
+                        ListItem::new(ElementId::NamedInteger(
+                            "body-format-opt".into(),
+                            idx as u64,
+                        ))
+                        .selected(is_selected)
+                        .px_2()
+                        .py_1()
+                        .rounded_sm()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            on_action(this, RequestEditorAction::SetBodyType(fmt), window, cx);
+                        }))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .w_full()
+                                .text_xs()
+                                .child(
+                                    div()
+                                        .text_color(if is_selected {
+                                            rgb(0xffffff)
+                                        } else {
+                                            normal
+                                        })
+                                        .child(format_display(fmt)),
+                                )
+                                .when(is_selected, |el| {
+                                    el.child(div().text_color(rgb(0x2997ff)).child("✓"))
+                                }),
+                        )
+                    }));
+                el.child(deferred(menu).with_priority(1))
+            });
+
         div()
             .flex()
             .flex_col()
             .gap_3()
-            // Format Selector Bar
-            .child(div().flex().items_center().gap_1().flex_wrap().children(
-                FORMATS.iter().copied().map(|fmt| {
-                    let is_active = match fmt {
-                        "FormUrlEncoded" => {
-                            active_type == "FormUrlEncoded" || active_type == "Form"
-                        }
-                        _ => active_type == fmt,
-                    };
-                    let display_name = match fmt {
-                        "FormUrlEncoded" => "Form (URL-Encoded)",
-                        "Multipart" => "Multipart Form",
-                        other => other,
-                    };
-                    let btn = Button::new(fmt)
-                        .label(display_name)
-                        .xsmall()
-                        .rounded(ButtonRounded::Small)
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            on_action(this, RequestEditorAction::SetBodyType(fmt), window, cx);
-                        }));
-                    if is_active {
-                        btn.primary()
-                    } else {
-                        btn.secondary()
-                    }
-                }),
-            ))
+            // Format Selector Bar (Dropdown)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(format_dropdown),
+            )
             // Body Content based on Format
             .child(match body {
                 Some(BodyType::None) | None => div().child(

@@ -266,6 +266,24 @@ pub enum EditorDialogState {
     },
 }
 
+/// Editing mode for the Environment Profile Editor modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EnvironmentEditorMode {
+    #[default]
+    Ui,
+    Code,
+}
+
+/// State for the modal Environment Profile Editor.
+#[derive(Debug, Clone)]
+pub struct EnvironmentEditorState {
+    pub original_path: Option<PathBuf>,
+    pub profile: aura_core::model::EnvironmentProfile,
+    pub mode: EnvironmentEditorMode,
+    pub code_buffer: String,
+    pub code_error: Option<String>,
+}
+
 /// Command palette entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandPaletteItem {
@@ -305,10 +323,18 @@ pub struct AuraAppState {
     pub response_bi_x_col: Option<String>,
     #[serde(skip)]
     pub response_bi_y_col: Option<String>,
+    #[serde(skip)]
+    pub response_bi_pivot_col: Option<String>,
     pub is_code_mode: bool, // Dual-mode: Visual vs Code Editor (TOML)
     pub is_command_palette_open: bool,
     #[serde(skip)]
     pub is_method_dropdown_open: bool,
+    #[serde(skip)]
+    pub is_body_format_dropdown_open: bool,
+    #[serde(skip)]
+    pub is_response_lang_dropdown_open: bool,
+    #[serde(skip)]
+    pub is_env_dropdown_open: bool,
     pub is_log_viewer_open: bool,
     #[serde(default)]
     pub is_log_viewer_text_mode: bool,
@@ -320,6 +346,14 @@ pub struct AuraAppState {
     pub command_palette_search: String,
     pub selected_palette_index: usize,
     pub collections: Vec<Collection>,
+    #[serde(skip)]
+    pub environments: Vec<(PathBuf, aura_core::model::EnvironmentProfile)>,
+    #[serde(default)]
+    pub active_environment_id: Option<String>,
+    #[serde(skip)]
+    pub clipboard_environment: Option<aura_core::model::EnvironmentProfile>,
+    #[serde(skip)]
+    pub environment_editor: Option<EnvironmentEditorState>,
     pub is_dragging_divider: bool,
     pub keybinding_preset: KeybindingPreset,
     pub status_message: Option<String>,
@@ -392,9 +426,13 @@ impl Default for AuraAppState {
             response_bi_agg_op: crate::services::AggregationOp::Count,
             response_bi_x_col: None,
             response_bi_y_col: None,
+            response_bi_pivot_col: None,
             is_code_mode: false,
             is_command_palette_open: false,
             is_method_dropdown_open: false,
+            is_body_format_dropdown_open: false,
+            is_response_lang_dropdown_open: false,
+            is_env_dropdown_open: false,
             is_log_viewer_open: false,
             is_log_viewer_text_mode: false,
             is_sidebar_collapsed: false,
@@ -404,6 +442,10 @@ impl Default for AuraAppState {
             command_palette_search: String::new(),
             selected_palette_index: 0,
             collections: Vec::new(),
+            environments: Vec::new(),
+            active_environment_id: None,
+            clipboard_environment: None,
+            environment_editor: None,
             is_dragging_divider: false,
             keybinding_preset: KeybindingPreset::VsCode,
             status_message: None,
@@ -555,6 +597,20 @@ impl AuraAppState {
         self.response_bi_y_col = Some(next);
     }
 
+    pub fn cycle_response_bi_pivot_col(&mut self, columns: &[String]) {
+        if columns.is_empty() {
+            return;
+        }
+        let next = match &self.response_bi_pivot_col {
+            Some(cur) => {
+                let idx = columns.iter().position(|c| c == cur).unwrap_or(0);
+                columns[(idx + 1) % columns.len()].clone()
+            }
+            None => columns.get(1).or_else(|| columns.first()).cloned().unwrap_or_default(),
+        };
+        self.response_bi_pivot_col = Some(next);
+    }
+
     pub fn cancel_active_request(&self) {
         self.execution_service.cancel();
     }
@@ -591,6 +647,261 @@ impl AuraAppState {
 
     pub fn close_method_dropdown(&mut self) {
         self.is_method_dropdown_open = false;
+    }
+
+    pub fn toggle_body_format_dropdown(&mut self) {
+        self.is_body_format_dropdown_open = !self.is_body_format_dropdown_open;
+    }
+
+    pub fn close_body_format_dropdown(&mut self) {
+        self.is_body_format_dropdown_open = false;
+    }
+
+    pub fn toggle_response_lang_dropdown(&mut self) {
+        self.is_response_lang_dropdown_open = !self.is_response_lang_dropdown_open;
+    }
+
+    pub fn close_response_lang_dropdown(&mut self) {
+        self.is_response_lang_dropdown_open = false;
+    }
+
+    pub fn set_response_language(&mut self, lang: crate::services::ResponseLanguage) {
+        self.response_language_override = Some(lang);
+        self.is_response_lang_dropdown_open = false;
+    }
+
+    pub fn toggle_env_dropdown(&mut self) {
+        self.is_env_dropdown_open = !self.is_env_dropdown_open;
+    }
+
+    pub fn close_env_dropdown(&mut self) {
+        self.is_env_dropdown_open = false;
+    }
+
+    pub fn reload_environments_from_workspace(&mut self) {
+        if let Some(root) = self.workspace_store.workspace_root.as_deref() {
+            self.environments = aura_sync::load_environments_from_dir(root);
+            if let Some(active_id) = &self.active_environment_id {
+                if !self.environments.iter().any(|(_, e)| &e.id == active_id) {
+                    self.active_environment_id = None;
+                }
+            }
+        } else {
+            self.environments.clear();
+            self.active_environment_id = None;
+        }
+    }
+
+    pub fn active_environment(&self) -> Option<&aura_core::model::EnvironmentProfile> {
+        let id = self.active_environment_id.as_deref()?;
+        self.environments
+            .iter()
+            .find(|(_, e)| e.id == id)
+            .map(|(_, e)| e)
+    }
+
+    pub fn active_environment_vars(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        if let Some(env) = self.active_environment() {
+            for v in &env.variables {
+                if v.enabled && !v.key.trim().is_empty() {
+                    map.insert(v.key.clone(), v.value.clone());
+                }
+            }
+        }
+        map
+    }
+
+    pub fn set_active_environment(&mut self, id: Option<String>) {
+        self.active_environment_id = id;
+        self.is_env_dropdown_open = false;
+    }
+
+    pub fn open_new_environment_editor(&mut self) {
+        self.is_env_dropdown_open = false;
+        let profile = aura_core::model::EnvironmentProfile {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "New Environment".to_string(),
+            variables: vec![aura_core::model::VariableItem {
+                key: String::new(),
+                value: String::new(),
+                enabled: true,
+                is_secret: false,
+            }],
+        };
+        let code_buffer = aura_sync::environment_to_toml(&profile).unwrap_or_default();
+        self.environment_editor = Some(EnvironmentEditorState {
+            original_path: None,
+            profile,
+            mode: EnvironmentEditorMode::Ui,
+            code_buffer,
+            code_error: None,
+        });
+    }
+
+    pub fn open_environment_editor(&mut self, id: &str) {
+        self.is_env_dropdown_open = false;
+        if let Some((path, env)) = self.environments.iter().find(|(_, e)| e.id == id) {
+            let code_buffer = aura_sync::environment_to_toml(env).unwrap_or_default();
+            self.environment_editor = Some(EnvironmentEditorState {
+                original_path: Some(path.clone()),
+                profile: env.clone(),
+                mode: EnvironmentEditorMode::Ui,
+                code_buffer,
+                code_error: None,
+            });
+        }
+    }
+
+    pub fn set_environment_editor_mode(&mut self, mode: EnvironmentEditorMode) {
+        let Some(ref mut ed) = self.environment_editor else {
+            return;
+        };
+        if ed.mode == mode {
+            return;
+        }
+        match mode {
+            EnvironmentEditorMode::Code => {
+                ed.code_buffer = aura_sync::environment_to_toml(&ed.profile).unwrap_or_default();
+                ed.code_error = None;
+                ed.mode = EnvironmentEditorMode::Code;
+            }
+            EnvironmentEditorMode::Ui => {
+                if ed.code_error.is_none() {
+                    ed.mode = EnvironmentEditorMode::Ui;
+                }
+            }
+        }
+    }
+
+    pub fn update_environment_code_buffer(&mut self, text: String) {
+        let Some(ref mut ed) = self.environment_editor else {
+            return;
+        };
+        ed.code_buffer = text.clone();
+        match aura_sync::toml_to_environment(&text, Some(&ed.profile.id)) {
+            Ok(parsed) => {
+                ed.profile = parsed;
+                ed.code_error = None;
+            }
+            Err(err) => {
+                ed.code_error = Some(err.to_string());
+            }
+        }
+    }
+
+    pub fn format_environment_code_buffer(&mut self) {
+        let Some(ref mut ed) = self.environment_editor else {
+            return;
+        };
+        if ed.code_error.is_none() {
+            if let Ok(formatted) = aura_sync::environment_to_toml(&ed.profile) {
+                ed.code_buffer = formatted;
+            }
+        }
+    }
+
+    pub fn close_environment_editor(&mut self) {
+        self.environment_editor = None;
+    }
+
+    pub fn save_environment_editor(&mut self) -> anyhow::Result<()> {
+        if let Some(ref ed) = self.environment_editor {
+            if ed.mode == EnvironmentEditorMode::Code {
+                if let Some(ref err) = ed.code_error {
+                    anyhow::bail!("Fix TOML syntax errors before saving: {err}");
+                }
+            }
+        }
+        let Some(editor) = self.environment_editor.take() else {
+            return Ok(());
+        };
+        let Some(root) = self.workspace_store.workspace_root.clone() else {
+            self.status_message = Some("Open a workspace folder first to save environments".to_string());
+            return Ok(());
+        };
+        let mut profile = editor.profile;
+        if profile.name.trim().is_empty() {
+            profile.name = "environment".to_string();
+        }
+        profile
+            .variables
+            .retain(|v| !v.key.trim().is_empty() || !v.value.trim().is_empty());
+        let saved_path = aura_sync::save_environment_to_dir(
+            &root,
+            &profile,
+            editor.original_path.as_deref(),
+        )?;
+        self.reload_environments_from_workspace();
+        // Keep active_environment_id pointing to the saved profile if it was active or newly created
+        if let Some((_, matched)) = self.environments.iter().find(|(p, _)| p == &saved_path) {
+            if self.active_environment_id.as_deref() == Some(&profile.id)
+                || self.active_environment_id.is_none()
+            {
+                self.active_environment_id = Some(matched.id.clone());
+            }
+        }
+        self.status_message = Some(format!("Saved environment '{}'", profile.name));
+        Ok(())
+    }
+
+    pub fn duplicate_environment(&mut self, id: &str) -> anyhow::Result<()> {
+        let Some(root) = self.workspace_store.workspace_root.clone() else {
+            return Ok(());
+        };
+        let Some((_, src)) = self.environments.iter().find(|(_, e)| e.id == id).cloned() else {
+            return Ok(());
+        };
+        let mut dup = src.clone();
+        dup.id = uuid::Uuid::new_v4().to_string();
+        dup.name = format!("{} Copy", src.name);
+        aura_sync::save_environment_to_dir(&root, &dup, None)?;
+        self.reload_environments_from_workspace();
+        self.status_message = Some(format!("Duplicated environment '{}'", dup.name));
+        Ok(())
+    }
+
+    pub fn copy_environment(&mut self, id: &str) {
+        if let Some((_, src)) = self.environments.iter().find(|(_, e)| e.id == id) {
+            self.clipboard_environment = Some(src.clone());
+            self.status_message = Some(format!("Copied environment '{}'", src.name));
+        }
+    }
+
+    pub fn paste_environment(&mut self) -> anyhow::Result<()> {
+        let Some(root) = self.workspace_store.workspace_root.clone() else {
+            return Ok(());
+        };
+        let Some(src) = self.clipboard_environment.clone() else {
+            return Ok(());
+        };
+        let mut pasted = src;
+        pasted.id = uuid::Uuid::new_v4().to_string();
+        if self
+            .environments
+            .iter()
+            .any(|(_, e)| e.name.eq_ignore_ascii_case(&pasted.name))
+        {
+            pasted.name = format!("{} Copy", pasted.name);
+        }
+        aura_sync::save_environment_to_dir(&root, &pasted, None)?;
+        self.reload_environments_from_workspace();
+        self.status_message = Some(format!("Pasted environment '{}'", pasted.name));
+        Ok(())
+    }
+
+    pub fn delete_environment(&mut self, id: &str) -> anyhow::Result<()> {
+        if let Some((path, env)) = self.environments.iter().find(|(_, e)| e.id == id).cloned() {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+            if self.active_environment_id.as_deref() == Some(id) {
+                self.active_environment_id = None;
+            }
+            self.reload_environments_from_workspace();
+            self.status_message = Some(format!("Deleted environment '{}'", env.name));
+        }
+        Ok(())
     }
 
     // =========================================================================
@@ -763,5 +1074,82 @@ mod tests {
         let assertions = &state.tabs[0].response.as_ref().unwrap().assertions;
         assert!(assertions.iter().all(|a| a.passed));
         assert_eq!(state.active_response_tab, crate::stores::ResponseTab::Tests);
+    }
+
+    #[test]
+    fn test_environment_editor_ui_and_code_mode_sync() {
+        let mut state = AuraAppState::new();
+        state.open_new_environment_editor();
+
+        {
+            let ed = state.environment_editor.as_mut().unwrap();
+            assert_eq!(ed.mode, EnvironmentEditorMode::Ui);
+            ed.profile.name = "Staging".to_string();
+            ed.profile.variables = vec![
+                aura_core::model::VariableItem {
+                    key: "API_URL".to_string(),
+                    value: "https://staging.example.com".to_string(),
+                    enabled: true,
+                    is_secret: false,
+                },
+                aura_core::model::VariableItem {
+                    key: "DEBUG".to_string(),
+                    value: "1".to_string(),
+                    enabled: false,
+                    is_secret: false,
+                },
+            ];
+        }
+
+        // Switch UI -> Code: serializes current profile to TOML
+        state.set_environment_editor_mode(EnvironmentEditorMode::Code);
+        {
+            let ed = state.environment_editor.as_ref().unwrap();
+            assert_eq!(ed.mode, EnvironmentEditorMode::Code);
+            assert!(ed.code_error.is_none());
+            assert!(ed.code_buffer.contains("name = \"Staging\""));
+            assert!(ed.code_buffer.contains("API_URL = \"https://staging.example.com\""));
+            assert!(ed.code_buffer.contains("\"DEBUG~\" = \"1\""));
+        }
+
+        // Edit in Code mode with valid TOML -> updates profile
+        state.update_environment_code_buffer(
+            "name = \"Production\"\n\n[variables]\nAPI_URL = \"https://api.example.com\"\n"
+                .to_string(),
+        );
+        {
+            let ed = state.environment_editor.as_ref().unwrap();
+            assert!(ed.code_error.is_none());
+            assert_eq!(ed.profile.name, "Production");
+            assert_eq!(ed.profile.variables.len(), 1);
+            assert_eq!(ed.profile.variables[0].key, "API_URL");
+            assert_eq!(ed.profile.variables[0].value, "https://api.example.com");
+        }
+
+        // Edit with invalid TOML -> records error and blocks switching back or saving
+        state.update_environment_code_buffer("name = [invalid".to_string());
+        assert!(state
+            .environment_editor
+            .as_ref()
+            .unwrap()
+            .code_error
+            .is_some());
+        state.set_environment_editor_mode(EnvironmentEditorMode::Ui);
+        assert_eq!(
+            state.environment_editor.as_ref().unwrap().mode,
+            EnvironmentEditorMode::Code
+        );
+        assert!(state.save_environment_editor().is_err());
+        assert!(state.environment_editor.is_some());
+
+        // Fix TOML and switch back to UI
+        state.update_environment_code_buffer(
+            "name = \"Production\"\n\n[variables]\nTOKEN = \"xyz\"\n".to_string(),
+        );
+        state.set_environment_editor_mode(EnvironmentEditorMode::Ui);
+        let ed = state.environment_editor.as_ref().unwrap();
+        assert_eq!(ed.mode, EnvironmentEditorMode::Ui);
+        assert!(ed.code_error.is_none());
+        assert_eq!(ed.profile.variables[0].key, "TOKEN");
     }
 }

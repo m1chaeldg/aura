@@ -221,7 +221,15 @@ pub enum AuthConfig {
     },
     #[serde(alias = "aws_v4")]
     AwsSigV4 {
+        #[serde(default)]
+        use_profile: bool,
+        #[serde(default)]
+        profile: String,
+        #[serde(default)]
+        credentials_path: Option<String>,
+        #[serde(default)]
         access_key: String,
+        #[serde(default)]
         secret_key: String,
         region: String,
         service: String,
@@ -270,6 +278,9 @@ impl AuthConfig {
                 in_header: true,
             },
             "aws" | "aws_sigv4" | "awssigv4" | "aws sigv4" => Self::AwsSigV4 {
+                use_profile: true,
+                profile: "default".to_string(),
+                credentials_path: None,
                 access_key: "".to_string(),
                 secret_key: "".to_string(),
                 region: "us-east-1".to_string(),

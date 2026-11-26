@@ -8,6 +8,7 @@ pub enum ChartType {
     Bar,
     Line,
     Donut,
+    Pivot,
 }
 
 impl ChartType {
@@ -16,6 +17,7 @@ impl ChartType {
             Self::Bar => "Bar",
             Self::Line => "Line",
             Self::Donut => "Donut",
+            Self::Pivot => "Pivot",
         }
     }
 
@@ -23,7 +25,8 @@ impl ChartType {
         match self {
             Self::Bar => Self::Line,
             Self::Line => Self::Donut,
-            Self::Donut => Self::Bar,
+            Self::Donut => Self::Pivot,
+            Self::Pivot => Self::Bar,
         }
     }
 }
@@ -87,6 +90,18 @@ pub struct BiSummary {
     pub columns: Vec<ColumnSummary>,
     pub numeric_columns: Vec<String>,
     pub categorical_columns: Vec<String>,
+}
+
+/// Cross-tabulated Pivot Table result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PivotTable {
+    pub row_field: String,
+    pub col_field: String,
+    pub col_headers: Vec<String>,
+    /// Each row: (row_label, cell_values_per_col_header, row_total)
+    pub rows: Vec<(String, Vec<Option<f64>>, f64)>,
+    pub col_totals: Vec<f64>,
+    pub grand_total: f64,
 }
 
 pub struct ResponseBiService;
@@ -229,6 +244,121 @@ impl ResponseBiService {
         }
 
         points
+    }
+
+    /// Compute a cross-tabulated Pivot Table (row_col × col_col) with the chosen AggregationOp.
+    pub fn compute_pivot_table(
+        dataset: &TableDataset,
+        row_col: &str,
+        col_col: &str,
+        val_col: Option<&str>,
+        op: AggregationOp,
+    ) -> PivotTable {
+        use std::collections::BTreeSet;
+
+        let row_idx = dataset.columns.iter().position(|c| c == row_col);
+        let col_idx = dataset.columns.iter().position(|c| c == col_col);
+        let val_idx = val_col.and_then(|yc| dataset.columns.iter().position(|c| c == yc));
+
+        let (Some(r_idx), Some(c_idx)) = (row_idx, col_idx) else {
+            return PivotTable {
+                row_field: row_col.to_string(),
+                col_field: col_col.to_string(),
+                col_headers: Vec::new(),
+                rows: Vec::new(),
+                col_totals: Vec::new(),
+                grand_total: 0.0,
+            };
+        };
+
+        let mut row_keys_set = BTreeSet::new();
+        let mut col_keys_set = BTreeSet::new();
+        let mut cells: std::collections::HashMap<(String, String), Vec<f64>> =
+            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<(String, String), usize> =
+            std::collections::HashMap::new();
+
+        for row in &dataset.rows {
+            let rk = row
+                .get(r_idx)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty() && *s != "null")
+                .unwrap_or("(empty)")
+                .to_string();
+            let ck = row
+                .get(c_idx)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty() && *s != "null")
+                .unwrap_or("(empty)")
+                .to_string();
+
+            row_keys_set.insert(rk.clone());
+            col_keys_set.insert(ck.clone());
+            *counts.entry((rk.clone(), ck.clone())).or_insert(0) += 1;
+
+            if let Some(vi) = val_idx {
+                if let Some(n) = row
+                    .get(vi)
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+                    .filter(|n| n.is_finite())
+                {
+                    cells.entry((rk, ck)).or_default().push(n);
+                }
+            }
+        }
+
+        let col_headers: Vec<String> = col_keys_set.into_iter().take(16).collect();
+        let row_keys: Vec<String> = row_keys_set.into_iter().take(100).collect();
+
+        let eval_cell = |rk: &str, ck: &str| -> Option<f64> {
+            let key = (rk.to_string(), ck.to_string());
+            let cnt = *counts.get(&key).unwrap_or(&0);
+            if cnt == 0 {
+                return None;
+            }
+            if op == AggregationOp::Count || val_idx.is_none() {
+                return Some(cnt as f64);
+            }
+            let nums = cells.get(&key)?;
+            if nums.is_empty() {
+                return None;
+            }
+            Some(match op {
+                AggregationOp::Count => cnt as f64,
+                AggregationOp::Sum => nums.iter().sum(),
+                AggregationOp::Avg => nums.iter().sum::<f64>() / nums.len() as f64,
+                AggregationOp::Min => nums.iter().copied().fold(f64::INFINITY, f64::min),
+                AggregationOp::Max => nums.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            })
+        };
+
+        let mut col_totals = vec![0.0_f64; col_headers.len()];
+        let mut grand_total = 0.0_f64;
+        let mut rows = Vec::with_capacity(row_keys.len());
+
+        for rk in row_keys {
+            let mut vals = Vec::with_capacity(col_headers.len());
+            let mut row_total = 0.0_f64;
+            for (ci, ck) in col_headers.iter().enumerate() {
+                let v = eval_cell(&rk, ck);
+                if let Some(num) = v {
+                    row_total += num;
+                    col_totals[ci] += num;
+                    grand_total += num;
+                }
+                vals.push(v);
+            }
+            rows.push((rk, vals, row_total));
+        }
+
+        PivotTable {
+            row_field: row_col.to_string(),
+            col_field: col_col.to_string(),
+            col_headers,
+            rows,
+            col_totals,
+            grand_total,
+        }
     }
 }
 

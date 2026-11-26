@@ -168,6 +168,7 @@ impl AuraWorkspaceView {
                     .map(|r| r.assertions.as_slice()),
                 active_tab.and_then(|t| t.spec_buffer.as_deref()),
                 active_tab.and_then(|t| t.spec_error.as_deref()),
+                self.state.is_body_format_dropdown_open,
                 cx,
                 |this, action, window, cx| {
                     this.handle_request_editor_action(action, window, cx);
@@ -182,6 +183,7 @@ impl AuraWorkspaceView {
                 self.state.active_response_tab,
                 self.state.active_body_mode,
                 self.state.response_language_override,
+                self.state.is_response_lang_dropdown_open,
                 self.state.response_soft_wrap,
                 &self.state.response_tree_collapsed,
                 &self.state.response_table_search,
@@ -191,8 +193,11 @@ impl AuraWorkspaceView {
                 self.state.response_bi_agg_op,
                 self.state.response_bi_x_col.as_deref(),
                 self.state.response_bi_y_col.as_deref(),
+                self.state.response_bi_pivot_col.as_deref(),
                 self.inputs.get_editor(&InputKey::ResponseBody),
                 self.inputs.get_editor(&InputKey::ResponseRaw),
+                self.inputs.get_editor(&InputKey::ResponseTests),
+                self.inputs.get_editor(&InputKey::ResponseConsole),
                 self.inputs.get_input(&InputKey::ResponseTableSearch),
                 cx,
                 |this, action, _window, cx| {
@@ -206,6 +211,15 @@ impl AuraWorkspaceView {
                         }
                         ResponsePaneAction::CycleLanguage(current) => {
                             this.state.cycle_response_language(current)
+                        }
+                        ResponsePaneAction::ToggleLanguageDropdown => {
+                            this.state.toggle_response_lang_dropdown()
+                        }
+                        ResponsePaneAction::DismissLanguageDropdown => {
+                            this.state.close_response_lang_dropdown()
+                        }
+                        ResponsePaneAction::SetLanguage(lang) => {
+                            this.state.set_response_language(lang)
                         }
                         ResponsePaneAction::ToggleSoftWrap => {
                             this.state.toggle_response_soft_wrap()
@@ -263,6 +277,9 @@ impl AuraWorkspaceView {
                         }
                         ResponsePaneAction::CycleBiYCol(num_cols) => {
                             this.state.cycle_response_bi_y_col(&num_cols);
+                        }
+                        ResponsePaneAction::CycleBiPivotCol(cols) => {
+                            this.state.cycle_response_bi_pivot_col(&cols);
                         }
                     }
                     cx.notify();

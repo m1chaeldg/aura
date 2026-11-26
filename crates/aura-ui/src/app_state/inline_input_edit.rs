@@ -133,11 +133,14 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthAwsField(field_idx) => {
                     if let aura_core::model::AuthConfig::AwsSigV4 {
+                        profile,
+                        credentials_path,
                         access_key,
                         secret_key,
                         region,
                         service,
                         session_token,
+                        ..
                     } = &mut tab.request.auth
                     {
                         match field_idx {
@@ -145,6 +148,14 @@ impl AuraAppState {
                             1 => secret_key.push(c),
                             2 => region.push(c),
                             3 => service.push(c),
+                            5 => profile.push(c),
+                            6 => {
+                                if let Some(cp) = credentials_path {
+                                    cp.push(c);
+                                } else {
+                                    *credentials_path = Some(c.to_string());
+                                }
+                            }
                             _ => {
                                 if let Some(st) = session_token {
                                     st.push(c);
@@ -342,11 +353,14 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthAwsField(field_idx) => {
                     if let aura_core::model::AuthConfig::AwsSigV4 {
+                        profile,
+                        credentials_path,
                         access_key,
                         secret_key,
                         region,
                         service,
                         session_token,
+                        ..
                     } = &mut tab.request.auth
                     {
                         match field_idx {
@@ -361,6 +375,17 @@ impl AuraAppState {
                             }
                             3 => {
                                 service.pop();
+                            }
+                            5 => {
+                                profile.pop();
+                            }
+                            6 => {
+                                if let Some(cp) = credentials_path {
+                                    cp.pop();
+                                    if cp.is_empty() {
+                                        *credentials_path = None;
+                                    }
+                                }
                             }
                             _ => {
                                 if let Some(st) = session_token {
@@ -504,16 +529,21 @@ impl AuraAppState {
             },
             ActiveInputTarget::AuthAwsField(field_idx) => match &tab.request.auth {
                 aura_core::model::AuthConfig::AwsSigV4 {
+                    profile,
+                    credentials_path,
                     access_key,
                     secret_key,
                     region,
                     service,
                     session_token,
+                    ..
                 } => match *field_idx {
                     0 => Some(access_key.clone()),
                     1 => Some(secret_key.clone()),
                     2 => Some(region.clone()),
                     3 => Some(service.clone()),
+                    5 => Some(profile.clone()),
+                    6 => Some(credentials_path.clone().unwrap_or_default()),
                     _ => Some(session_token.clone().unwrap_or_default()),
                 },
                 _ => None,
@@ -668,11 +698,14 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthAwsField(field_idx) => {
                     if let aura_core::model::AuthConfig::AwsSigV4 {
+                        profile,
+                        credentials_path,
                         access_key,
                         secret_key,
                         region,
                         service,
                         session_token,
+                        ..
                     } = &mut tab.request.auth
                     {
                         match field_idx {
@@ -680,6 +713,8 @@ impl AuraAppState {
                             1 => *secret_key = text,
                             2 => *region = text,
                             3 => *service = text,
+                            5 => *profile = text,
+                            6 => *credentials_path = if text.is_empty() { None } else { Some(text) },
                             _ => *session_token = if text.is_empty() { None } else { Some(text) },
                         }
                         tab.mark_dirty(true);

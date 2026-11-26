@@ -87,6 +87,7 @@ impl AuraAppState {
                     region,
                     service,
                     session_token,
+                    ..
                 } => {
                     self.editor_dialog = Some(EditorDialogState::EditAwsSigV4 {
                         access_key: access_key.clone(),

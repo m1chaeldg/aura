@@ -5,6 +5,8 @@ use aura_core::model::{AuraRequest, AuthConfig};
 use base64::Engine;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_kit::component::Sizable;
 
 impl RequestEditorView {
     #[allow(clippy::too_many_arguments)]
@@ -338,20 +340,93 @@ impl RequestEditorView {
                                 ),
                         )
                 }
-                Some(AuthConfig::AwsSigV4 { access_key, secret_key, region, service, session_token }) => {
-                    let fields = [
-                        ("Access Key", access_key.as_str(), 0),
-                        ("Secret Key", secret_key.as_str(), 1),
-                        ("Region", region.as_str(), 2),
-                        ("Service", service.as_str(), 3),
-                        ("Session Token", session_token.as_deref().unwrap_or(""), 4),
-                    ];
+                Some(AuthConfig::AwsSigV4 {
+                    use_profile,
+                    profile,
+                    credentials_path,
+                    access_key,
+                    secret_key,
+                    region,
+                    service,
+                    session_token,
+                }) => {
+                    let use_prof = *use_profile;
+                    let fields: Vec<(&str, &str, usize)> = if use_prof {
+                        vec![
+                            ("AWS Profile (defaults to 'default')", profile.as_str(), 5),
+                            (
+                                "Credentials File Path (defaults to ~/.aws/credentials)",
+                                credentials_path.as_deref().unwrap_or(""),
+                                6,
+                            ),
+                            ("Region (or from ~/.aws/config)", region.as_str(), 2),
+                            ("Service", service.as_str(), 3),
+                        ]
+                    } else {
+                        vec![
+                            ("Access Key", access_key.as_str(), 0),
+                            ("Secret Key", secret_key.as_str(), 1),
+                            ("Region", region.as_str(), 2),
+                            ("Service", service.as_str(), 3),
+                            ("Session Token", session_token.as_deref().unwrap_or(""), 4),
+                        ]
+                    };
 
                     div()
                         .flex()
                         .flex_col()
                         .gap_3()
-                        .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(muted).child("AWS SIGNATURE V4"))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(muted)
+                                        .child("AWS SIGNATURE V4"),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .child(
+                                            Button::new("aws-mode-profile")
+                                                .label("AWS Profile")
+                                                .xsmall()
+                                                .rounded(ButtonRounded::Small)
+                                                .when(use_prof, |b| b.primary())
+                                                .when(!use_prof, |b| b.secondary())
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_action(
+                                                        this,
+                                                        RequestEditorAction::ToggleAwsUseProfile(true),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new("aws-mode-manual")
+                                                .label("Manual Keys")
+                                                .xsmall()
+                                                .rounded(ButtonRounded::Small)
+                                                .when(!use_prof, |b| b.primary())
+                                                .when(use_prof, |b| b.secondary())
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    on_action(
+                                                        this,
+                                                        RequestEditorAction::ToggleAwsUseProfile(false),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                        ),
+                                ),
+                        )
                         .children(fields.into_iter().map(|(label, val, f_idx)| {
                             let is_f = matches!(active_input, Some(ActiveInputTarget::AuthAwsField(i)) if *i == f_idx);
                             div()
@@ -364,7 +439,7 @@ impl RequestEditorView {
                                     inputs.get_input(&InputKey::AuthAwsField(f_idx)),
                                     val,
                                     is_f,
-                                    false,
+                                    f_idx == 1,
                                     rgb(0x18181a),
                                     border,
                                     if is_f { rgb(0xffffff) } else { normal },

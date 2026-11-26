@@ -41,6 +41,25 @@ impl AuraWorkspaceView {
                         InputKey::ResponseTableSearch => {
                             self.state.set_response_table_search(val);
                         }
+                        InputKey::EnvName => {
+                            if let Some(ref mut env_ed) = self.state.environment_editor {
+                                env_ed.profile.name = val;
+                            }
+                        }
+                        InputKey::EnvVarKey(idx) => {
+                            if let Some(ref mut env_ed) = self.state.environment_editor {
+                                if let Some(v) = env_ed.profile.variables.get_mut(*idx) {
+                                    v.key = val;
+                                }
+                            }
+                        }
+                        InputKey::EnvVarValue(idx) => {
+                            if let Some(ref mut env_ed) = self.state.environment_editor {
+                                if let Some(v) = env_ed.profile.variables.get_mut(*idx) {
+                                    v.value = val;
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -102,6 +121,9 @@ impl AuraWorkspaceView {
                     self.state.set_input_text_for(target, val);
                     self.schedule_auto_save(cx);
                     cx.notify();
+                } else if matches!(key, InputKey::EnvCode) {
+                    self.state.update_environment_code_buffer(val);
+                    cx.notify();
                 }
             }
             InputEvent::Focus => {
@@ -135,6 +157,9 @@ impl AuraWorkspaceView {
                 if let Some(target) = key.to_active_target() {
                     self.state.set_input_text_for(target, val);
                     self.schedule_auto_save(cx);
+                    cx.notify();
+                } else if matches!(key, InputKey::EnvCode) {
+                    self.state.update_environment_code_buffer(val);
                     cx.notify();
                 }
             }

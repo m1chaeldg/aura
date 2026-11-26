@@ -391,6 +391,9 @@ impl AuraWorkspaceView {
                     );
                 }
                 AuthConfig::AwsSigV4 {
+                    use_profile: _,
+                    profile,
+                    credentials_path,
                     access_key,
                     secret_key,
                     region,
@@ -400,9 +403,11 @@ impl AuraWorkspaceView {
                     let fields = [
                         (0, access_key.as_str(), "Enter Access Key..."),
                         (1, secret_key.as_str(), "Enter Secret Key..."),
-                        (2, region.as_str(), "Enter Region..."),
-                        (3, service.as_str(), "Enter Service..."),
+                        (2, region.as_str(), "us-east-1"),
+                        (3, service.as_str(), "execute-api"),
                         (4, session_token.as_deref().unwrap_or(""), "Enter Session Token..."),
+                        (5, profile.as_str(), "default"),
+                        (6, credentials_path.as_deref().unwrap_or(""), "~/.aws/credentials"),
                     ];
                     for (idx, val, ph) in fields {
                         inputs.ensure_input(
@@ -534,6 +539,28 @@ impl AuraWorkspaceView {
                     cx,
                 );
 
+                let tests_text = crate::views::ResponsePaneView::format_tests_text(resp);
+                inputs.ensure_readonly_editor(
+                    InputKey::ResponseTests,
+                    &tests_text,
+                    "",
+                    "text",
+                    self.state.response_soft_wrap,
+                    window,
+                    cx,
+                );
+
+                let console_text = crate::views::ResponsePaneView::format_console_text(resp);
+                inputs.ensure_readonly_editor(
+                    InputKey::ResponseConsole,
+                    &console_text,
+                    "",
+                    "text",
+                    self.state.response_soft_wrap,
+                    window,
+                    cx,
+                );
+
                 inputs.ensure_input(
                     InputKey::ResponseTableSearch,
                     &self.state.response_table_search,
@@ -556,6 +583,53 @@ impl AuraWorkspaceView {
                 cx,
                 Self::handle_textarea_event,
             );
+        }
+
+        if let Some(ref env_ed) = self.state.environment_editor {
+            match env_ed.mode {
+                crate::app_state::EnvironmentEditorMode::Ui => {
+                    inputs.ensure_input(
+                        InputKey::EnvName,
+                        &env_ed.profile.name,
+                        "Environment name (e.g. Production)...",
+                        false,
+                        window,
+                        cx,
+                        Self::handle_input_event,
+                    );
+                    for (idx, var) in env_ed.profile.variables.iter().enumerate() {
+                        inputs.ensure_input(
+                            InputKey::EnvVarKey(idx),
+                            &var.key,
+                            "VARIABLE_KEY",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                        inputs.ensure_input(
+                            InputKey::EnvVarValue(idx),
+                            &var.value,
+                            "value",
+                            false,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                crate::app_state::EnvironmentEditorMode::Code => {
+                    inputs.ensure_editor(
+                        InputKey::EnvCode,
+                        &env_ed.code_buffer,
+                        "name = \"Production\"\n\n[variables]\nBASE_URL = \"https://api.example.com\"\n",
+                        InputKey::EnvCode.editor_language().unwrap_or("toml"),
+                        window,
+                        cx,
+                        Self::handle_editor_event,
+                    );
+                }
+            }
         }
 
         self.inputs = inputs;

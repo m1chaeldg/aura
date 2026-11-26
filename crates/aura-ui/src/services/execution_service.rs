@@ -74,6 +74,7 @@ impl ExecutionService {
             "Dispatching async request in execution service"
         );
         self.is_in_flight.store(true, Ordering::SeqCst);
+        let started_at = std::time::Instant::now();
 
         tokio::select! {
             res = execute_request(&request, &context) => {
@@ -85,7 +86,9 @@ impl ExecutionService {
                             method = %request.method,
                             url = %request.url,
                             status = resp.status,
+                            status_text = %resp.status_text,
                             duration_ms = resp.duration_ms,
+                            size_bytes = resp.size_bytes,
                             script_errors = resp.script_errors.len(),
                             "Execution service completed request"
                         );
@@ -95,6 +98,7 @@ impl ExecutionService {
                             target: "aura_ui::execution",
                             method = %request.method,
                             url = %request.url,
+                            elapsed_ms = started_at.elapsed().as_millis() as u64,
                             error = %format!("{e:#}"),
                             "Request execution failed"
                         );
@@ -108,6 +112,8 @@ impl ExecutionService {
                     target: "aura_ui::execution",
                     method = %request.method,
                     url = %request.url,
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    stage = "in_flight_http_or_script",
                     "Request execution cancelled cooperatively"
                 );
                 Err(anyhow::anyhow!("Request execution cancelled"))
