@@ -14,6 +14,7 @@ use gpui_kit::component::tree::TreeState;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod app_menus_and_modals;
 mod editor_actions;
 mod editor_dialog;
 mod execution_actions;
@@ -66,6 +67,8 @@ impl AuraWorkspaceView {
         view.state.vault_config = prefs.vault_config.clone();
         view.state.global_proxy = prefs.global_proxy.clone();
         view.state.cookie_jar = prefs.cookie_jar.clone();
+        view.state.update_check_frequency = prefs.update_check_frequency;
+        view.state.last_update_check_epoch = prefs.last_update_check_epoch;
         view.state.set_split_ratio(prefs.split_ratio);
         if prefs.layout_orientation.eq_ignore_ascii_case("vertical") {
             view.state.orientation = LayoutOrientation::Vertical;
@@ -95,6 +98,14 @@ impl AuraWorkspaceView {
             view.state.new_request();
         }
         view.spawn_git_refresh(cx);
+        let now_epoch = chrono::Utc::now().timestamp();
+        if crate::services::UpdateService::should_check_now(
+            view.state.update_check_frequency,
+            view.state.last_update_check_epoch,
+            now_epoch,
+        ) {
+            view.spawn_check_for_updates(false, cx);
+        }
         view
     }
 
@@ -146,6 +157,8 @@ impl AuraWorkspaceView {
         prefs.vault_config = self.state.vault_config.clone();
         prefs.global_proxy = self.state.global_proxy.clone();
         prefs.cookie_jar = self.state.cookie_jar.clone();
+        prefs.update_check_frequency = self.state.update_check_frequency;
+        prefs.last_update_check_epoch = self.state.last_update_check_epoch;
         if let Some(ref root) = self.state.workspace_store.workspace_root {
             prefs.last_workspace_path = Some(root.clone());
         }
@@ -225,7 +238,7 @@ impl Render for AuraWorkspaceView {
                     cx,
                     |this, idx, _window, cx| {
                         this.state.selected_palette_index = idx;
-                        let _ = this.state.execute_selected_palette_item();
+                        this.handle_palette_execution(cx);
                         cx.notify();
                     },
                     |this, _window, cx| {
@@ -240,6 +253,7 @@ impl Render for AuraWorkspaceView {
             });
 
         let root = self.apply_workspace_modals(root, cx);
+        let root = self.apply_app_info_and_settings_modals(root, cx);
         root.when(
             self.state.workspace_store.active_context_menu.is_some(),
             |el| {

@@ -3,6 +3,29 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Frequency for automatic GitHub Release update checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum UpdateCheckFrequency {
+    #[default]
+    OnStartup,
+    Daily,
+    Weekly,
+    Never,
+}
+
+impl UpdateCheckFrequency {
+    pub const ALL: [Self; 4] = [Self::OnStartup, Self::Daily, Self::Weekly, Self::Never];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::OnStartup => "On Startup",
+            Self::Daily => "Daily",
+            Self::Weekly => "Weekly",
+            Self::Never => "Never (Manual Only)",
+        }
+    }
+}
+
 /// Application preferences persisted across app launches.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuraPreferences {
@@ -24,6 +47,10 @@ pub struct AuraPreferences {
     pub global_proxy: aura_core::model::ProxyConfig,
     #[serde(default)]
     pub cookie_jar: aura_core::cookies::CookieJar,
+    #[serde(default)]
+    pub update_check_frequency: UpdateCheckFrequency,
+    #[serde(default)]
+    pub last_update_check_epoch: Option<i64>,
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -54,6 +81,8 @@ impl Default for AuraPreferences {
             vault_config: aura_engine::VaultConfig::default(),
             global_proxy: aura_core::model::ProxyConfig::default(),
             cookie_jar: aura_core::cookies::CookieJar::default(),
+            update_check_frequency: UpdateCheckFrequency::default(),
+            last_update_check_epoch: None,
         }
     }
 }

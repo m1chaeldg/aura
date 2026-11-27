@@ -274,7 +274,7 @@ impl AuraWorkspaceView {
                     self.dispatch_send_request(cx);
                 }
                 InputKey::CommandPaletteSearch => {
-                    let _ = self.state.execute_selected_palette_item();
+                    self.handle_palette_execution(cx);
                     cx.notify();
                 }
                 InputKey::RenameDialog => {

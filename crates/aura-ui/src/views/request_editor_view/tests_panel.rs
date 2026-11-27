@@ -3,6 +3,7 @@ use crate::app_state::ActiveInputTarget;
 use crate::input_registry::{InputKey, InputRegistry};
 use crate::theme::icon;
 use aura_core::model::{AuraRequest, TestAssertion};
+use aura_core::templating::TemplateContext;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::assets::IconName;
@@ -16,10 +17,12 @@ impl RequestEditorView {
     pub(super) fn render_tests_panel<V: 'static>(
         request: Option<&AuraRequest>,
         variable_rows: &[(String, String, bool)],
+        template_ctx: &TemplateContext,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         assertions: Option<&[TestAssertion]>,
         show_script_reference: bool,
+        reference_category: Option<&str>,
         border: Hsla,
         muted: Hsla,
         normal: Hsla,
@@ -161,6 +164,8 @@ impl RequestEditorView {
                     true,
                     request,
                     variable_rows,
+                    template_ctx,
+                    reference_category,
                     border,
                     muted,
                     normal,

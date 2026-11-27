@@ -148,6 +148,9 @@ impl AuraWorkspaceView {
             RequestEditorAction::ToggleScriptReference => {
                 self.state.toggle_script_reference();
             }
+            RequestEditorAction::SetReferenceCategory(cat) => {
+                self.state.reference_category = cat;
+            }
             RequestEditorAction::SearchInEditor(key) => {
                 self.inputs.focus_editor(&key, window, cx);
                 window.dispatch_action(Box::new(gpui_kit::component::input::Search), cx);

@@ -172,6 +172,7 @@ impl AuraWorkspaceView {
         is_horizontal: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let tpl_ctx = self.state.active_template_context();
         let editor_panel = resizable_panel()
             .size_range(px(180.)..Pixels::MAX)
             .child(RequestEditorView::render(
@@ -184,12 +185,14 @@ impl AuraWorkspaceView {
                 active_tab
                     .map(|t| t.variable_rows.as_slice())
                     .unwrap_or(&[]),
+                &tpl_ctx,
                 self.state.setting_timeout_error.as_deref(),
                 self.state.setting_max_redirects_error.as_deref(),
                 self.state.active_input_target.as_ref(),
                 &self.inputs,
                 self.state.active_script_sub_tab,
                 self.state.show_script_reference,
+                self.state.reference_category.as_deref(),
                 active_tab
                     .and_then(|t| t.response.as_ref())
                     .map(|r| r.assertions.as_slice()),

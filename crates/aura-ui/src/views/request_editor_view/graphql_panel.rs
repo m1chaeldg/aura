@@ -9,6 +9,7 @@ use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::input::Editor;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 use gpui_kit::base::Disableable as _;
@@ -248,7 +249,7 @@ impl RequestEditorView {
                         div()
                             .id("gql-schema-field-list")
                             .flex_1()
-                            .overflow_y_scroll()
+                            .overflow_y_scrollbar()
                             .flex()
                             .flex_col()
                             .gap_1()

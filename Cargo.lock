@@ -657,6 +657,7 @@ dependencies = [
  "lsp-types",
  "notify 6.1.1",
  "parking_lot",
+ "reqwest",
  "rfd",
  "serde",
  "serde_json",

@@ -9,6 +9,7 @@ use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 use std::collections::HashSet;
@@ -74,6 +75,9 @@ impl ResponsePaneView {
                     )
                     .child(
                         v_flex()
+                            .id("response-tree-scroll")
+                            .max_h(px(460.))
+                            .overflow_y_scrollbar()
                             .gap_0p5()
                             .p_2()
                             .rounded(radius)

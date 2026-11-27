@@ -1,6 +1,8 @@
 //! Main application state for UI coordinating Domain Stores and Services.
 
 use crate::keybindings::KeybindingPreset;
+use crate::preferences::UpdateCheckFrequency;
+use crate::services::ReleaseInfo;
 use crate::stores::{
     EditorTab, LayoutOrientation, ResponseBodyMode, ResponseTab, WorkspaceStore, WorkspaceTab,
 };
@@ -373,6 +375,16 @@ pub struct EnvironmentEditorState {
     pub code_error: Option<String>,
 }
 
+/// Top-bar dropdown menu categories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopMenuKind {
+    File,
+    Workspace,
+    View,
+    Tools,
+    Help,
+}
+
 /// Command palette entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandPaletteItem {
@@ -483,6 +495,8 @@ pub struct AuraAppState {
     #[serde(skip)]
     pub show_script_reference: bool,
     #[serde(skip)]
+    pub reference_category: Option<String>,
+    #[serde(skip)]
     pub setting_timeout_draft: Option<String>,
     #[serde(skip)]
     pub setting_timeout_error: Option<String>,
@@ -512,6 +526,28 @@ pub struct AuraAppState {
     pub is_security_vault_modal_open: bool,
     #[serde(skip)]
     pub is_cookie_modal_open: bool,
+    #[serde(skip)]
+    pub open_top_menu: Option<TopMenuKind>,
+    #[serde(skip)]
+    pub is_settings_modal_open: bool,
+    #[serde(skip)]
+    pub is_about_modal_open: bool,
+    #[serde(skip)]
+    pub is_help_modal_open: bool,
+    #[serde(skip)]
+    pub is_update_modal_open: bool,
+    #[serde(default)]
+    pub update_check_frequency: UpdateCheckFrequency,
+    #[serde(default)]
+    pub last_update_check_epoch: Option<i64>,
+    #[serde(skip)]
+    pub update_checking: bool,
+    #[serde(skip)]
+    pub update_installing: bool,
+    #[serde(skip)]
+    pub update_available: Option<ReleaseInfo>,
+    #[serde(skip)]
+    pub update_status_message: Option<String>,
     #[serde(skip)]
     pub cookie_domain_filter: String,
     #[serde(skip)]
@@ -739,6 +775,7 @@ impl Default for AuraAppState {
             active_input_target: None,
             active_script_sub_tab: ScriptSubTab::PreRequest,
             show_script_reference: false,
+            reference_category: None,
             setting_timeout_draft: None,
             setting_timeout_error: None,
             setting_max_redirects_draft: None,
@@ -754,6 +791,17 @@ impl Default for AuraAppState {
             is_oauth2_in_flight: false,
             is_security_vault_modal_open: false,
             is_cookie_modal_open: false,
+            open_top_menu: None,
+            is_settings_modal_open: false,
+            is_about_modal_open: false,
+            is_help_modal_open: false,
+            is_update_modal_open: false,
+            update_check_frequency: UpdateCheckFrequency::default(),
+            last_update_check_epoch: None,
+            update_checking: false,
+            update_installing: false,
+            update_available: None,
+            update_status_message: None,
             cookie_domain_filter: String::new(),
             draft_cookie_domain: String::new(),
             draft_cookie_path: "/".to_string(),

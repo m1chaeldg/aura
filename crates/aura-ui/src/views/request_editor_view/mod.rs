@@ -9,10 +9,12 @@ use aura_core::graphql::GraphQLSchema;
 use aura_core::grpc::ProtoSchema;
 use aura_core::model::{AuraRequest, HttpMethod, TestAssertion};
 use aura_core::soap::SoapVersion;
+use aura_core::templating::TemplateContext;
 use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 
@@ -132,6 +134,7 @@ pub enum RequestEditorAction {
     SearchInEditor(InputKey),
     TriggerAutocomplete(InputKey),
     ToggleScriptReference,
+    SetReferenceCategory(Option<String>),
     InsertDynamicSnippet(InputKey, String),
     // Protocols: GraphQL, WebSocket, gRPC, SOAP/WSDL
     IntrospectGraphQLSchema,
@@ -191,12 +194,14 @@ impl RequestEditorView {
         active_tab: EditorTab,
         request: Option<&AuraRequest>,
         variable_rows: &[(String, String, bool)],
+        template_ctx: &TemplateContext,
         setting_timeout_error: Option<&str>,
         setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
         show_script_reference: bool,
+        reference_category: Option<&str>,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
@@ -283,18 +288,21 @@ impl RequestEditorView {
                 div()
                     .id("editor-panel-scroll")
                     .flex_1()
+                    .min_h_0()
                     .p_4()
-                    .overflow_y_scroll()
+                    .overflow_y_scrollbar()
                     .child(Self::render_panel_content(
                         active_tab,
                         request,
                         variable_rows,
+                        template_ctx,
                         setting_timeout_error,
                         setting_max_redirects_error,
                         active_input,
                         inputs,
                         script_sub_tab,
                         show_script_reference,
+                        reference_category,
                         test_assertions,
                         spec_buffer,
                         spec_error,
@@ -446,12 +454,14 @@ impl RequestEditorView {
         tab: EditorTab,
         request: Option<&AuraRequest>,
         variable_rows: &[(String, String, bool)],
+        template_ctx: &TemplateContext,
         setting_timeout_error: Option<&str>,
         setting_max_redirects_error: Option<&str>,
         active_input: Option<&ActiveInputTarget>,
         inputs: &InputRegistry,
         script_sub_tab: ScriptSubTab,
         show_script_reference: bool,
+        reference_category: Option<&str>,
         test_assertions: Option<&[TestAssertion]>,
         spec_buffer: Option<&str>,
         spec_error: Option<&str>,
@@ -519,6 +529,7 @@ impl RequestEditorView {
             ),
             EditorTab::Variables => Self::render_variables_panel(
                 variable_rows,
+                template_ctx,
                 active_input,
                 inputs,
                 border,
@@ -530,10 +541,12 @@ impl RequestEditorView {
             EditorTab::Scripts => Self::render_scripts_panel(
                 request,
                 variable_rows,
+                template_ctx,
                 active_input,
                 inputs,
                 script_sub_tab,
                 show_script_reference,
+                reference_category,
                 border,
                 muted,
                 normal,
@@ -543,10 +556,12 @@ impl RequestEditorView {
             EditorTab::Tests => Self::render_tests_panel(
                 request,
                 variable_rows,
+                template_ctx,
                 active_input,
                 inputs,
                 test_assertions,
                 show_script_reference,
+                reference_category,
                 border,
                 muted,
                 normal,
@@ -580,7 +595,9 @@ impl RequestEditorView {
                     spec_error,
                     request,
                     variable_rows,
+                    template_ctx,
                     show_script_reference,
+                    reference_category,
                     active_input,
                     inputs,
                     border,

@@ -1,6 +1,4 @@
-use super::{
-    AuraAppState, CommandPaletteItem,
-};
+use super::{AuraAppState, CommandPaletteItem, TopMenuKind};
 use crate::keybindings::{Action, KeybindingPreset};
 use crate::stores::LayoutOrientation;
 use aura_core::model::HttpMethod;
@@ -138,10 +136,26 @@ impl AuraAppState {
         self.keybinding_preset = preset;
     }
 
-    /// Filter items for command palette
+    /// Toggle top-bar dropdown menu
+    pub fn toggle_top_menu(&mut self, menu: TopMenuKind) {
+        if self.open_top_menu == Some(menu) {
+            self.open_top_menu = None;
+        } else {
+            self.open_top_menu = Some(menu);
+            self.is_env_dropdown_open = false;
+        }
+    }
+
+    /// Close any open top-bar dropdown menu
+    pub fn close_top_menu(&mut self) {
+        self.open_top_menu = None;
+    }
+
+    /// Filter items for command palette (open tabs + application commands)
     pub fn filtered_palette_items(&self) -> Vec<CommandPaletteItem> {
         let q = self.command_palette_search.to_lowercase();
-        self.tabs
+        let mut items: Vec<CommandPaletteItem> = self
+            .tabs
             .iter()
             .filter(|t| {
                 q.is_empty()
@@ -154,7 +168,47 @@ impl AuraAppState {
                 subtitle: t.request.url.clone(),
                 method: Some(t.method),
             })
-            .collect()
+            .collect();
+
+        const APP_COMMANDS: &[(&str, &str, &str)] = &[
+            ("cmd:new_request", "File: New Request", "Create a new request tab (Ctrl+N)"),
+            ("cmd:save_request", "File: Save Request", "Save active request to disk (Ctrl+S)"),
+            ("cmd:close_tab", "File: Close Active Tab", "Close current request tab (Ctrl+W)"),
+            ("cmd:export_code", "File: Export Request Code", "Generate cURL, fetch, Python, Rust, or Go"),
+            ("cmd:open_workspace", "Workspace: Open Folder...", "Open a workspace directory"),
+            ("cmd:new_environment", "Workspace: New Environment...", "Create a new environment profile"),
+            ("cmd:import_wsdl", "Workspace: Import WSDL...", "Import SOAP WSDL into collection"),
+            ("cmd:git_sync", "Workspace: Git Status & Sync", "Open built-in Git diff, commit & push/pull"),
+            ("cmd:toggle_sidebar", "View: Toggle Sidebar", "Show or hide workspace tree"),
+            ("cmd:toggle_layout", "View: Toggle Split Orientation", "Switch Side-by-Side / Stacked"),
+            ("cmd:reset_divider", "View: Reset Split 50/50", "Reset pane divider to 50%"),
+            ("cmd:toggle_logs", "View: Toggle Diagnostic Logs", "Open or close system log viewer"),
+            ("cmd:cookies", "Tools: Cookie Jar Manager", "Inspect, edit, and clear cookies"),
+            ("cmd:proxy", "Tools: Global Proxy Settings", "Configure HTTP / HTTPS / SOCKS5 proxy"),
+            ("cmd:capture_proxy", "Tools: Capture Proxy & Interceptor", "Local MITM capture proxy & rules"),
+            ("cmd:security_vault", "Tools: Security Vaults & mTLS", "Configure HashiCorp Vault, AWS SM & certs"),
+            ("cmd:load_tester", "Tools: Load Tester", "Run JMeter-style load & SLA tests"),
+            ("cmd:settings", "Settings: Preferences & Auto-Update", "Configure auto-save and GitHub release checks"),
+            ("cmd:help", "Help: Documentation & Shortcuts", "View Aura guide, variables, and shortcuts"),
+            ("cmd:check_updates", "Help: Check for Updates", "Check GitHub Releases for new Aura version"),
+            ("cmd:about", "Help: About Aura & Version", "Show version, license, and build info"),
+        ];
+
+        for (id, title, subtitle) in APP_COMMANDS {
+            if q.is_empty()
+                || title.to_lowercase().contains(&q)
+                || subtitle.to_lowercase().contains(&q)
+            {
+                items.push(CommandPaletteItem {
+                    id: (*id).to_string(),
+                    title: (*title).to_string(),
+                    subtitle: (*subtitle).to_string(),
+                    method: None,
+                });
+            }
+        }
+
+        items
     }
 
     /// Move down in command palette list

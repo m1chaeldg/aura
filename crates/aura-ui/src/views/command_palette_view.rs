@@ -3,12 +3,12 @@
 use crate::app_state::AuraAppState;
 use crate::templating_ui::render_templated_text;
 use crate::theme::{icon, method_tag_variant};
-use aura_core::model::HttpMethod;
 use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::list::ListItem;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::separator::Separator;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{ActiveTheme as _, Sizable, ThemeStyled as _, h_flex, v_flex};
@@ -73,10 +73,13 @@ impl CommandPaletteView {
                             .into_any_element()
                     } else {
                         v_flex()
+                            .id("command-palette-list-scroll")
+                            .max_h(px(360.))
+                            .overflow_y_scrollbar()
                             .py_1()
                             .children(filtered.iter().enumerate().map(|(idx, item)| {
                                 let is_sel = idx == sel_idx;
-                                let item_method = item.method.unwrap_or(HttpMethod::GET);
+                                let item_method = item.method;
                                 let subtitle = item.subtitle.clone();
                                 let tpl_ctx_row = tpl_ctx.clone();
 
@@ -107,13 +110,15 @@ impl CommandPaletteView {
                                 .child(
                                     h_flex()
                                         .gap_2()
-                                        .child(
+                                        .child(if let Some(m) = item_method {
                                             Tag::new()
-                                                .with_variant(method_tag_variant(&item_method))
+                                                .with_variant(method_tag_variant(&m))
                                                 .outline()
                                                 .xsmall()
-                                                .child(item_method.as_str()),
-                                        )
+                                                .child(m.as_str())
+                                        } else {
+                                            Tag::info().outline().xsmall().child("CMD")
+                                        })
                                         .child(
                                             div()
                                                 .text_sm()

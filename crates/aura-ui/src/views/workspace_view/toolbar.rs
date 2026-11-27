@@ -45,13 +45,21 @@ impl AuraWorkspaceView {
                             }),
                     )
                     .child(Tag::primary().small().child("Aura"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(cx.theme().foreground)
-                            .child("REST API Client"),
-                    ),
+                    .child(self.render_top_menu_bar(cx))
+                    .when_some(self.state.update_available.as_ref(), |el, info| {
+                        el.child(
+                            Button::new("toolbar-update-available-btn")
+                                .label(format!("Update {}", info.tag_name))
+                                .xsmall()
+                                .primary()
+                                .rounded(ButtonRounded::Small)
+                                .tooltip("A new version of Aura is available on GitHub Releases")
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.state.is_update_modal_open = true;
+                                    cx.notify();
+                                })),
+                        )
+                    }),
             )
             .content(
                 ToolbarGroup::new("workspace-toolbar-actions")
@@ -397,7 +405,7 @@ impl AuraWorkspaceView {
             )
     }
 
-    fn spawn_open_workspace_picker(cx: &mut Context<Self>) {
+    pub(super) fn spawn_open_workspace_picker(cx: &mut Context<Self>) {
         cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {

@@ -19,6 +19,7 @@ use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyTitle};
 use gpui_kit::component::input::{Editor, EditorState, InputState};
 use gpui_kit::component::list::ListItem;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, ThemeStyled as _, h_flex, v_flex};
@@ -424,8 +425,7 @@ impl ResponsePaneView {
                     .min_w_0()
                     .min_h_0()
                     .p_4()
-                    .overflow_y_scroll()
-                    .overflow_x_hidden()
+                    .overflow_y_scrollbar()
                     .child(Self::render_tab_content(
                         resp,
                         effective_tab,

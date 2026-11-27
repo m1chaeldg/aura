@@ -9,6 +9,7 @@ use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader};
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
 impl ResponsePaneView {
@@ -89,11 +90,13 @@ impl ResponsePaneView {
                     )
                     .child(
                         v_flex()
+                            .id("response-table-scroll")
+                            .max_h(px(460.))
+                            .overflow_y_scrollbar()
                             .rounded(radius)
                             .border_1()
                             .border_color(border)
                             .bg(table_bg)
-                            .overflow_hidden()
                             .child(
                                 h_flex()
                                     .bg(head_bg)
