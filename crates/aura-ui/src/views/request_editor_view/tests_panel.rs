@@ -9,6 +9,7 @@ use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{ActiveTheme as _, Sizable, h_flex, v_flex};
 
@@ -45,6 +46,8 @@ impl RequestEditorView {
         let has_results = total_tests > 0;
 
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_3()
             .child(
                 h_flex()
@@ -91,26 +94,33 @@ impl RequestEditorView {
                             ),
                     ),
             )
-            .child(Self::render_declarative_assertions_section(
-                decl_rules,
-                active_input,
-                inputs,
-                border,
-                muted,
-                normal,
-                cx,
-                on_action,
-            ))
-            .child(Self::render_native_extractors_section(
-                extractors,
-                active_input,
-                inputs,
-                border,
-                muted,
-                normal,
-                cx,
-                on_action,
-            ))
+            .child(
+                v_flex()
+                    .id("tests-assertions-extractors-scroll")
+                    .gap_3()
+                    .max_h(px(260.0))
+                    .overflow_y_scrollbar()
+                    .child(Self::render_declarative_assertions_section(
+                        decl_rules,
+                        active_input,
+                        inputs,
+                        border,
+                        muted,
+                        normal,
+                        cx,
+                        on_action,
+                    ))
+                    .child(Self::render_native_extractors_section(
+                        extractors,
+                        active_input,
+                        inputs,
+                        border,
+                        muted,
+                        normal,
+                        cx,
+                        on_action,
+                    )),
+            )
             .child(
                 div()
                     .text_xs()
@@ -148,31 +158,26 @@ impl RequestEditorView {
                         on_action,
                     )),
             )
-            .child(Self::render_inline_editor(
+            .child(Self::render_editor_with_reference_split(
+                "tests-reference-split",
                 "direct-test-editor",
+                InputKey::TestScript,
                 inputs.get_editor(&InputKey::TestScript),
                 tests,
-                px(260.0),
                 is_focused,
+                show_script_reference,
+                false,
+                true,
+                request,
+                variable_rows,
+                template_ctx,
+                reference_category,
                 border,
+                muted,
                 normal,
+                cx,
+                on_action,
             ))
-            .when(show_script_reference, |el| {
-                el.child(Self::render_reference_panel(
-                    InputKey::TestScript,
-                    false,
-                    true,
-                    request,
-                    variable_rows,
-                    template_ctx,
-                    reference_category,
-                    border,
-                    muted,
-                    normal,
-                    cx,
-                    on_action,
-                ))
-            })
     }
 
     pub(super) fn render_test_snippet_chip<V: 'static>(

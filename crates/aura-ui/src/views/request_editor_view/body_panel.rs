@@ -167,6 +167,8 @@ impl RequestEditorView {
             });
 
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_3()
             .child(h_flex().justify_between().gap_2().child(format_dropdown))
             .child(match body {
@@ -335,6 +337,8 @@ impl RequestEditorView {
         let byte_len = content.len();
 
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .child(
                 h_flex()
@@ -388,11 +392,11 @@ impl RequestEditorView {
                             ),
                     ),
             )
-            .child(Self::render_inline_editor(
+            .child(Self::render_inline_editor_flex(
                 "direct-body-editor",
                 inputs.get_editor(&InputKey::BodyText),
                 content,
-                px(260.0),
+                px(240.0),
                 is_focused,
                 border,
                 normal,

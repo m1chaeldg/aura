@@ -14,9 +14,10 @@ use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState};
+use gpui_kit::component::resizable::{resizable_panel, v_resizable};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex, v_flex};
 
 
 mod auth_panel;
@@ -284,39 +285,70 @@ impl RequestEditorView {
                     }),
             )
             // Content Panel
-            .child(
-                div()
-                    .id("editor-panel-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .p_4()
-                    .overflow_y_scrollbar()
-                    .child(Self::render_panel_content(
-                        active_tab,
-                        request,
-                        variable_rows,
-                        template_ctx,
-                        setting_timeout_error,
-                        setting_max_redirects_error,
-                        active_input,
-                        inputs,
-                        script_sub_tab,
-                        show_script_reference,
-                        reference_category,
-                        test_assertions,
-                        spec_buffer,
-                        spec_error,
-                        is_body_format_dropdown_open,
-                        graphql_schema,
-                        is_graphql_introspecting,
-                        show_graphql_schema,
-                        grpc_schema,
-                        is_ws_connected,
-                        ws_composer_text,
-                        cx,
-                        on_action,
-                    )),
-            )
+            .child({
+                let is_full_height_body = matches!(
+                    request.map(|r| (r.protocol, &r.body)),
+                    Some((
+                        aura_core::model::RequestProtocol::Http,
+                        aura_core::model::BodyType::Json(_)
+                            | aura_core::model::BodyType::Xml(_)
+                            | aura_core::model::BodyType::Text(_)
+                            | aura_core::model::BodyType::Raw { .. }
+                    ))
+                );
+                let is_full_height_panel = matches!(
+                    active_tab,
+                    EditorTab::Scripts | EditorTab::Tests | EditorTab::Spec
+                ) || (active_tab == EditorTab::Body && is_full_height_body);
+
+                let content = Self::render_panel_content(
+                    active_tab,
+                    request,
+                    variable_rows,
+                    template_ctx,
+                    setting_timeout_error,
+                    setting_max_redirects_error,
+                    active_input,
+                    inputs,
+                    script_sub_tab,
+                    show_script_reference,
+                    reference_category,
+                    test_assertions,
+                    spec_buffer,
+                    spec_error,
+                    is_body_format_dropdown_open,
+                    graphql_schema,
+                    is_graphql_introspecting,
+                    show_graphql_schema,
+                    grpc_schema,
+                    is_ws_connected,
+                    ws_composer_text,
+                    cx,
+                    on_action,
+                );
+
+                if is_full_height_panel {
+                    div()
+                        .id("editor-panel-flex")
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .p_4()
+                        .child(content)
+                        .into_any_element()
+                } else {
+                    div()
+                        .id("editor-panel-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .p_4()
+                        .overflow_y_scrollbar()
+                        .child(content)
+                        .into_any_element()
+                }
+            })
     }
 
     pub(super) fn render_inline_input(
@@ -358,35 +390,122 @@ impl RequestEditorView {
         }
     }
 
-    pub(super) fn render_inline_editor(
+    pub(super) fn render_inline_editor_flex(
         id: impl Into<ElementId>,
         editor: Option<&Entity<EditorState>>,
         fallback: &str,
-        height: Pixels,
+        min_height: Pixels,
         _is_focused: bool,
         border: Hsla,
         text_color: Hsla,
     ) -> AnyElement {
         if let Some(state) = editor {
-            Editor::new(state)
-                .h(height)
+            div()
+                .flex_1()
+                .min_h(min_height)
                 .w_full()
-                .text_xs()
+                .child(Editor::new(state).size_full().text_xs())
                 .into_any_element()
         } else {
             div()
                 .id(id)
+                .flex_1()
                 .p_2()
                 .rounded_md()
                 .border_1()
                 .border_color(border)
-                .min_h(height)
+                .min_h(min_height)
                 .font_family("monospace")
                 .text_xs()
                 .text_color(text_color)
                 .child(fallback.to_string())
                 .into_any_element()
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn render_editor_with_reference_split<V: 'static>(
+        split_id: &'static str,
+        editor_id: &'static str,
+        target_key: InputKey,
+        editor: Option<&Entity<EditorState>>,
+        fallback: &str,
+        is_focused: bool,
+        show_reference: bool,
+        is_spec: bool,
+        include_response: bool,
+        request: Option<&AuraRequest>,
+        variable_rows: &[(String, String, bool)],
+        template_ctx: &TemplateContext,
+        reference_category: Option<&str>,
+        border: Hsla,
+        muted: Hsla,
+        normal: Hsla,
+        cx: &mut Context<V>,
+        on_action: impl Fn(&mut V, RequestEditorAction, &mut Window, &mut Context<V>) + 'static + Copy,
+    ) -> AnyElement {
+        if !show_reference {
+            return Self::render_inline_editor_flex(
+                editor_id,
+                editor,
+                fallback,
+                px(240.0),
+                is_focused,
+                border,
+                normal,
+            );
+        }
+
+        let editor_pane = v_flex().size_full().min_h_0().child(
+            Self::render_inline_editor_flex(
+                editor_id,
+                editor,
+                fallback,
+                px(120.0),
+                is_focused,
+                border,
+                normal,
+            ),
+        );
+
+        let reference_pane = div()
+            .id((split_id, 1usize))
+            .size_full()
+            .min_h_0()
+            .overflow_y_scrollbar()
+            .child(Self::render_reference_panel(
+                target_key,
+                is_spec,
+                include_response,
+                request,
+                variable_rows,
+                template_ctx,
+                reference_category,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            ));
+
+        div()
+            .flex_1()
+            .min_h(px(340.0))
+            .w_full()
+            .child(
+                v_resizable(split_id)
+                    .child(
+                        resizable_panel()
+                            .size_range(px(140.)..Pixels::MAX)
+                            .child(editor_pane),
+                    )
+                    .child(
+                        resizable_panel()
+                            .size_range(px(140.)..Pixels::MAX)
+                            .child(reference_pane),
+                    ),
+            )
+            .into_any_element()
     }
 
     pub(super) fn render_editor_tools<V: 'static>(

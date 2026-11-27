@@ -45,6 +45,8 @@ impl ResponsePaneView {
                 let radius = cx.theme().radius;
 
                 v_flex()
+                    .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .min_w_0()
                     .child(
@@ -76,7 +78,8 @@ impl ResponsePaneView {
                     .child(
                         v_flex()
                             .id("response-tree-scroll")
-                            .max_h(px(460.))
+                            .flex_1()
+                            .min_h(px(240.0))
                             .overflow_y_scrollbar()
                             .gap_0p5()
                             .p_2()

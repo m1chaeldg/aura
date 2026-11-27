@@ -47,6 +47,8 @@ impl RequestEditorView {
         };
 
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_3()
             .child(
                 h_flex()
@@ -180,31 +182,26 @@ impl RequestEditorView {
                         on_action,
                     )),
             )
-            .child(Self::render_inline_editor(
+            .child(Self::render_editor_with_reference_split(
+                "scripts-reference-split",
                 "direct-script-editor",
+                target_key.clone(),
                 inputs.get_editor(&target_key),
                 script_content,
-                px(260.0),
                 is_focused,
+                show_script_reference,
+                false,
+                !is_pre,
+                request,
+                variable_rows,
+                template_ctx,
+                reference_category,
                 border,
+                muted,
                 normal,
+                cx,
+                on_action,
             ))
-            .when(show_script_reference, |el| {
-                el.child(Self::render_reference_panel(
-                    target_key.clone(),
-                    false,
-                    !is_pre,
-                    request,
-                    variable_rows,
-                    template_ctx,
-                    reference_category,
-                    border,
-                    muted,
-                    normal,
-                    cx,
-                    on_action,
-                ))
-            })
     }
 
     pub(super) fn render_snippet_chip<V: 'static>(

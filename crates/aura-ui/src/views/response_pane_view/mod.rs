@@ -418,41 +418,65 @@ impl ResponsePaneView {
                         bar
                     }),
             )
-            .child(
-                div()
-                    .id("response-panel-scroll")
-                    .flex_1()
-                    .min_w_0()
-                    .min_h_0()
-                    .p_4()
-                    .overflow_y_scrollbar()
-                    .child(Self::render_tab_content(
-                        resp,
-                        effective_tab,
-                        body_mode,
-                        language_override,
-                        is_lang_dropdown_open,
-                        soft_wrap,
-                        tree_collapsed,
-                        table_search,
-                        table_sort_col,
-                        table_sort_asc,
-                        bi_chart_type,
-                        bi_agg_op,
-                        bi_x_col,
-                        bi_y_col,
-                        bi_pivot_col,
-                        body_editor,
-                        raw_editor,
-                        tests_editor,
-                        console_editor,
-                        table_search_input,
-                        border,
-                        muted,
-                        cx,
-                        on_action,
-                    )),
-            )
+            .child({
+                let is_full_height_tab = matches!(
+                    effective_tab,
+                    ResponseTab::Body
+                        | ResponseTab::Json
+                        | ResponseTab::Raw
+                        | ResponseTab::Tests
+                        | ResponseTab::Console
+                        | ResponseTab::Tree
+                );
+                let content = Self::render_tab_content(
+                    resp,
+                    effective_tab,
+                    body_mode,
+                    language_override,
+                    is_lang_dropdown_open,
+                    soft_wrap,
+                    tree_collapsed,
+                    table_search,
+                    table_sort_col,
+                    table_sort_asc,
+                    bi_chart_type,
+                    bi_agg_op,
+                    bi_x_col,
+                    bi_y_col,
+                    bi_pivot_col,
+                    body_editor,
+                    raw_editor,
+                    tests_editor,
+                    console_editor,
+                    table_search_input,
+                    border,
+                    muted,
+                    cx,
+                    on_action,
+                );
+                if is_full_height_tab {
+                    div()
+                        .id("response-panel-flex")
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .p_4()
+                        .child(content)
+                        .into_any_element()
+                } else {
+                    div()
+                        .id("response-panel-scroll")
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .p_4()
+                        .overflow_y_scrollbar()
+                        .child(content)
+                        .into_any_element()
+                }
+            })
     }
 
     fn render_phase_timing_bar(
@@ -637,6 +661,19 @@ impl ResponsePaneView {
         }
     }
 
+    fn render_readonly_editor_box(ed: &Entity<EditorState>, border: Hsla) -> AnyElement {
+        div()
+            .flex_1()
+            .min_h(px(240.0))
+            .w_full()
+            .rounded_md()
+            .border_1()
+            .border_color(border)
+            .overflow_hidden()
+            .child(Editor::new(ed).readonly(true).size_full())
+            .into_any_element()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_body_tab<V: 'static>(
         resp: &AuraResponse,
@@ -677,6 +714,8 @@ impl ResponsePaneView {
         div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .min_w_0()
             .child(
@@ -855,15 +894,7 @@ impl ResponsePaneView {
                     .child("// Response body is empty")
                     .into_any_element()
             } else if let Some(ed) = body_editor {
-                div()
-                    .h(px(360.0))
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(border)
-                    .overflow_hidden()
-                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
-                    .into_any_element()
+                Self::render_readonly_editor_box(ed, border)
             } else {
                 div()
                     .p_2()
@@ -894,6 +925,8 @@ impl ResponsePaneView {
         div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .min_w_0()
             .child(
@@ -904,15 +937,7 @@ impl ResponsePaneView {
                     .child("FULL RAW HTTP PAYLOAD"),
             )
             .child(if let Some(ed) = raw_editor {
-                div()
-                    .h(px(360.0))
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(border)
-                    .overflow_hidden()
-                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
-                    .into_any_element()
+                Self::render_readonly_editor_box(ed, border)
             } else {
                 div()
                     .p_2()
@@ -1019,6 +1044,8 @@ impl ResponsePaneView {
         div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .min_w_0()
             .child(
@@ -1096,15 +1123,7 @@ impl ResponsePaneView {
                     )
                     .into_any_element()
             } else if let Some(ed) = tests_editor {
-                div()
-                    .h(px(360.0))
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(border)
-                    .overflow_hidden()
-                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
-                    .into_any_element()
+                Self::render_readonly_editor_box(ed, border)
             } else {
                 div()
                     .p_2()
@@ -1140,6 +1159,8 @@ impl ResponsePaneView {
         div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .min_w_0()
             .child(
@@ -1207,15 +1228,7 @@ impl ResponsePaneView {
                     )
                     .into_any_element()
             } else if let Some(ed) = console_editor {
-                div()
-                    .h(px(360.0))
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(border)
-                    .overflow_hidden()
-                    .child(Editor::new(ed).readonly(true).h(px(360.0)).w_full())
-                    .into_any_element()
+                Self::render_readonly_editor_box(ed, border)
             } else {
                 div()
                     .p_2()

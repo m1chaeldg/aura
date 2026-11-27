@@ -4,7 +4,6 @@ use crate::input_registry::{InputKey, InputRegistry};
 use crate::theme::icon;
 use aura_core::model::AuraRequest;
 use aura_core::templating::TemplateContext;
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
@@ -34,6 +33,8 @@ impl RequestEditorView {
         let line_count = spec_content.lines().count().max(1);
 
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .child(
                 h_flex()
@@ -118,30 +119,25 @@ impl RequestEditorView {
                             ),
                     ),
             )
-            .child(Self::render_inline_editor(
+            .child(Self::render_editor_with_reference_split(
+                "spec-reference-split",
                 "direct-spec-editor",
+                InputKey::SpecText,
                 inputs.get_editor(&InputKey::SpecText),
                 spec_content,
-                px(320.0),
                 is_focused,
+                show_script_reference,
+                true,
+                true,
+                request,
+                variable_rows,
+                template_ctx,
+                reference_category,
                 border,
+                muted,
                 normal,
+                cx,
+                on_action,
             ))
-            .when(show_script_reference, |el| {
-                el.child(Self::render_reference_panel(
-                    InputKey::SpecText,
-                    true,
-                    true,
-                    request,
-                    variable_rows,
-                    template_ctx,
-                    reference_category,
-                    border,
-                    muted,
-                    normal,
-                    cx,
-                    on_action,
-                ))
-            })
     }
 }
