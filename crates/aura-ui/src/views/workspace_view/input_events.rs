@@ -261,6 +261,37 @@ impl AuraWorkspaceView {
                         InputKey::LoadSlaErrorPct => {
                             self.state.load_sla_err_str = val;
                         }
+                        InputKey::LoadProfileName => {
+                            self.state.load_profile_name_str = val;
+                        }
+                        InputKey::LoadReqWeight(idx) => {
+                            if let Some(entry) = self.state.load_discovered_requests.get_mut(*idx) {
+                                let flow = entry.request.flow.get_or_insert_with(Default::default);
+                                flow.weight_percent = val.trim().parse::<u8>().ok();
+                                self.state.sync_override_for_request_idx(*idx);
+                            }
+                        }
+                        InputKey::LoadReqLoop(idx) => {
+                            if let Some(entry) = self.state.load_discovered_requests.get_mut(*idx) {
+                                let flow = entry.request.flow.get_or_insert_with(Default::default);
+                                flow.loop_count = val.trim().parse::<u32>().ok().filter(|v| *v >= 1);
+                                self.state.sync_override_for_request_idx(*idx);
+                            }
+                        }
+                        InputKey::LoadReqIf(idx) => {
+                            if let Some(entry) = self.state.load_discovered_requests.get_mut(*idx) {
+                                let flow = entry.request.flow.get_or_insert_with(Default::default);
+                                flow.condition_if = if val.trim().is_empty() { None } else { Some(val) };
+                                self.state.sync_override_for_request_idx(*idx);
+                            }
+                        }
+                        InputKey::LoadReqWhile(idx) => {
+                            if let Some(entry) = self.state.load_discovered_requests.get_mut(*idx) {
+                                let flow = entry.request.flow.get_or_insert_with(Default::default);
+                                flow.loop_while = if val.trim().is_empty() { None } else { Some(val) };
+                                self.state.sync_override_for_request_idx(*idx);
+                            }
+                        }
                         InputKey::AiPromptInput => {
                             self.state.ai_prompt_draft = val;
                         }

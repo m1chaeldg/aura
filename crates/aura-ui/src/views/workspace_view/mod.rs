@@ -27,6 +27,7 @@ mod key_handler;
 mod load_actions;
 mod load_data_sla_panel;
 mod load_report_panel;
+mod load_requests_panel;
 mod load_tester_modal;
 mod main_pane;
 mod modals;
@@ -241,7 +242,7 @@ impl Render for AuraWorkspaceView {
                             }),
                     ),
             )
-            .child(self.render_status_bar(is_horizontal, split_pct))
+            .child(self.render_status_bar(is_horizontal, split_pct, cx))
             .when(self.state.is_command_palette_open, |el| {
                 let search_input = self
                     .inputs

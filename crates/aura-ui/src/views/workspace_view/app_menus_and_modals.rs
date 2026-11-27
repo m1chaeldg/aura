@@ -80,7 +80,7 @@ impl AuraWorkspaceView {
                 self.state.is_security_vault_modal_open = true;
             }
             "cmd:load_tester" => {
-                self.state.is_load_tester_modal_open = true;
+                self.open_load_tester_modal(cx);
             }
             "cmd:ai_toggle" => {
                 self.state.toggle_ai_drawer();

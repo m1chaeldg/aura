@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct LoadCliOptions {
     pub target_path: PathBuf,
+    pub workspace_path: Option<PathBuf>,
+    pub profile_name: Option<String>,
     pub env_path: Option<PathBuf>,
     pub runner_config: RunnerConfig,
     pub export_csv: Option<PathBuf>,
@@ -29,6 +31,8 @@ pub fn load_cli_help_text() -> &'static str {
 \n\
 Options:\n\
   -c, --collection <path>     Target .aura request file or collection directory\n\
+  -w, --workspace <dir>       Workspace root directory (uses workspace.json order & .aura/load-profiles)\n\
+  -p, --profile <name>        Load saved workspace profile from .aura/load-profiles/<name>.json\n\
   -e, --env <path.toml>       Environment TOML profile file\n\
   -u, --vus, --concurrency N  Virtual user concurrency (default: 2)\n\
   -n, --iterations N          Total iterations for fixed mode (default: 10)\n\
@@ -59,6 +63,8 @@ Options:\n\
 
 pub fn parse_load_cli_args(args: &[String]) -> Result<LoadCliOptions> {
     let mut target_path: Option<PathBuf> = None;
+    let mut workspace_path: Option<PathBuf> = None;
+    let mut profile_name: Option<String> = None;
     let mut env_path: Option<PathBuf> = None;
     let mut cfg = RunnerConfig::default();
     let mut data_cfg = DataFeederConfig::default();
@@ -86,6 +92,12 @@ pub fn parse_load_cli_args(args: &[String]) -> Result<LoadCliOptions> {
             "--weighted" => cfg.weighted_routing = true,
             "-c" | "--collection" => {
                 target_path = Some(PathBuf::from(next_val(&mut i, arg)?));
+            }
+            "-w" | "--workspace" => {
+                workspace_path = Some(PathBuf::from(next_val(&mut i, arg)?));
+            }
+            "-p" | "--profile" => {
+                profile_name = Some(next_val(&mut i, arg)?);
             }
             "-e" | "--env" => {
                 env_path = Some(PathBuf::from(next_val(&mut i, arg)?));
@@ -203,12 +215,19 @@ pub fn parse_load_cli_args(args: &[String]) -> Result<LoadCliOptions> {
         cfg.sla_thresholds = Some(sla);
     }
 
-    if !show_help && target_path.is_none() {
-        return Err(anyhow!("Missing target .aura file or collection folder (see `aura load --help`)"));
+    if !show_help && target_path.is_none() && workspace_path.is_none() {
+        return Err(anyhow!(
+            "Missing target .aura file, collection folder, or --workspace (see `aura load --help`)"
+        ));
     }
 
+    let resolved_target = target_path
+        .unwrap_or_else(|| workspace_path.clone().unwrap_or_default());
+
     Ok(LoadCliOptions {
-        target_path: target_path.unwrap_or_default(),
+        target_path: resolved_target,
+        workspace_path,
+        profile_name,
         env_path,
         runner_config: cfg,
         export_csv,
@@ -241,42 +260,25 @@ pub fn collect_aura_requests(target: &Path) -> Result<Vec<AuraRequest>> {
     if !target.exists() {
         return Err(anyhow!("Path does not exist: {}", target.display()));
     }
-    let mut files = Vec::new();
-    if target.is_file() {
-        files.push(target.to_path_buf());
+    let files = if target.is_file() {
+        vec![target.to_path_buf()]
     } else {
-        collect_aura_files_recursive(target, &mut files)?;
-        files.sort();
-    }
+        aura_sync::collect_ordered_request_paths(target, None)?
+    };
 
     let mut reqs = Vec::with_capacity(files.len());
     for p in files {
         let content = std::fs::read_to_string(&p)
             .with_context(|| format!("Failed to read {}", p.display()))?;
         let req = aura::parser::parse_request(&content)
-            .map_err(|e| anyhow!("Failed to parse {}: {e}", p.display()))?;
+            .or_else(|_| aura_sync::toml_to_request(&content, None).map_err(|e| anyhow!("{e}")))
+            .with_context(|| format!("Failed to parse {}", p.display()))?;
         reqs.push(req);
     }
     if reqs.is_empty() {
-        return Err(anyhow!("No .aura request files found under {}", target.display()));
+        return Err(anyhow!("No .aura or .toml request files found under {}", target.display()));
     }
     Ok(reqs)
-}
-
-fn collect_aura_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if name != ".git" && name != "target" {
-                collect_aura_files_recursive(&path, out)?;
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("aura") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 pub fn run_headless_load_sync(args: &[String]) -> i32 {
@@ -317,8 +319,84 @@ pub fn run_headless_load_sync(args: &[String]) -> i32 {
 }
 
 pub async fn execute_headless_load(opts: LoadCliOptions) -> Result<RunnerReport> {
-    let requests = collect_aura_requests(&opts.target_path)?;
+    let ws_root = opts
+        .workspace_path
+        .as_deref()
+        .unwrap_or(&opts.target_path);
+
+    let mut cfg = opts.runner_config.clone();
     let mut ctx = TemplateContext::new();
+
+    let requests = if let Some(ref prof_name) = opts.profile_name {
+        let profile = aura_sync::load_load_profile(ws_root, prof_name)?;
+        cfg = runner_config_from_workspace_profile(&profile, ws_root);
+
+        if opts.env_path.is_none() {
+            if let Some(ref env_name) = profile.environment_name {
+                let envs = aura_sync::load_environments_from_dir(ws_root);
+                if let Some(env_prof) = envs.into_iter().find(|e| e.1.name.eq_ignore_ascii_case(env_name)) {
+                    for var in env_prof.1.variables {
+                        if var.enabled {
+                            ctx.environment_vars.insert(var.key, var.value);
+                        }
+                    }
+                }
+            }
+        }
+
+        let scope_folder = match &profile.target_scope {
+            aura_sync::LoadTargetScope::Folder { relative_path } => {
+                Some(PathBuf::from(relative_path))
+            }
+            _ => None,
+        };
+        let paths = aura_sync::collect_ordered_request_paths(ws_root, scope_folder.as_deref())?;
+        let override_map: std::collections::HashMap<String, &aura_sync::LoadProfileRequestOverride> =
+            profile
+                .request_overrides
+                .iter()
+                .map(|o| (o.relative_path.clone(), o))
+                .collect();
+
+        let mut reqs = Vec::new();
+        for p in paths {
+            let rel = aura_sync::to_workspace_relative_string(ws_root, &p);
+            if let Some(ov) = override_map.get(&rel) {
+                if !ov.included {
+                    continue;
+                }
+            }
+            let content = tokio::fs::read_to_string(&p).await?;
+            let mut req = aura::parser::parse_request(&content)
+                .or_else(|_| aura_sync::toml_to_request(&content, None).map_err(|e| anyhow!("{e}")))?;
+            if let Some(ov) = override_map.get(&rel) {
+                let flow = req.flow.get_or_insert_with(Default::default);
+                if let Some(w) = ov.weight_percent {
+                    flow.weight_percent = Some(w);
+                }
+                if let Some(o) = ov.once_per_run {
+                    flow.once_per_run = o;
+                }
+                if let Some(l) = ov.loop_count {
+                    flow.loop_count = Some(l);
+                }
+                if let Some(ref c) = ov.condition_if {
+                    flow.condition_if = Some(c.clone());
+                }
+                if let Some(ref w) = ov.loop_while {
+                    flow.loop_while = Some(w.clone());
+                }
+            }
+            reqs.push(req);
+        }
+        if reqs.is_empty() {
+            return Err(anyhow!("No included requests found for profile '{prof_name}'"));
+        }
+        reqs
+    } else {
+        collect_aura_requests(&opts.target_path)?
+    };
+
     if let Some(ref env_file) = opts.env_path {
         let raw_env = tokio::fs::read_to_string(env_file).await?;
         let profile = aura_sync::toml_to_environment(&raw_env, None)?;
@@ -334,11 +412,11 @@ pub async fn execute_headless_load(opts: LoadCliOptions) -> Result<RunnerReport>
             "Running headless load test on {} ({} request(s), concurrency={})...",
             opts.target_path.display(),
             requests.len(),
-            opts.runner_config.concurrency
+            cfg.concurrency
         );
     }
 
-    let report = run_collection(requests, ctx, opts.runner_config.clone(), None).await;
+    let report = run_collection(requests, ctx, cfg, None).await;
 
     if !opts.quiet {
         print_cli_summary(&report);
@@ -409,5 +487,132 @@ fn print_cli_summary(report: &RunnerReport) {
         }
     } else {
         println!("\nSLA GATES: PASSED");
+    }
+}
+
+fn runner_config_from_workspace_profile(
+    p: &aura_sync::WorkspaceLoadProfile,
+    ws_root: &Path,
+) -> RunnerConfig {
+    let think_time = match p.think_mode.as_str() {
+        "Uniform" => ThinkTimeConfig::Uniform {
+            min_ms: p.think_a.max(0.0) as u64,
+            max_ms: p.think_b.max(0.0) as u64,
+        },
+        "Gaussian" => ThinkTimeConfig::Gaussian {
+            mean_ms: p.think_a.max(0.0),
+            stddev_ms: p.think_b.max(0.0),
+        },
+        _ => ThinkTimeConfig::None,
+    };
+
+    let sync_barrier = if p.sync_barrier_enabled {
+        Some(SynchronizingTimerConfig {
+            group_size: p.sync_barrier_group_size.max(2),
+            timeout_ms: p.sync_barrier_timeout_ms.max(50),
+        })
+    } else {
+        None
+    };
+
+    let data_feeder = if p.data_feeder_enabled {
+        p.data_feeder_path.as_ref().map(|raw| DataFeederConfig {
+            enabled: true,
+            file_path: aura_sync::resolve_workspace_path(ws_root, raw)
+                .display()
+                .to_string(),
+            sharing_mode: if p.data_sharing == "PerVU" {
+                DataSharingMode::PerVU
+            } else {
+                DataSharingMode::AllVUs
+            },
+            eof_behavior: if p.data_eof == "StopVuOnEof" {
+                DataEofBehavior::StopVuOnEof
+            } else {
+                DataEofBehavior::Recycle
+            },
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    let sla_thresholds = if p.sla_p95_ms.is_some()
+        || p.sla_p99_ms.is_some()
+        || p.sla_error_rate_percent.is_some()
+    {
+        Some(SlaThresholds {
+            max_p95_ms: p.sla_p95_ms,
+            max_p99_ms: p.sla_p99_ms,
+            max_error_rate_percent: p.sla_error_rate_percent,
+        })
+    } else {
+        None
+    };
+
+    let (duration_secs, stages, ramp_down_secs) = match p.profile_mode.as_str() {
+        "Duration" => (Some(p.duration_secs.unwrap_or(20.0)), Vec::new(), 0.0),
+        "RampUpDown" => (
+            Some(p.duration_secs.unwrap_or(20.0)),
+            Vec::new(),
+            p.ramp_down_secs.max(0.0),
+        ),
+        "SteppedStages" => (
+            None,
+            p.stages
+                .iter()
+                .map(|(v, s)| LoadStage::new(*v, *s))
+                .collect(),
+            0.0,
+        ),
+        _ => (None, Vec::new(), 0.0),
+    };
+
+    RunnerConfig {
+        total_iterations: p.total_iterations.max(1),
+        concurrency: p.concurrency.max(1),
+        delay_ms: p.delay_ms,
+        ramp_up_secs: p.ramp_up_secs.max(0.0),
+        ramp_down_secs,
+        duration_secs,
+        stages,
+        target_rps: p.target_rps,
+        think_time,
+        sync_barrier,
+        weighted_routing: p.weighted_routing,
+        data_feeder,
+        sample_assertions: aura_core::assertions::PerformanceAssertionConfig {
+            max_duration_ms: p.max_duration_ms,
+            min_size_bytes: p.min_size_bytes,
+            max_size_bytes: p.max_size_bytes,
+        },
+        sla_thresholds,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_workspace_and_profile_flags() {
+        let args: Vec<String> = vec![
+            "--workspace",
+            "./workspaces/space1",
+            "--profile",
+            "Smoke 25 VUs",
+            "--quiet",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let opts = parse_load_cli_args(&args).unwrap();
+        assert_eq!(
+            opts.workspace_path,
+            Some(PathBuf::from("./workspaces/space1"))
+        );
+        assert_eq!(opts.profile_name.as_deref(), Some("Smoke 25 VUs"));
+        assert!(opts.quiet);
     }
 }

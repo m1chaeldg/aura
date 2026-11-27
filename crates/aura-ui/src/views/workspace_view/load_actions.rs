@@ -1,44 +1,183 @@
-//! Async Load Testing & Collection Runner controller with live streaming metrics.
+//! Async Load Testing & Collection Runner controller with live streaming metrics
+//! and workspace integration (ordered discovery, dirty-tab overrides, saved profiles).
 
 use super::AuraWorkspaceView;
+use crate::app_state::{LoadModalTab, LoadRequestEntry};
 use aura_engine::runner::run_collection_with_cancel;
+use aura_sync::{
+    collect_ordered_request_paths, delete_load_profile, list_load_profiles, save_load_profile,
+    to_workspace_relative_string, LoadTargetScope,
+};
 use gpui::*;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 
 impl AuraWorkspaceView {
+    pub(super) fn open_load_tester_modal(&mut self, cx: &mut Context<Self>) {
+        self.state.is_load_tester_modal_open = true;
+        self.state.load_scope_dropdown_open = false;
+        self.state.load_env_dropdown_open = false;
+        self.state.load_profile_dropdown_open = false;
+        cx.notify();
+        self.spawn_refresh_load_workspace_data(cx);
+    }
+
+    pub(super) fn spawn_refresh_load_workspace_data(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.state.workspace_store.workspace_root.clone() else {
+            self.state.load_discovered_requests.clear();
+            self.state.load_saved_profiles.clear();
+            cx.notify();
+            return;
+        };
+
+        let scope_folder: Option<PathBuf> = match &self.state.load_target_scope {
+            LoadTargetScope::Folder { relative_path } => Some(PathBuf::from(relative_path)),
+            _ => None,
+        };
+
+        // Prefer unsaved in-memory edits from open dirty tabs over disk files.
+        let dirty_tabs: HashMap<PathBuf, aura_core::model::AuraRequest> = self
+            .state
+            .tabs
+            .iter()
+            .filter(|t| t.is_dirty)
+            .filter_map(|t| t.file_path.as_ref().map(|p| (p.clone(), t.request.clone())))
+            .collect();
+
+        let bg_task = cx.background_executor().spawn(async move {
+            let paths = collect_ordered_request_paths(&root, scope_folder.as_deref())
+                .unwrap_or_default();
+            let mut entries = Vec::with_capacity(paths.len());
+            for abs_path in paths {
+                let (req_opt, is_dirty_tab) = if let Some(dirty_req) = dirty_tabs.get(&abs_path) {
+                    (Some(dirty_req.clone()), true)
+                } else if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                    let parsed = aura_parser::parse_request(&content)
+                        .ok()
+                        .or_else(|| aura_sync::toml_to_request(&content, None).ok());
+                    (parsed, false)
+                } else {
+                    (None, false)
+                };
+
+                if let Some(req) = req_opt {
+                    let rel = to_workspace_relative_string(&root, &abs_path);
+                    entries.push(LoadRequestEntry {
+                        relative_path: rel,
+                        abs_path,
+                        name: req.name.clone(),
+                        method: req.method,
+                        url: req.url.clone(),
+                        included: true,
+                        is_dirty_tab,
+                        request: req,
+                    });
+                }
+            }
+
+            let profiles = list_load_profiles(&root).unwrap_or_default();
+            (entries, profiles)
+        });
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let (entries, profiles) = bg_task.await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    this.state.load_discovered_requests = entries;
+                    this.state.apply_overrides_to_discovered_requests();
+                    this.state.load_saved_profiles = profiles;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(super) fn spawn_save_load_profile(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.state.workspace_store.workspace_root.clone() else {
+            self.state.load_error = Some("Open a workspace to save load test profiles.".to_string());
+            cx.notify();
+            return;
+        };
+
+        let profile = self.state.to_workspace_load_profile();
+        let name = profile.name.clone();
+
+        let bg_task = cx.background_executor().spawn(async move {
+            save_load_profile(&root, &profile)?;
+            list_load_profiles(&root)
+        });
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let res = bg_task.await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    match res {
+                        Ok(profiles) => {
+                            this.state.load_saved_profiles = profiles;
+                            this.state.load_error = None;
+                            this.state.status_message = Some(format!("Saved load profile '{name}'"));
+                        }
+                        Err(e) => {
+                            this.state.load_error = Some(format!("Failed to save profile: {e:#}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(super) fn spawn_delete_load_profile(&mut self, name: String, cx: &mut Context<Self>) {
+        let Some(root) = self.state.workspace_store.workspace_root.clone() else {
+            return;
+        };
+        let name_clone = name.clone();
+
+        let bg_task = cx.background_executor().spawn(async move {
+            delete_load_profile(&root, &name_clone)?;
+            list_load_profiles(&root)
+        });
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                if let Ok(profiles) = bg_task.await {
+                    let _ = this.update(&mut cx, |this, cx| {
+                        this.state.load_saved_profiles = profiles;
+                        this.state.status_message = Some(format!("Deleted load profile '{name}'"));
+                        cx.notify();
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn spawn_start_load_test(&mut self, cx: &mut Context<Self>) {
         if self.state.load_is_running {
             return;
         }
 
-        let requests: Vec<aura_core::model::AuraRequest> = if self.state.load_use_collection {
-            let mut all: Vec<aura_core::model::AuraRequest> = self
-                .state
-                .collections
-                .iter()
-                .flat_map(|c| c.requests.iter().cloned())
-                .collect();
-            if all.is_empty() {
-                if let Some(tab) = self.state.active_tab() {
-                    all.push(tab.request.clone());
-                }
-            }
-            all
-        } else {
-            self.state
-                .active_tab()
-                .map(|t| vec![t.request.clone()])
-                .unwrap_or_default()
-        };
-
+        let requests = self.state.effective_load_requests();
         if requests.is_empty() {
-            self.state.load_error = Some("No request open to benchmark.".to_string());
+            self.state.load_error = Some(match &self.state.load_target_scope {
+                LoadTargetScope::ActiveRequest => "No active request tab open to benchmark.".to_string(),
+                LoadTargetScope::Workspace => "No included requests found in the active workspace.".to_string(),
+                LoadTargetScope::Folder { relative_path } => {
+                    format!("No included requests found in folder '{relative_path}'.")
+                }
+            });
             cx.notify();
             return;
         }
 
         let config = self.state.build_load_runner_config();
-        let context = self.state.active_template_context();
+        let context = self.state.template_context_for_load();
         let options = aura_engine::ExecutionOptions {
             domain_certs: self.state.domain_client_certs.clone(),
             vault_config: self.state.vault_config.clone(),
@@ -53,6 +192,7 @@ impl AuraWorkspaceView {
         self.state.load_error = None;
         self.state.load_report = None;
         self.state.load_live_records.clear();
+        self.state.load_modal_tab = LoadModalTab::ResultsAndCharts;
         self.state.status_message = Some(format!(
             "Load test started ({} profile, {} request template(s))...",
             self.state.load_profile_mode.label(),
@@ -136,7 +276,13 @@ impl AuraWorkspaceView {
                     return;
                 };
                 let _ = this.update(&mut cx, |this, cx| {
-                    this.state.load_data_file_path = path.display().to_string();
+                    let stored = match &this.state.workspace_store.workspace_root {
+                        Some(root) if path.starts_with(root) => {
+                            to_workspace_relative_string(root, &path)
+                        }
+                        _ => path.display().to_string(),
+                    };
+                    this.state.load_data_file_path = stored;
                     this.state.load_data_enabled = true;
                     cx.notify();
                 });

@@ -131,6 +131,11 @@ pub enum InputKey {
     LoadSlaP95Ms,
     LoadSlaP99Ms,
     LoadSlaErrorPct,
+    LoadProfileName,
+    LoadReqWeight(usize),
+    LoadReqLoop(usize),
+    LoadReqIf(usize),
+    LoadReqWhile(usize),
     AiPromptInput,
     AiCustomCliName,
     AiCustomCliCmd,
@@ -265,6 +270,11 @@ impl InputKey {
             | InputKey::LoadSlaP95Ms
             | InputKey::LoadSlaP99Ms
             | InputKey::LoadSlaErrorPct
+            | InputKey::LoadProfileName
+            | InputKey::LoadReqWeight(_)
+            | InputKey::LoadReqLoop(_)
+            | InputKey::LoadReqIf(_)
+            | InputKey::LoadReqWhile(_)
             | InputKey::AiPromptInput
             | InputKey::AiCustomCliName
             | InputKey::AiCustomCliCmd

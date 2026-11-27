@@ -234,8 +234,7 @@ impl AuraWorkspaceView {
                             .rounded(ButtonRounded::Medium)
                             .tooltip("Run JMeter-style load tests (ramp-up, soak duration, spike stages, target RPS)")
                             .on_click(cx.listener(|this, _, _window, cx| {
-                                this.state.is_load_tester_modal_open = true;
-                                cx.notify();
+                                this.open_load_tester_modal(cx);
                             }));
                         if is_running { btn.primary() } else { btn.ghost() }
                     })

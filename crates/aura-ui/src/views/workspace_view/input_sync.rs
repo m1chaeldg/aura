@@ -1572,6 +1572,58 @@ impl AuraWorkspaceView {
                 Self::handle_input_event,
             );
             inputs.ensure_input(
+                InputKey::LoadProfileName,
+                &self.state.load_profile_name_str,
+                "Profile name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            for (idx, entry) in self.state.load_discovered_requests.iter().enumerate() {
+                let flow = entry.request.flow.as_ref();
+                let wt = flow.and_then(|f| f.weight_percent).map(|v| v.to_string()).unwrap_or_default();
+                let lc = flow.and_then(|f| f.loop_count).map(|v| v.to_string()).unwrap_or_default();
+                let if_c = flow.and_then(|f| f.condition_if.as_deref()).unwrap_or("");
+                let wh_c = flow.and_then(|f| f.loop_while.as_deref()).unwrap_or("");
+                inputs.ensure_input(
+                    InputKey::LoadReqWeight(idx),
+                    &wt,
+                    "Wt%",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::LoadReqLoop(idx),
+                    &lc,
+                    "1",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::LoadReqIf(idx),
+                    if_c,
+                    "If expr...",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::LoadReqWhile(idx),
+                    wh_c,
+                    "While expr...",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+            inputs.ensure_input(
                 InputKey::LoadMaxDurationMs,
                 &self.state.load_max_duration_ms_str,
                 "Max ms",

@@ -33,6 +33,44 @@ pub enum ScriptSubTab {
     PostResponse,
 }
 
+/// Top-level tab inside the Load Tester modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadModalTab {
+    #[default]
+    SetupAndScope,
+    RequestsAndFlow,
+    ResultsAndCharts,
+}
+
+impl LoadModalTab {
+    pub const ALL: [Self; 3] = [
+        Self::SetupAndScope,
+        Self::RequestsAndFlow,
+        Self::ResultsAndCharts,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::SetupAndScope => "Setup & Scope",
+            Self::RequestsAndFlow => "Requests & Flow",
+            Self::ResultsAndCharts => "Results & Charts",
+        }
+    }
+}
+
+/// A discovered workspace request entry shown in the Load Tester's Requests & Flow tab.
+#[derive(Debug, Clone)]
+pub struct LoadRequestEntry {
+    pub relative_path: String,
+    pub abs_path: PathBuf,
+    pub name: String,
+    pub method: HttpMethod,
+    pub url: String,
+    pub included: bool,
+    pub is_dirty_tab: bool,
+    pub request: AuraRequest,
+}
+
 /// UI tab inside Load Tester results section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LoadResultsViewTab {
@@ -714,6 +752,26 @@ pub struct AuraAppState {
     pub load_results_tab: LoadResultsViewTab,
     #[serde(skip)]
     pub load_chart_metric: LoadChartMetric,
+    #[serde(skip)]
+    pub load_modal_tab: LoadModalTab,
+    #[serde(skip)]
+    pub load_target_scope: aura_sync::LoadTargetScope,
+    #[serde(skip)]
+    pub load_env_override: Option<String>,
+    #[serde(skip)]
+    pub load_profile_name_str: String,
+    #[serde(skip)]
+    pub load_saved_profiles: Vec<aura_sync::WorkspaceLoadProfile>,
+    #[serde(skip)]
+    pub load_discovered_requests: Vec<LoadRequestEntry>,
+    #[serde(skip)]
+    pub load_request_overrides: std::collections::HashMap<String, aura_sync::LoadProfileRequestOverride>,
+    #[serde(skip)]
+    pub load_scope_dropdown_open: bool,
+    #[serde(skip)]
+    pub load_env_dropdown_open: bool,
+    #[serde(skip)]
+    pub load_profile_dropdown_open: bool,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
     #[serde(skip, default = "default_execution_service")]
@@ -922,6 +980,16 @@ impl Default for AuraAppState {
             load_sla_err_str: String::new(),
             load_results_tab: LoadResultsViewTab::TimeSeriesCharts,
             load_chart_metric: LoadChartMetric::Rps,
+            load_modal_tab: LoadModalTab::SetupAndScope,
+            load_target_scope: aura_sync::LoadTargetScope::ActiveRequest,
+            load_env_override: None,
+            load_profile_name_str: "Default Profile".to_string(),
+            load_saved_profiles: Vec::new(),
+            load_discovered_requests: Vec::new(),
+            load_request_overrides: std::collections::HashMap::new(),
+            load_scope_dropdown_open: false,
+            load_env_dropdown_open: false,
+            load_profile_dropdown_open: false,
             workspace_service: default_workspace_service(),
             execution_service: default_execution_service(),
         }
@@ -997,9 +1065,15 @@ impl AuraAppState {
         };
         let weighted_routing = self.load_weighted_routing;
         let data_feeder = if self.load_data_enabled && !self.load_data_file_path.trim().is_empty() {
+            let resolved_path = match &self.workspace_store.workspace_root {
+                Some(root) => aura_sync::resolve_workspace_path(root, &self.load_data_file_path)
+                    .display()
+                    .to_string(),
+                None => self.load_data_file_path.trim().to_string(),
+            };
             Some(aura_engine::DataFeederConfig {
                 enabled: true,
-                file_path: self.load_data_file_path.trim().to_string(),
+                file_path: resolved_path,
                 sharing_mode: self.load_data_sharing,
                 eof_behavior: self.load_data_eof,
                 ..Default::default()
@@ -1436,6 +1510,309 @@ impl AuraAppState {
             }
         }
         map
+    }
+
+    /// Returns `(relative_path, display_label)` pairs for all folders in the active workspace tree.
+    pub fn workspace_folder_options(&self) -> Vec<(String, String)> {
+        let Some(root) = &self.workspace_store.workspace_root else {
+            return Vec::new();
+        };
+        self.workspace_store
+            .all_folders()
+            .into_iter()
+            .map(|abs| {
+                let rel = aura_sync::to_workspace_relative_string(root, &abs);
+                (rel.clone(), rel)
+            })
+            .collect()
+    }
+
+    /// Human-readable label for the currently selected load test target scope.
+    pub fn load_target_scope_label(&self) -> String {
+        match &self.load_target_scope {
+            aura_sync::LoadTargetScope::ActiveRequest => "Active Request".to_string(),
+            aura_sync::LoadTargetScope::Workspace => {
+                let count = self
+                    .load_discovered_requests
+                    .iter()
+                    .filter(|r| r.included)
+                    .count();
+                format!("Entire Workspace ({count})")
+            }
+            aura_sync::LoadTargetScope::Folder { relative_path } => {
+                let count = self
+                    .load_discovered_requests
+                    .iter()
+                    .filter(|r| r.included)
+                    .count();
+                format!("Folder: {relative_path} ({count})")
+            }
+        }
+    }
+
+    /// Builds a `TemplateContext` for load testing, respecting `load_env_override` if set.
+    pub fn template_context_for_load(&self) -> aura_core::templating::TemplateContext {
+        let mut ctx = self.active_template_context();
+        if let Some(ref env_name) = self.load_env_override {
+            if let Some(profile) = self
+                .environments
+                .iter()
+                .find(|e| e.1.name.eq_ignore_ascii_case(env_name))
+            {
+                ctx.environment_vars.clear();
+                for var in &profile.1.variables {
+                    if var.enabled && !var.key.trim().is_empty() {
+                        ctx.environment_vars
+                            .insert(var.key.trim().to_string(), var.value.clone());
+                    }
+                }
+            }
+        }
+        ctx
+    }
+
+    /// Applies `load_request_overrides` onto `load_discovered_requests`.
+    pub fn apply_overrides_to_discovered_requests(&mut self) {
+        for entry in &mut self.load_discovered_requests {
+            if let Some(ov) = self.load_request_overrides.get(&entry.relative_path) {
+                entry.included = ov.included;
+                let flow = entry
+                    .request
+                    .flow
+                    .get_or_insert_with(Default::default);
+                if let Some(w) = ov.weight_percent {
+                    flow.weight_percent = Some(w);
+                }
+                if let Some(o) = ov.once_per_run {
+                    flow.once_per_run = o;
+                }
+                if let Some(l) = ov.loop_count {
+                    flow.loop_count = Some(l);
+                }
+                if let Some(ref cond) = ov.condition_if {
+                    flow.condition_if = if cond.trim().is_empty() {
+                        None
+                    } else {
+                        Some(cond.clone())
+                    };
+                }
+                if let Some(ref w_cond) = ov.loop_while {
+                    flow.loop_while = if w_cond.trim().is_empty() {
+                        None
+                    } else {
+                        Some(w_cond.clone())
+                    };
+                }
+            }
+        }
+    }
+
+    /// Records an override entry for a discovered request so saving profiles preserves inline edits.
+    pub fn sync_override_for_request_idx(&mut self, idx: usize) {
+        let Some(entry) = self.load_discovered_requests.get(idx) else {
+            return;
+        };
+        let flow = entry.request.flow.as_ref();
+        self.load_request_overrides.insert(
+            entry.relative_path.clone(),
+            aura_sync::LoadProfileRequestOverride {
+                relative_path: entry.relative_path.clone(),
+                included: entry.included,
+                weight_percent: flow.and_then(|f| f.weight_percent),
+                once_per_run: flow.map(|f| f.once_per_run),
+                loop_count: flow.and_then(|f| f.loop_count),
+                condition_if: flow.and_then(|f| f.condition_if.clone()),
+                loop_while: flow.and_then(|f| f.loop_while.clone()),
+            },
+        );
+    }
+
+    /// Assembles the effective list of `AuraRequest`s to execute for the current target scope.
+    pub fn effective_load_requests(&self) -> Vec<AuraRequest> {
+        match &self.load_target_scope {
+            aura_sync::LoadTargetScope::ActiveRequest => self
+                .active_tab()
+                .map(|t| vec![t.request.clone()])
+                .unwrap_or_default(),
+            aura_sync::LoadTargetScope::Workspace
+            | aura_sync::LoadTargetScope::Folder { .. } => {
+                if !self.load_discovered_requests.is_empty() {
+                    self.load_discovered_requests
+                        .iter()
+                        .filter(|e| e.included)
+                        .map(|e| e.request.clone())
+                        .collect()
+                } else {
+                    self.collections
+                        .iter()
+                        .flat_map(|c| c.requests.iter().cloned())
+                        .collect()
+                }
+            }
+        }
+    }
+
+    /// Serializes current Load Tester state into a `WorkspaceLoadProfile`.
+    pub fn to_workspace_load_profile(&self) -> aura_sync::WorkspaceLoadProfile {
+        let data_feeder_path = if self.load_data_file_path.trim().is_empty() {
+            None
+        } else if let Some(ref root) = self.workspace_store.workspace_root {
+            let p = PathBuf::from(self.load_data_file_path.trim());
+            if p.starts_with(root) {
+                Some(aura_sync::to_workspace_relative_string(root, &p))
+            } else {
+                Some(self.load_data_file_path.trim().to_string())
+            }
+        } else {
+            Some(self.load_data_file_path.trim().to_string())
+        };
+
+        let profile_mode = match self.load_profile_mode {
+            aura_engine::LoadProfileMode::FixedIterations => "FixedIterations",
+            aura_engine::LoadProfileMode::Duration => "Duration",
+            aura_engine::LoadProfileMode::RampUpDown => "RampUpDown",
+            aura_engine::LoadProfileMode::SteppedStages => "SteppedStages",
+        }
+        .to_string();
+
+        let think_mode = match self.load_think_mode {
+            LoadThinkMode::None => "None",
+            LoadThinkMode::Uniform => "Uniform",
+            LoadThinkMode::Gaussian => "Gaussian",
+        }
+        .to_string();
+
+        let data_sharing = match self.load_data_sharing {
+            aura_engine::DataSharingMode::AllVUs => "AllVUs",
+            aura_engine::DataSharingMode::PerVU => "PerVU",
+        }
+        .to_string();
+
+        let data_eof = match self.load_data_eof {
+            aura_engine::DataEofBehavior::Recycle => "Recycle",
+            aura_engine::DataEofBehavior::StopVuOnEof => "StopVuOnEof",
+        }
+        .to_string();
+
+        let stages = self
+            .load_stages
+            .iter()
+            .map(|(v, s)| {
+                (
+                    v.trim().parse::<usize>().unwrap_or(5).max(1),
+                    s.trim().parse::<f64>().unwrap_or(5.0).max(0.1),
+                )
+            })
+            .collect();
+
+        let mut overrides: Vec<aura_sync::LoadProfileRequestOverride> =
+            self.load_request_overrides.values().cloned().collect();
+        overrides.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+        aura_sync::WorkspaceLoadProfile {
+            name: if self.load_profile_name_str.trim().is_empty() {
+                "Default Profile".to_string()
+            } else {
+                self.load_profile_name_str.trim().to_string()
+            },
+            target_scope: self.load_target_scope.clone(),
+            environment_name: self.load_env_override.clone(),
+            profile_mode,
+            total_iterations: self.load_iterations_str.trim().parse().unwrap_or(20).max(1),
+            concurrency: self.load_concurrency_str.trim().parse().unwrap_or(4).max(1),
+            delay_ms: self.load_delay_ms_str.trim().parse().unwrap_or(0),
+            ramp_up_secs: self.load_ramp_up_str.trim().parse().unwrap_or(0.0),
+            ramp_down_secs: self.load_ramp_down_str.trim().parse().unwrap_or(0.0),
+            duration_secs: self.load_duration_str.trim().parse::<f64>().ok().filter(|v| *v > 0.0),
+            stages,
+            target_rps: if self.load_target_rps_enabled {
+                self.load_target_rps_str.trim().parse::<f64>().ok().filter(|v| *v > 0.0)
+            } else {
+                None
+            },
+            think_mode,
+            think_a: self.load_think_a_str.trim().parse().unwrap_or(0.0),
+            think_b: self.load_think_b_str.trim().parse().unwrap_or(0.0),
+            sync_barrier_enabled: self.load_barrier_enabled,
+            sync_barrier_group_size: self.load_barrier_size_str.trim().parse().unwrap_or(4).max(2),
+            sync_barrier_timeout_ms: self.load_barrier_timeout_str.trim().parse().unwrap_or(5000).max(50),
+            weighted_routing: self.load_weighted_routing,
+            data_feeder_enabled: self.load_data_enabled,
+            data_feeder_path,
+            data_sharing,
+            data_eof,
+            max_duration_ms: self.load_max_duration_ms_str.trim().parse().ok().filter(|&v| v > 0),
+            min_size_bytes: self.load_min_size_bytes_str.trim().parse().ok().filter(|&v| v > 0),
+            max_size_bytes: self.load_max_size_bytes_str.trim().parse().ok().filter(|&v| v > 0),
+            sla_p95_ms: self.load_sla_p95_str.trim().parse().ok().filter(|&v| v > 0),
+            sla_p99_ms: self.load_sla_p99_str.trim().parse().ok().filter(|&v| v > 0),
+            sla_error_rate_percent: self.load_sla_err_str.trim().parse().ok().filter(|&v| v >= 0.0),
+            request_overrides: overrides,
+        }
+    }
+
+    /// Applies a `WorkspaceLoadProfile` to Load Tester UI state.
+    pub fn apply_workspace_load_profile(&mut self, profile: &aura_sync::WorkspaceLoadProfile) {
+        self.load_profile_name_str = profile.name.clone();
+        self.load_target_scope = profile.target_scope.clone();
+        self.load_use_collection = !matches!(profile.target_scope, aura_sync::LoadTargetScope::ActiveRequest);
+        self.load_env_override = profile.environment_name.clone();
+        self.load_profile_mode = match profile.profile_mode.as_str() {
+            "Duration" => aura_engine::LoadProfileMode::Duration,
+            "RampUpDown" => aura_engine::LoadProfileMode::RampUpDown,
+            "SteppedStages" => aura_engine::LoadProfileMode::SteppedStages,
+            _ => aura_engine::LoadProfileMode::FixedIterations,
+        };
+        self.load_iterations_str = profile.total_iterations.to_string();
+        self.load_concurrency_str = profile.concurrency.to_string();
+        self.load_delay_ms_str = profile.delay_ms.to_string();
+        self.load_ramp_up_str = profile.ramp_up_secs.to_string();
+        self.load_ramp_down_str = profile.ramp_down_secs.to_string();
+        self.load_duration_str = profile.duration_secs.unwrap_or(20.0).to_string();
+        if !profile.stages.is_empty() {
+            self.load_stages = profile
+                .stages
+                .iter()
+                .map(|(v, s)| (v.to_string(), s.to_string()))
+                .collect();
+        }
+        self.load_target_rps_enabled = profile.target_rps.is_some();
+        self.load_target_rps_str = profile.target_rps.unwrap_or(50.0).to_string();
+        self.load_think_mode = match profile.think_mode.as_str() {
+            "Uniform" => LoadThinkMode::Uniform,
+            "Gaussian" => LoadThinkMode::Gaussian,
+            _ => LoadThinkMode::None,
+        };
+        self.load_think_a_str = profile.think_a.to_string();
+        self.load_think_b_str = profile.think_b.to_string();
+        self.load_barrier_enabled = profile.sync_barrier_enabled;
+        self.load_barrier_size_str = profile.sync_barrier_group_size.to_string();
+        self.load_barrier_timeout_str = profile.sync_barrier_timeout_ms.to_string();
+        self.load_weighted_routing = profile.weighted_routing;
+        self.load_data_enabled = profile.data_feeder_enabled;
+        self.load_data_file_path = profile.data_feeder_path.clone().unwrap_or_default();
+        self.load_data_sharing = if profile.data_sharing == "PerVU" {
+            aura_engine::DataSharingMode::PerVU
+        } else {
+            aura_engine::DataSharingMode::AllVUs
+        };
+        self.load_data_eof = if profile.data_eof == "StopVuOnEof" {
+            aura_engine::DataEofBehavior::StopVuOnEof
+        } else {
+            aura_engine::DataEofBehavior::Recycle
+        };
+        self.load_max_duration_ms_str = profile.max_duration_ms.map(|v| v.to_string()).unwrap_or_default();
+        self.load_min_size_bytes_str = profile.min_size_bytes.map(|v| v.to_string()).unwrap_or_default();
+        self.load_max_size_bytes_str = profile.max_size_bytes.map(|v| v.to_string()).unwrap_or_default();
+        self.load_sla_p95_str = profile.sla_p95_ms.map(|v| v.to_string()).unwrap_or_default();
+        self.load_sla_p99_str = profile.sla_p99_ms.map(|v| v.to_string()).unwrap_or_default();
+        self.load_sla_err_str = profile.sla_error_rate_percent.map(|v| v.to_string()).unwrap_or_default();
+        self.load_request_overrides = profile
+            .request_overrides
+            .iter()
+            .map(|o| (o.relative_path.clone(), o.clone()))
+            .collect();
+        self.apply_overrides_to_discovered_requests();
     }
 
     /// Builds the unified template resolution context for UI previews, inputs,
@@ -1985,5 +2362,81 @@ mod tests {
         let sla = data_cfg.sla_thresholds.expect("sla gates set");
         assert_eq!(sla.max_p95_ms, Some(150));
         assert_eq!(sla.max_error_rate_percent, Some(1.5));
+    }
+
+    #[test]
+    fn test_workspace_load_profile_roundtrip_and_effective_requests() {
+        let mut state = AuraAppState::new();
+        state.load_profile_name_str = "API Spike".to_string();
+        state.load_target_scope = aura_sync::LoadTargetScope::Folder {
+            relative_path: "users".to_string(),
+        };
+        state.load_env_override = Some("Staging".to_string());
+        state.load_concurrency_str = "16".to_string();
+        state.load_profile_mode = aura_engine::LoadProfileMode::Duration;
+        state.load_duration_str = "45".to_string();
+        state.environments.push((
+            PathBuf::from("environment/staging.toml"),
+            aura_core::model::EnvironmentProfile {
+                id: "env-1".to_string(),
+                name: "Staging".to_string(),
+                variables: vec![aura_core::model::VariableItem {
+                    key: "BASE_URL".to_string(),
+                    value: "https://staging.example.com".to_string(),
+                    enabled: true,
+                    is_secret: false,
+                }],
+            },
+        ));
+
+        let req_a = AuraRequest::new("Login", HttpMethod::POST, "https://example.com/login");
+        let req_b = AuraRequest::new("GetUser", HttpMethod::GET, "https://example.com/user");
+        state.load_discovered_requests = vec![
+            LoadRequestEntry {
+                relative_path: "users/login.aura".to_string(),
+                abs_path: PathBuf::from("users/login.aura"),
+                name: "Login".to_string(),
+                method: HttpMethod::POST,
+                url: "https://example.com/login".to_string(),
+                included: true,
+                is_dirty_tab: false,
+                request: req_a,
+            },
+            LoadRequestEntry {
+                relative_path: "users/get.aura".to_string(),
+                abs_path: PathBuf::from("users/get.aura"),
+                name: "GetUser".to_string(),
+                method: HttpMethod::GET,
+                url: "https://example.com/user".to_string(),
+                included: false,
+                is_dirty_tab: true,
+                request: req_b,
+            },
+        ];
+        state.sync_override_for_request_idx(0);
+        state.sync_override_for_request_idx(1);
+
+        let effective = state.effective_load_requests();
+        assert_eq!(effective.len(), 1);
+        assert_eq!(effective[0].name, "Login");
+
+        let ctx = state.template_context_for_load();
+        assert_eq!(
+            ctx.environment_vars.get("BASE_URL").map(String::as_str),
+            Some("https://staging.example.com")
+        );
+
+        let saved = state.to_workspace_load_profile();
+        let mut restored = AuraAppState::new();
+        restored.apply_workspace_load_profile(&saved);
+        assert_eq!(restored.load_profile_name_str, "API Spike");
+        assert_eq!(restored.load_concurrency_str, "16");
+        assert_eq!(restored.load_env_override.as_deref(), Some("Staging"));
+        assert_eq!(
+            restored.load_target_scope,
+            aura_sync::LoadTargetScope::Folder {
+                relative_path: "users".to_string()
+            }
+        );
     }
 }
