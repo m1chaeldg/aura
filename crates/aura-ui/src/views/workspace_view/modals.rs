@@ -18,7 +18,7 @@ use gpui_kit::base::Disableable as _;
 
 impl AuraWorkspaceView {
     pub(super) fn apply_workspace_modals(&self, el: Div, cx: &mut Context<Self>) -> Div {
-        el.when_some(self.state.pending_delete_path.clone(), |el, delete_path| {
+        let el = el.when_some(self.state.pending_delete_path.clone(), |el, delete_path| {
             let item_name = delete_path
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -505,6 +505,34 @@ impl AuraWorkspaceView {
                                                     ))
                                                     .child(
                                                         Button::new(ElementId::NamedInteger(
+                                                            "env-var-kc".into(),
+                                                            idx as u64,
+                                                        ))
+                                                        .label("Keychain")
+                                                        .xsmall()
+                                                        .outline()
+                                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                                            match this
+                                                                .state
+                                                                .store_env_var_in_keychain(idx)
+                                                            {
+                                                                Ok(uri) => {
+                                                                    this.state.status_message = Some(
+                                                                        format!(
+                                                                            "Stored env secret in OS Keychain as {uri}"
+                                                                        ),
+                                                                    );
+                                                                }
+                                                                Err(e) => {
+                                                                    this.state.status_message =
+                                                                        Some(e);
+                                                                }
+                                                            }
+                                                            cx.notify();
+                                                        })),
+                                                    )
+                                                    .child(
+                                                        Button::new(ElementId::NamedInteger(
                                                             "env-var-del".into(),
                                                             idx as u64,
                                                         ))
@@ -739,6 +767,9 @@ impl AuraWorkspaceView {
                             ),
                     ),
             )
-        })
+        });
+        let el = self.render_security_vault_modal(el, cx);
+        let el = self.render_git_modal(el, cx);
+        self.render_network_modals(el, cx)
     }
 }

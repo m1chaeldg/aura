@@ -27,6 +27,11 @@ fn test_aura_response_with_console_logs_serialization() {
         script_errors: Vec::new(),
         sse_events: Vec::new(),
         stream_messages: Vec::new(),
+        timing: None,
+        captured_cookies: Vec::new(),
+        next_request: None,
+        stop_chain: false,
+        exported_variables: HashMap::new(),
     };
 
     let serialized = serde_json::to_string(&response).expect("serialize response");

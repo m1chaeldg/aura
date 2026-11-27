@@ -9,6 +9,18 @@ impl AuraWorkspaceView {
         is_horizontal: bool,
         split_pct: u32,
     ) -> impl IntoElement {
+        let git_status_label = match &self.state.git_snapshot {
+            Some(s) if s.is_repo => {
+                let count = s.total_changes();
+                if count > 0 {
+                    format!("Git: {} ({count} changed)", s.branch)
+                } else {
+                    format!("Git: {} (clean)", s.branch)
+                }
+            }
+            _ => "Git: Not initialized".to_string(),
+        };
+
         StatusBar::new()
             .left(
                 self.state
@@ -16,6 +28,8 @@ impl AuraWorkspaceView {
                     .clone()
                     .unwrap_or_else(|| "Ready".to_string()),
             )
+            .left(Separator::vertical().h(px(12.)))
+            .left(git_status_label)
             .left(Separator::vertical().h(px(12.)))
             .left("Workspace: Local Disk Synced")
             .left(Separator::vertical().h(px(12.)))

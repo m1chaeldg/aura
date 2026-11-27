@@ -338,6 +338,14 @@ impl ResponsePaneView {
                                             .child(Self::format_size(resp.size_bytes)),
                                     ),
                             )
+                            .when(!resp.captured_cookies.is_empty(), |el| {
+                                el.child(
+                                    Tag::info().small().child(format!(
+                                        "Cookies +{}",
+                                        resp.captured_cookies.len()
+                                    )),
+                                )
+                            })
                             .when(!resp.script_errors.is_empty(), |el| {
                                 el.child(
                                     Tag::new()
@@ -378,6 +386,9 @@ impl ResponsePaneView {
             )
             .when(!resp.script_errors.is_empty(), |el| {
                 el.child(Self::render_script_errors_banner(&resp.script_errors, cx))
+            })
+            .when_some(resp.timing.as_ref(), |el, t| {
+                el.child(Self::render_phase_timing_bar(t, border, surface, muted, cx))
             })
             .child(
                 h_flex()
@@ -441,6 +452,63 @@ impl ResponsePaneView {
                         cx,
                         on_action,
                     )),
+            )
+    }
+
+    fn render_phase_timing_bar(
+        t: &aura_core::model::RequestTimingBreakdown,
+        border: Hsla,
+        surface: Hsla,
+        muted: Hsla,
+        cx: &App,
+    ) -> Div {
+        let total = t.total_ms.max(1) as f32;
+        let colors = [
+            cx.theme().info,
+            cx.theme().primary,
+            cx.theme().warning,
+            cx.theme().success,
+            cx.theme().cyan,
+        ];
+        let phases = t.phases();
+
+        v_flex()
+            .gap_1p5()
+            .px_3()
+            .py_1p5()
+            .bg(surface.opacity(0.6))
+            .border_b_1()
+            .border_color(border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .h(px(4.0))
+                    .rounded_full()
+                    .overflow_hidden()
+                    .bg(cx.theme().secondary)
+                    .children(phases.iter().zip(colors.iter()).filter(|((_, ms), _)| *ms > 0).map(
+                        |((_, ms), color)| {
+                            let frac = (*ms as f32 / total).clamp(0.03, 1.0);
+                            div().h_full().flex_grow(frac).bg(*color)
+                        },
+                    )),
+            )
+            .child(
+                h_flex()
+                    .gap_3()
+                    .flex_wrap()
+                    .children(phases.into_iter().zip(colors.into_iter()).map(|((name, ms), color)| {
+                        h_flex()
+                            .gap_1()
+                            .items_center()
+                            .child(div().size(px(6.0)).rounded_full().bg(color))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(format!("{name}: {ms}ms")),
+                            )
+                    })),
             )
     }
 

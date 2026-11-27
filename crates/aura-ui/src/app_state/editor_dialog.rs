@@ -104,6 +104,7 @@ impl AuraAppState {
                     token_url,
                     client_id,
                     client_secret,
+                    ..
                 } => {
                     self.editor_dialog = Some(EditorDialogState::EditOAuth2 {
                         grant_type: grant_type.clone(),

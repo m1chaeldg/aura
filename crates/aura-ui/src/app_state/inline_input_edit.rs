@@ -42,6 +42,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::AssertExpr(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expression.push(c);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AssertExpected(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expected.push(c);
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body
                     {
@@ -168,41 +180,38 @@ impl AuraAppState {
                     }
                 }
                 ActiveInputTarget::AuthOAuth2Field(field_idx) => {
-                    if let aura_core::model::AuthConfig::OAuth2 {
-                        grant_type,
-                        access_token,
-                        token_url,
-                        client_id,
-                        client_secret,
-                    } = &mut tab.request.auth
-                    {
-                        match field_idx {
-                            0 => access_token.push(c),
-                            1 => grant_type.push(c),
-                            2 => {
-                                if let Some(tu) = token_url {
-                                    tu.push(c);
-                                } else {
-                                    *token_url = Some(c.to_string());
-                                }
-                            }
-                            3 => {
-                                if let Some(ci) = client_id {
-                                    ci.push(c);
-                                } else {
-                                    *client_id = Some(c.to_string());
-                                }
-                            }
-                            _ => {
-                                if let Some(cs) = client_secret {
-                                    cs.push(c);
-                                } else {
-                                    *client_secret = Some(c.to_string());
-                                }
-                            }
-                        }
+                    if super::security_actions::edit_oauth2_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PushChar(c),
+                    ) {
                         tab.mark_dirty(true);
                     }
+                }
+                ActiveInputTarget::AuthSchemeField(field_idx) => {
+                    if super::security_actions::edit_auth_scheme_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PushChar(c),
+                    ) {
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingCertField(field_idx) => {
+                    super::security_actions::edit_request_cert_field(
+                        &mut tab.request.settings.client_cert,
+                        field_idx,
+                        super::security_actions::FieldOp::PushChar(c),
+                    );
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SettingProxyField(field_idx) => {
+                    super::network_actions::edit_request_proxy_field(
+                        &mut tab.request.settings.proxy,
+                        field_idx,
+                        super::security_actions::FieldOp::PushChar(c),
+                    );
+                    tab.mark_dirty(true);
                 }
                 ActiveInputTarget::BodyText => {
                     match &mut tab.request.body {
@@ -293,6 +302,18 @@ impl AuraAppState {
                 ActiveInputTarget::HeaderValue(idx) => {
                     if let Some(h) = tab.request.headers.get_mut(idx) {
                         h.value.pop();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AssertExpr(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expression.pop();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AssertExpected(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expected.pop();
                         tab.mark_dirty(true);
                     }
                 }
@@ -397,39 +418,38 @@ impl AuraAppState {
                     }
                 }
                 ActiveInputTarget::AuthOAuth2Field(field_idx) => {
-                    if let aura_core::model::AuthConfig::OAuth2 {
-                        grant_type,
-                        access_token,
-                        token_url,
-                        client_id,
-                        client_secret,
-                    } = &mut tab.request.auth
-                    {
-                        match field_idx {
-                            0 => {
-                                access_token.pop();
-                            }
-                            1 => {
-                                grant_type.pop();
-                            }
-                            2 => {
-                                if let Some(tu) = token_url {
-                                    tu.pop();
-                                }
-                            }
-                            3 => {
-                                if let Some(ci) = client_id {
-                                    ci.pop();
-                                }
-                            }
-                            _ => {
-                                if let Some(cs) = client_secret {
-                                    cs.pop();
-                                }
-                            }
-                        }
+                    if super::security_actions::edit_oauth2_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PopChar,
+                    ) {
                         tab.mark_dirty(true);
                     }
+                }
+                ActiveInputTarget::AuthSchemeField(field_idx) => {
+                    if super::security_actions::edit_auth_scheme_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PopChar,
+                    ) {
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingCertField(field_idx) => {
+                    super::security_actions::edit_request_cert_field(
+                        &mut tab.request.settings.client_cert,
+                        field_idx,
+                        super::security_actions::FieldOp::PopChar,
+                    );
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SettingProxyField(field_idx) => {
+                    super::network_actions::edit_request_proxy_field(
+                        &mut tab.request.settings.proxy,
+                        field_idx,
+                        super::security_actions::FieldOp::PopChar,
+                    );
+                    tab.mark_dirty(true);
                 }
                 ActiveInputTarget::BodyText => {
                     match &mut tab.request.body {
@@ -493,6 +513,18 @@ impl AuraAppState {
             ActiveInputTarget::ParamValue(idx) => tab.request.params.get(*idx).map(|p| p.value.clone()),
             ActiveInputTarget::HeaderKey(idx) => tab.request.headers.get(*idx).map(|h| h.key.clone()),
             ActiveInputTarget::HeaderValue(idx) => tab.request.headers.get(*idx).map(|h| h.value.clone()),
+            ActiveInputTarget::AssertExpr(idx) => tab
+                .request
+                .scripts
+                .assertions
+                .get(*idx)
+                .map(|a| a.expression.clone()),
+            ActiveInputTarget::AssertExpected(idx) => tab
+                .request
+                .scripts
+                .assertions
+                .get(*idx)
+                .map(|a| a.expected.clone()),
             ActiveInputTarget::FormParamKey(idx) => {
                 if let aura_core::model::BodyType::FormUrlEncoded(items) = &tab.request.body {
                     items.get(*idx).map(|item| item.key.clone())
@@ -548,22 +580,24 @@ impl AuraAppState {
                 },
                 _ => None,
             },
-            ActiveInputTarget::AuthOAuth2Field(field_idx) => match &tab.request.auth {
-                aura_core::model::AuthConfig::OAuth2 {
-                    grant_type,
-                    access_token,
-                    token_url,
-                    client_id,
-                    client_secret,
-                } => match *field_idx {
-                    0 => Some(access_token.clone()),
-                    1 => Some(grant_type.clone()),
-                    2 => Some(token_url.clone().unwrap_or_default()),
-                    3 => Some(client_id.clone().unwrap_or_default()),
-                    _ => Some(client_secret.clone().unwrap_or_default()),
-                },
-                _ => None,
-            },
+            ActiveInputTarget::AuthOAuth2Field(field_idx) => {
+                super::security_actions::read_oauth2_field(&tab.request.auth, *field_idx)
+            }
+            ActiveInputTarget::AuthSchemeField(field_idx) => {
+                super::security_actions::read_auth_scheme_field(&tab.request.auth, *field_idx)
+            }
+            ActiveInputTarget::SettingCertField(field_idx) => {
+                Some(super::security_actions::read_request_cert_field(
+                    tab.request.settings.client_cert.as_ref(),
+                    *field_idx,
+                ))
+            }
+            ActiveInputTarget::SettingProxyField(field_idx) => {
+                Some(super::network_actions::read_request_proxy_field(
+                    tab.request.settings.proxy.as_ref(),
+                    *field_idx,
+                ))
+            }
             ActiveInputTarget::BodyText => match &tab.request.body {
                 aura_core::model::BodyType::Json(s)
                 | aura_core::model::BodyType::Xml(s)
@@ -644,6 +678,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::AssertExpr(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expression = text;
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AssertExpected(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expected = text;
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
                         if let Some(item) = items.get_mut(idx) {
@@ -721,23 +767,38 @@ impl AuraAppState {
                     }
                 }
                 ActiveInputTarget::AuthOAuth2Field(field_idx) => {
-                    if let aura_core::model::AuthConfig::OAuth2 {
-                        grant_type,
-                        access_token,
-                        token_url,
-                        client_id,
-                        client_secret,
-                    } = &mut tab.request.auth
-                    {
-                        match field_idx {
-                            0 => *access_token = text,
-                            1 => *grant_type = text,
-                            2 => *token_url = if text.is_empty() { None } else { Some(text) },
-                            3 => *client_id = if text.is_empty() { None } else { Some(text) },
-                            _ => *client_secret = if text.is_empty() { None } else { Some(text) },
-                        }
+                    if super::security_actions::edit_oauth2_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::SetStr(text),
+                    ) {
                         tab.mark_dirty(true);
                     }
+                }
+                ActiveInputTarget::AuthSchemeField(field_idx) => {
+                    if super::security_actions::edit_auth_scheme_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::SetStr(text),
+                    ) {
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingCertField(field_idx) => {
+                    super::security_actions::edit_request_cert_field(
+                        &mut tab.request.settings.client_cert,
+                        field_idx,
+                        super::security_actions::FieldOp::SetStr(text),
+                    );
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SettingProxyField(field_idx) => {
+                    super::network_actions::edit_request_proxy_field(
+                        &mut tab.request.settings.proxy,
+                        field_idx,
+                        super::security_actions::FieldOp::SetStr(text),
+                    );
+                    tab.mark_dirty(true);
                 }
                 ActiveInputTarget::BodyText => {
                     match &mut tab.request.body {

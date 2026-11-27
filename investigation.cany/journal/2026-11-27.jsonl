@@ -1,0 +1,17 @@
+{"caller":"ui","duration_ms":1,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:05:38Z","tool":"project_pins_list","ts":1795737938}
+{"caller":"ui","duration_ms":2187,"kind":"tool_call","ok":true,"params":{"project":"C:\\repo\\aura"},"time":"2026-11-27T00:05:43Z","tool":"project_play","ts":1795737943}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:06:57Z","tool":"project_pins_list","ts":1795738017}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:07:14Z","tool":"project_pins_list","ts":1795738034}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:07:26Z","tool":"project_pins_list","ts":1795738046}
+{"caller":"ui","duration_ms":1,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:07:54Z","tool":"project_pins_list","ts":1795738074}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:07:56Z","tool":"project_pins_list","ts":1795738076}
+{"caller":"ui","duration_ms":1,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:38:23Z","tool":"project_pins_list","ts":1795739903}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:53:50Z","tool":"project_pins_list","ts":1795740830}
+{"caller":"ui","duration_ms":2173,"kind":"tool_call","ok":true,"params":{"project":"C:\\repo\\aura"},"time":"2026-11-27T00:54:06Z","tool":"project_play","ts":1795740846}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:54:26Z","tool":"project_pins_list","ts":1795740866}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:54:48Z","tool":"project_pins_list","ts":1795740888}
+{"caller":"ui","duration_ms":1,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:55:06Z","tool":"project_pins_list","ts":1795740906}
+{"caller":"ui","duration_ms":0,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T00:55:09Z","tool":"project_pins_list","ts":1795740909}
+{"caller":"ui","duration_ms":4,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T01:21:09Z","tool":"project_pins_list","ts":1795742469}
+{"caller":"ui","duration_ms":1,"kind":"tool_call","ok":true,"params":{},"time":"2026-11-27T01:32:07Z","tool":"project_pins_list","ts":1795743127}
+{"caller":"ui","duration_ms":2153,"kind":"tool_call","ok":true,"params":{"project":"C:\\repo\\aura"},"time":"2026-11-27T01:32:55Z","tool":"project_play","ts":1795743175}

@@ -14,8 +14,10 @@ mod inline_input_edit;
 mod inline_input_nav;
 mod item_dialogs;
 mod layout_and_palette;
+mod network_actions;
 mod protocols;
 mod request_editing;
+mod security_actions;
 mod workspace_tabs;
 
 pub use protocols::WsdlImportDialogState;
@@ -49,10 +51,15 @@ pub enum ActiveInputTarget {
     AuthApiKeyValue,
     AuthAwsField(usize),
     AuthOAuth2Field(usize),
+    AuthSchemeField(usize),
+    SettingCertField(usize),
+    SettingProxyField(usize),
     BodyText,
     PreRequestScript,
     PostResponseScript,
     TestScript,
+    AssertExpr(usize),
+    AssertExpected(usize),
     SpecText,
 }
 
@@ -411,6 +418,84 @@ pub struct AuraAppState {
     pub auto_save_enabled: bool,
     #[serde(default = "default_auto_save_delay_ms")]
     pub auto_save_delay_ms: u64,
+    #[serde(default)]
+    pub domain_client_certs: Vec<aura_core::model::ClientCertificateConfig>,
+    #[serde(default)]
+    pub vault_config: aura_engine::VaultConfig,
+    #[serde(default)]
+    pub global_proxy: aura_core::model::ProxyConfig,
+    #[serde(default)]
+    pub cookie_jar: aura_core::cookies::CookieJar,
+    #[serde(skip)]
+    pub interceptor_manager: aura_core::interceptor::InterceptorManager,
+    #[serde(skip)]
+    pub capture_proxy_handle: Option<aura_engine::CaptureProxyHandle>,
+    #[serde(skip)]
+    pub is_oauth2_in_flight: bool,
+    #[serde(skip)]
+    pub is_security_vault_modal_open: bool,
+    #[serde(skip)]
+    pub is_cookie_modal_open: bool,
+    #[serde(skip)]
+    pub cookie_domain_filter: String,
+    #[serde(skip)]
+    pub draft_cookie_domain: String,
+    #[serde(skip)]
+    pub draft_cookie_path: String,
+    #[serde(skip)]
+    pub draft_cookie_name: String,
+    #[serde(skip)]
+    pub draft_cookie_value: String,
+    #[serde(skip)]
+    pub draft_cookie_secure: bool,
+    #[serde(skip)]
+    pub is_proxy_modal_open: bool,
+    #[serde(skip)]
+    pub is_interceptor_modal_open: bool,
+    #[serde(skip)]
+    pub interceptor_bind_addr: String,
+    #[serde(skip)]
+    pub draft_rule_match: String,
+    #[serde(skip)]
+    pub draft_rule_target: String,
+    #[serde(skip)]
+    pub is_codegen_modal_open: bool,
+    #[serde(skip, default = "default_codegen_language")]
+    pub codegen_language: aura_core::codegen::CodegenLanguage,
+    #[serde(skip)]
+    pub codegen_resolve_vars: bool,
+    #[serde(skip)]
+    pub keychain_service: String,
+    #[serde(skip)]
+    pub keychain_key: String,
+    #[serde(skip)]
+    pub keychain_value: String,
+    #[serde(skip)]
+    pub draft_cert_domain: String,
+    #[serde(skip)]
+    pub draft_cert_path: String,
+    #[serde(skip)]
+    pub draft_cert_key_path: String,
+    #[serde(skip)]
+    pub draft_cert_passphrase: String,
+    #[serde(skip)]
+    pub is_git_modal_open: bool,
+    #[serde(skip)]
+    pub git_snapshot: Option<aura_sync::GitStatusSnapshot>,
+    #[serde(skip)]
+    pub git_selected_file: Option<(String, bool)>,
+    #[serde(skip)]
+    pub git_selected_diff: String,
+    #[serde(skip)]
+    pub git_commit_message: String,
+    #[serde(skip)]
+    pub git_new_branch_name: String,
+    #[serde(skip)]
+    pub git_is_busy: bool,
+    #[serde(skip)]
+    pub git_last_output: Option<String>,
+    #[serde(skip)]
+    pub git_error: Option<String>,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
     #[serde(skip, default = "default_execution_service")]
@@ -435,6 +520,10 @@ fn default_workspace_service() -> std::sync::Arc<crate::services::WorkspaceServi
 
 fn default_execution_service() -> std::sync::Arc<crate::services::ExecutionService> {
     std::sync::Arc::new(crate::services::ExecutionService::new())
+}
+
+fn default_codegen_language() -> aura_core::codegen::CodegenLanguage {
+    aura_core::codegen::CodegenLanguage::Curl
 }
 
 impl Default for AuraAppState {
@@ -508,6 +597,45 @@ impl Default for AuraAppState {
             setting_max_redirects_error: None,
             auto_save_enabled: true,
             auto_save_delay_ms: 1000,
+            domain_client_certs: Vec::new(),
+            vault_config: aura_engine::VaultConfig::default(),
+            global_proxy: aura_core::model::ProxyConfig::default(),
+            cookie_jar: aura_core::cookies::CookieJar::default(),
+            interceptor_manager: aura_core::interceptor::InterceptorManager::default(),
+            capture_proxy_handle: None,
+            is_oauth2_in_flight: false,
+            is_security_vault_modal_open: false,
+            is_cookie_modal_open: false,
+            cookie_domain_filter: String::new(),
+            draft_cookie_domain: String::new(),
+            draft_cookie_path: "/".to_string(),
+            draft_cookie_name: String::new(),
+            draft_cookie_value: String::new(),
+            draft_cookie_secure: false,
+            is_proxy_modal_open: false,
+            is_interceptor_modal_open: false,
+            interceptor_bind_addr: "127.0.0.1:8888".to_string(),
+            draft_rule_match: String::new(),
+            draft_rule_target: String::new(),
+            is_codegen_modal_open: false,
+            codegen_language: default_codegen_language(),
+            codegen_resolve_vars: true,
+            keychain_service: "aura".to_string(),
+            keychain_key: String::new(),
+            keychain_value: String::new(),
+            draft_cert_domain: String::new(),
+            draft_cert_path: String::new(),
+            draft_cert_key_path: String::new(),
+            draft_cert_passphrase: String::new(),
+            is_git_modal_open: false,
+            git_snapshot: None,
+            git_selected_file: None,
+            git_selected_diff: String::new(),
+            git_commit_message: String::new(),
+            git_new_branch_name: String::new(),
+            git_is_busy: false,
+            git_last_output: None,
+            git_error: None,
             workspace_service: default_workspace_service(),
             execution_service: default_execution_service(),
         }
@@ -517,6 +645,13 @@ impl Default for AuraAppState {
 impl AuraAppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn git_workspace_dir(&self) -> PathBuf {
+        self.workspace_store
+            .workspace_root
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
 
     pub fn set_editor_tab(&mut self, tab: EditorTab) {
@@ -1144,6 +1279,11 @@ mod tests {
             script_errors: Vec::new(),
             sse_events: Vec::new(),
             stream_messages: Vec::new(),
+            timing: None,
+            captured_cookies: Vec::new(),
+            next_request: None,
+            stop_chain: false,
+            exported_variables: HashMap::new(),
         });
 
         let count = state.run_active_tests().expect("tests should run");

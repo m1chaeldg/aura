@@ -127,6 +127,16 @@ The repository includes a ready-to-use VS Code environment:
   - `Debug All Tests (CodeLLDB)`: Run and step through tests.
 
 
+## Scripting, Assertions & Request Chaining
+
+Aura includes a sandboxed V8 JavaScript runtime (`deno_core`), a no-code declarative assertion engine, and Collection Runner flow control:
+
+- **No-Code Declarative Assertions (`[assert]`)**: Add point-and-click rules in the **Tests** tab (e.g., `res.status == 200`, `res.body.id isNumber`, `res.duration_ms < 500`) alongside Jasmine/Chai BDD JS tests. Rules persist directly in `[assert]` blocks inside `.aura` files.
+- **Async HTTP Calls in Scripts (`fetch` & `aura.sendRequest`)**: Pre-request, post-response, and test scripts support top-level `await fetch(url, init)` and `await aura.sendRequest(spec, callback?)` (plus `pm.sendRequest(...)`) to fetch dynamic tokens, check health endpoints, or call secondary APIs.
+- **Collection Runner Request Chaining (`aura.setNextRequest`)**: Dynamically jump to a named request (`aura.setNextRequest("Fetch Profile")`) or halt execution (`aura.setNextRequest(null)` / `aura.execution.setNextRequest(null)`). Variables set with `aura.variables.set(...)` and response cookies flow automatically between chained steps.
+
+See [docs/scripting_and_chaining.md](docs/scripting_and_chaining.md) for the full guide and operator reference, and inspect the ready-to-import chaining collection in [docs/examples/chaining/](docs/examples/chaining/).
+
 ### Running the Test Suite
 
 ```bash

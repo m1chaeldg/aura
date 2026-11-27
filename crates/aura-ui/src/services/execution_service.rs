@@ -3,7 +3,7 @@
 use anyhow::Result;
 use aura_core::model::{AuraRequest, AuraResponse};
 use aura_core::templating::TemplateContext;
-use aura_engine::execute_request;
+use aura_engine::{execute_request_with_options, ExecutionOptions};
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -63,6 +63,20 @@ impl ExecutionService {
         context: TemplateContext,
         cancel_token: CancellationToken,
     ) -> Result<AuraResponse> {
+        let (_updated_req, resp) = self
+            .dispatch_with_options(request, context, ExecutionOptions::default(), cancel_token)
+            .await?;
+        Ok(resp)
+    }
+
+    /// Execute request with mTLS/Vault options and return updated request (e.g., refreshed OAuth2 tokens).
+    pub async fn dispatch_with_options(
+        &self,
+        mut request: AuraRequest,
+        context: TemplateContext,
+        options: ExecutionOptions,
+        cancel_token: CancellationToken,
+    ) -> Result<(AuraRequest, AuraResponse)> {
         tracing::info!(
             target: "aura_ui::execution",
             method = %request.method,
@@ -77,7 +91,7 @@ impl ExecutionService {
         let started_at = std::time::Instant::now();
 
         tokio::select! {
-            res = execute_request(&request, &context) => {
+            res = execute_request_with_options(&mut request, &context, &options) => {
                 self.is_in_flight.store(false, Ordering::SeqCst);
                 match &res {
                     Ok(resp) => {
@@ -104,7 +118,7 @@ impl ExecutionService {
                         );
                     }
                 }
-                res
+                res.map(|resp| (request, resp))
             }
             _ = cancel_token.cancelled() => {
                 self.is_in_flight.store(false, Ordering::SeqCst);

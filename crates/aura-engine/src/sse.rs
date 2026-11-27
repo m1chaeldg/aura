@@ -184,5 +184,10 @@ pub async fn execute_sse_request(
         script_errors: Vec::new(),
         sse_events: all_events,
         stream_messages: Vec::new(),
+        timing: None,
+        captured_cookies: Vec::new(),
+        next_request: None,
+        stop_chain: false,
+        exported_variables: HashMap::new(),
     })
 }

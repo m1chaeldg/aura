@@ -223,28 +223,112 @@ impl CstDocument {
                         }
                     }
                     "auth" => {
-                        let mut auth_type = String::new();
-                        let mut token = String::new();
-                        let mut username = String::new();
-                        let mut password = String::new();
-
+                        let mut kv_map: std::collections::HashMap<String, String> =
+                            std::collections::HashMap::new();
                         for sub in &table.items {
                             if let CstTableItem::KeyValue(kv) = sub {
-                                match kv.key.as_str() {
-                                    "type" => auth_type = kv.value.as_str().to_lowercase(),
-                                    "token" => token = kv.value.as_str().to_string(),
-                                    "username" => username = kv.value.as_str().to_string(),
-                                    "password" => password = kv.value.as_str().to_string(),
-                                    _ => {}
-                                }
+                                let v = if let Some(b) = kv.value.as_bool() {
+                                    b.to_string()
+                                } else if let Some(i) = kv.value.as_i64() {
+                                    i.to_string()
+                                } else {
+                                    kv.value.as_str().to_string()
+                                };
+                                kv_map.insert(kv.key.clone(), v);
                             }
                         }
+                        let auth_type = kv_map
+                            .get("type")
+                            .map(|s| s.to_lowercase())
+                            .unwrap_or_default();
+                        let get_s = |k: &str| kv_map.get(k).cloned().unwrap_or_default();
+                        let get_opt = |k: &str| kv_map.get(k).cloned().filter(|v| !v.is_empty());
+                        let get_bool = |k: &str, default: bool| {
+                            kv_map
+                                .get(k)
+                                .and_then(|v| v.parse::<bool>().ok())
+                                .unwrap_or(default)
+                        };
 
-                        if auth_type == "bearer" {
-                            req.auth = Some(AuthConfig::Bearer { token });
-                        } else if auth_type == "basic" {
-                            req.auth = Some(AuthConfig::Basic { username, password });
-                        }
+                        req.auth = match auth_type.as_str() {
+                            "bearer" => Some(AuthConfig::Bearer {
+                                token: get_s("token"),
+                            }),
+                            "basic" => Some(AuthConfig::Basic {
+                                username: get_s("username"),
+                                password: get_s("password"),
+                            }),
+                            "apikey" | "api_key" => Some(AuthConfig::ApiKey {
+                                key: get_s("key"),
+                                value: get_s("value"),
+                                in_header: get_bool("in_header", true),
+                            }),
+                            "oauth2" => Some(AuthConfig::OAuth2 {
+                                grant_type: get_s("grant_type"),
+                                access_token: get_s("access_token"),
+                                token_url: get_opt("token_url"),
+                                client_id: get_opt("client_id"),
+                                client_secret: get_opt("client_secret"),
+                                auth_url: get_opt("auth_url"),
+                                redirect_uri: get_opt("redirect_uri"),
+                                scope: get_opt("scope"),
+                                username: get_opt("username"),
+                                password: get_opt("password"),
+                                refresh_token: get_opt("refresh_token"),
+                                expires_at: kv_map
+                                    .get("expires_at")
+                                    .and_then(|v| v.parse::<i64>().ok()),
+                                use_pkce: get_bool("use_pkce", true),
+                                auto_refresh: get_bool("auto_refresh", true),
+                            }),
+                            "digest" => Some(AuthConfig::Digest {
+                                username: get_s("username"),
+                                password: get_s("password"),
+                                realm: get_opt("realm"),
+                                nonce: get_opt("nonce"),
+                                qop: get_opt("qop"),
+                                algorithm: get_opt("algorithm"),
+                            }),
+                            "ntlm" => Some(AuthConfig::Ntlm {
+                                username: get_s("username"),
+                                password: get_s("password"),
+                                domain: get_s("domain"),
+                                workstation: get_s("workstation"),
+                            }),
+                            "oauth1" => Some(AuthConfig::OAuth1 {
+                                consumer_key: get_s("consumer_key"),
+                                consumer_secret: get_s("consumer_secret"),
+                                token: get_s("token"),
+                                token_secret: get_s("token_secret"),
+                                signature_method: get_s("signature_method"),
+                                callback_url: get_opt("callback_url"),
+                                realm: get_opt("realm"),
+                                add_to_query: get_bool("add_to_query", false),
+                            }),
+                            "hawk" => Some(AuthConfig::Hawk {
+                                id: get_s("id"),
+                                key: get_s("key"),
+                                algorithm: get_s("algorithm"),
+                                ext: get_opt("ext"),
+                                app: get_opt("app"),
+                                dlg: get_opt("dlg"),
+                            }),
+                            "edgegrid" | "akamai_edgegrid" => Some(AuthConfig::AkamaiEdgeGrid {
+                                client_token: get_s("client_token"),
+                                client_secret: get_s("client_secret"),
+                                access_token: get_s("access_token"),
+                                max_body: kv_map
+                                    .get("max_body")
+                                    .and_then(|v| v.parse::<usize>().ok())
+                                    .unwrap_or(131072),
+                            }),
+                            "wsse" => Some(AuthConfig::Wsse {
+                                username: get_s("username"),
+                                password: get_s("password"),
+                                digest_password: get_bool("digest_password", true),
+                            }),
+                            _ => None,
+                        };
                     }
                     "flow" => {
                         let mut flow = FlowControl::default();
@@ -455,11 +539,23 @@ impl CstDocument {
                         }
                     }
                     "assert" | "asserts" => {
+                        let mut lines: Vec<String> = Vec::new();
                         for sub in &table.items {
-                            if let CstTableItem::FencedBlock(fb) = sub {
-                                req.assert =
-                                    Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
+                            match sub {
+                                CstTableItem::FencedBlock(fb) => {
+                                    let txt = fb.content.trim_end_matches(['\r', '\n']);
+                                    if !txt.trim().is_empty() {
+                                        lines.push(txt.to_string());
+                                    }
+                                }
+                                CstTableItem::KeyValue(kv) => {
+                                    lines.push(format!("{} {}", kv.key.trim(), kv.value.as_str().trim()));
+                                }
+                                _ => {}
                             }
+                        }
+                        if !lines.is_empty() {
+                            req.assert = Some(lines.join("\n"));
                         }
                     }
                     "test" | "tests" => {

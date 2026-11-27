@@ -16,6 +16,14 @@ pub struct AuraPreferences {
     pub split_ratio: f32,
     #[serde(default = "default_layout_orientation")]
     pub layout_orientation: String,
+    #[serde(default)]
+    pub domain_client_certs: Vec<aura_core::model::ClientCertificateConfig>,
+    #[serde(default)]
+    pub vault_config: aura_engine::VaultConfig,
+    #[serde(default)]
+    pub global_proxy: aura_core::model::ProxyConfig,
+    #[serde(default)]
+    pub cookie_jar: aura_core::cookies::CookieJar,
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -42,6 +50,10 @@ impl Default for AuraPreferences {
             auto_save_delay_ms: 1000,
             split_ratio: 0.5,
             layout_orientation: "horizontal".to_string(),
+            domain_client_certs: Vec::new(),
+            vault_config: aura_engine::VaultConfig::default(),
+            global_proxy: aura_core::model::ProxyConfig::default(),
+            cookie_jar: aura_core::cookies::CookieJar::default(),
         }
     }
 }

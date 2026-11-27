@@ -175,6 +175,7 @@ async fn test_e2e_request_execution_full_lifecycle_with_postman_echo() {
             });
         "#
         .to_string(),
+        assertions: Vec::new(),
     };
 
     let context = TemplateContext::new();

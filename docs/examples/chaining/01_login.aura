@@ -1,0 +1,51 @@
+version = "1.0"
+name = "01 Login and Extract Token"
+method = "POST"
+url = "https://postman-echo.com/post"
+
+[settings]
+inherit_auth = false
+verify_ssl = true
+follow_redirects = true
+max_redirects = 10
+timeout_ms = 15000
+
+[headers]
+Accept = "application/json"
+Content-Type = "application/json"
+
+[body.json]
+```json
+{
+  "username": "demo@example.com",
+  "session_nonce": "{{$uuid}}"
+}
+```
+
+[scripts.pre-request]
+```javascript
+// Verify service readiness asynchronously before sending login
+const ping = await fetch("https://postman-echo.com/get?ping=1");
+aura.variables.set("precheck_status", String(ping.status));
+console.log("Pre-request ping status:", ping.status);
+```
+
+[scripts.post-response]
+```javascript
+const data = response.json();
+const username = data && data.json ? data.json.username : "";
+
+if (response.status === 200 && username) {
+    // Export dynamic value for chained step 02
+    aura.variables.set("auth_token", "tok_" + username);
+    aura.setNextRequest("02 Fetch User Profile");
+} else {
+    // Branch to fallback handler if login failed
+    aura.setNextRequest("03 Fallback Auth Error");
+}
+```
+
+[assert]
+res.status = "== 200"
+res.body.json.username = "== demo@example.com"
+res.duration_ms = "< 5000"

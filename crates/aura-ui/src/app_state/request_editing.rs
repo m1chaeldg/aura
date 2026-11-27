@@ -40,49 +40,58 @@ impl AuraAppState {
 
     pub fn run_active_tests(&mut self) -> Result<usize, String> {
         let result = if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
-            if tab.request.scripts.tests.trim().is_empty() {
-                return Err("No test script defined".to_string());
+            if tab.request.scripts.tests.trim().is_empty()
+                && tab.request.scripts.assertions.is_empty()
+            {
+                return Err("No declarative assertions or test script defined".to_string());
             }
             if let Some(ref mut resp) = tab.response {
-                let working_vars = tab.request.variables.clone();
-                let mut script_rt = aura_scripting::AuraScriptRuntime::new(working_vars)
-                    .map_err(|e| format!("Script runtime error: {e}"))?;
-                script_rt
-                    .inject_response_context_with_duration(
-                        resp.status,
-                        &resp.body,
-                        &resp.headers,
-                        resp.duration_ms,
-                    )
-                    .map_err(|e| format!("Response injection error: {e}"))?;
-                match script_rt.run(&tab.request.scripts.tests) {
-                    Ok(test_res) => {
-                        let count = test_res.test_assertions.len();
-                        resp.assertions = test_res.test_assertions;
-                        resp.console_logs.extend(test_res.console_logs);
-                        resp.script_errors.retain(|e| e.stage != "Test Script");
-                        Ok(count)
-                    }
-                    Err(e) => {
-                        let msg = format!("{e:#}");
-                        tracing::error!(
-                            target: "aura_ui::tests",
-                            error = %msg,
-                            "Manual test script execution failed"
-                        );
-                        resp.script_errors.retain(|e| e.stage != "Test Script");
-                        resp.script_errors.push(aura_core::model::ScriptError {
-                            stage: "Test Script".to_string(),
-                            message: msg.clone(),
-                        });
-                        resp.console_logs.push(aura_core::model::ConsoleMessage {
-                            level: "ERROR".to_string(),
-                            message: format!("Test script error: {msg}"),
-                            timestamp: chrono::Utc::now(),
-                        });
-                        Err(format!("Test execution error: {msg}"))
+                let mut combined_assertions = aura_core::assertions::evaluate_assertions(
+                    &tab.request.scripts.assertions,
+                    resp,
+                );
+                if !tab.request.scripts.tests.trim().is_empty() {
+                    let working_vars = tab.request.variables.clone();
+                    let mut script_rt = aura_scripting::AuraScriptRuntime::new(working_vars)
+                        .map_err(|e| format!("Script runtime error: {e}"))?;
+                    script_rt
+                        .inject_response_context_with_duration(
+                            resp.status,
+                            &resp.body,
+                            &resp.headers,
+                            resp.duration_ms,
+                        )
+                        .map_err(|e| format!("Response injection error: {e}"))?;
+                    match script_rt.run(&tab.request.scripts.tests) {
+                        Ok(test_res) => {
+                            combined_assertions.extend(test_res.test_assertions);
+                            resp.console_logs.extend(test_res.console_logs);
+                            resp.script_errors.retain(|e| e.stage != "Test Script");
+                        }
+                        Err(e) => {
+                            let msg = format!("{e:#}");
+                            tracing::error!(
+                                target: "aura_ui::tests",
+                                error = %msg,
+                                "Manual test script execution failed"
+                            );
+                            resp.script_errors.retain(|e| e.stage != "Test Script");
+                            resp.script_errors.push(aura_core::model::ScriptError {
+                                stage: "Test Script".to_string(),
+                                message: msg.clone(),
+                            });
+                            resp.console_logs.push(aura_core::model::ConsoleMessage {
+                                level: "ERROR".to_string(),
+                                message: format!("Test script error: {msg}"),
+                                timestamp: chrono::Utc::now(),
+                            });
+                            return Err(format!("Test execution error: {msg}"));
+                        }
                     }
                 }
+                let count = combined_assertions.len();
+                resp.assertions = combined_assertions;
+                Ok(count)
             } else {
                 Err("No response available. Send the request first.".to_string())
             }
@@ -93,6 +102,67 @@ impl AuraAppState {
             self.active_response_tab = crate::stores::ResponseTab::Tests;
         }
         result
+    }
+
+    pub fn add_declarative_assertion(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request
+                .scripts
+                .assertions
+                .push(aura_core::assertions::DeclarativeAssertion::default());
+            let idx = tab.request.scripts.assertions.len().saturating_sub(1);
+            tab.mark_dirty(true);
+            self.active_input_target = Some(super::ActiveInputTarget::AssertExpr(idx));
+        }
+    }
+
+    pub fn add_preset_assertion(
+        &mut self,
+        expression: &str,
+        operator: aura_core::assertions::AssertOperator,
+        expected: &str,
+    ) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request
+                .scripts
+                .assertions
+                .push(aura_core::assertions::DeclarativeAssertion::new(
+                    expression, operator, expected,
+                ));
+            tab.mark_dirty(true);
+        }
+    }
+
+    pub fn toggle_declarative_assertion(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let Some(rule) = tab.request.scripts.assertions.get_mut(index) {
+                rule.enabled = !rule.enabled;
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
+    pub fn remove_declarative_assertion(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if index < tab.request.scripts.assertions.len() {
+                tab.request.scripts.assertions.remove(index);
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
+    pub fn cycle_assertion_operator(&mut self, index: usize) {
+        use aura_core::assertions::AssertOperator;
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let Some(rule) = tab.request.scripts.assertions.get_mut(index) {
+                let pos = AssertOperator::ALL
+                    .iter()
+                    .position(|op| *op == rule.operator)
+                    .unwrap_or(0);
+                rule.operator = AssertOperator::ALL[(pos + 1) % AssertOperator::ALL.len()];
+                tab.mark_dirty(true);
+            }
+        }
     }
 
     // =========================================================================
@@ -573,12 +643,66 @@ impl AuraAppState {
         client_secret: Option<String>,
     ) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let (
+                auth_url,
+                redirect_uri,
+                scope,
+                username,
+                password,
+                refresh_token,
+                expires_at,
+                use_pkce,
+                auto_refresh,
+            ) = match &tab.request.auth {
+                aura_core::model::AuthConfig::OAuth2 {
+                    auth_url,
+                    redirect_uri,
+                    scope,
+                    username,
+                    password,
+                    refresh_token,
+                    expires_at,
+                    use_pkce,
+                    auto_refresh,
+                    ..
+                } => (
+                    auth_url.clone(),
+                    redirect_uri.clone(),
+                    scope.clone(),
+                    username.clone(),
+                    password.clone(),
+                    refresh_token.clone(),
+                    *expires_at,
+                    *use_pkce,
+                    *auto_refresh,
+                ),
+                _ => (
+                    None,
+                    Some("http://127.0.0.1:8765/callback".to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    true,
+                    true,
+                ),
+            };
             tab.request.auth = aura_core::model::AuthConfig::OAuth2 {
                 grant_type,
                 access_token,
                 token_url,
                 client_id,
                 client_secret,
+                auth_url,
+                redirect_uri,
+                scope,
+                username,
+                password,
+                refresh_token,
+                expires_at,
+                use_pkce,
+                auto_refresh,
             };
             tab.mark_dirty(true);
         }

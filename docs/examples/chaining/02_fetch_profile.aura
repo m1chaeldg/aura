@@ -1,0 +1,48 @@
+version = "1.0"
+name = "02 Fetch User Profile"
+method = "GET"
+url = "https://postman-echo.com/get?user=demo"
+
+[settings]
+inherit_auth = false
+verify_ssl = true
+follow_redirects = true
+max_redirects = 10
+timeout_ms = 15000
+
+[headers]
+Accept = "application/json"
+
+[auth]
+type = "bearer"
+token = "{{auth_token}}"
+
+[scripts.post-response]
+```javascript
+// Trigger an auxiliary audit log call via aura.sendRequest
+const audit = await aura.sendRequest({
+    url: "https://postman-echo.com/post",
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: { event: "profile_loaded", status: response.status }
+});
+console.log("Audit event status:", audit.status);
+
+// End the collection chain cleanly so 03 Fallback Auth Error is skipped
+aura.setNextRequest(null);
+```
+
+[tests]
+```javascript
+describe("User Profile", () => {
+    it("passes bearer token from step 01", () => {
+        const body = response.json();
+        expect(body.headers.authorization).toContain("Bearer tok_");
+    });
+});
+```
+
+[assert]
+res.status = "== 200"
+res.body.args.user = "== demo"
+res.body.headers = "isObject"

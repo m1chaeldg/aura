@@ -161,8 +161,132 @@ pub fn apply_auth(
                 ),
             ));
         }
-        AuthConfig::Inherit | AuthConfig::None => {}
+        AuthConfig::Wsse {
+            username,
+            password,
+            digest_password,
+        } => {
+            headers.extend(crate::security_schemes::build_wsse_headers(
+                username,
+                password,
+                *digest_password,
+            ));
+        }
+        AuthConfig::Digest { .. }
+        | AuthConfig::Ntlm { .. }
+        | AuthConfig::OAuth1 { .. }
+        | AuthConfig::Hawk { .. }
+        | AuthConfig::AkamaiEdgeGrid { .. }
+        | AuthConfig::Inherit
+        | AuthConfig::None => {}
     }
+}
+
+/// Apply authentication requiring request context (method, resolved URL, body bytes).
+pub fn apply_request_auth(
+    method: &str,
+    full_url: &str,
+    body: &[u8],
+    auth: &AuthConfig,
+    headers: &mut Vec<(String, String)>,
+    params: &mut Vec<(String, String)>,
+) -> Result<()> {
+    match auth {
+        AuthConfig::OAuth1 {
+            consumer_key,
+            consumer_secret,
+            token,
+            token_secret,
+            signature_method,
+            callback_url,
+            realm,
+            add_to_query,
+        } => {
+            crate::security_schemes::sign_oauth1(
+                method,
+                full_url,
+                consumer_key,
+                consumer_secret,
+                token,
+                token_secret,
+                signature_method,
+                callback_url.as_deref(),
+                realm.as_deref(),
+                *add_to_query,
+                headers,
+                params,
+            )?;
+        }
+        AuthConfig::Hawk {
+            id,
+            key,
+            algorithm,
+            ext,
+            app,
+            dlg,
+        } => {
+            let hdr = crate::security_schemes::build_hawk_header(
+                method,
+                full_url,
+                id,
+                key,
+                algorithm,
+                ext.as_deref(),
+                app.as_deref(),
+                dlg.as_deref(),
+            )?;
+            headers.push(("Authorization".to_string(), hdr));
+        }
+        AuthConfig::AkamaiEdgeGrid {
+            client_token,
+            client_secret,
+            access_token,
+            max_body,
+        } => {
+            let hdr = crate::security_schemes::build_edgegrid_header(
+                method,
+                full_url,
+                body,
+                client_token,
+                client_secret,
+                access_token,
+                *max_body,
+            )?;
+            headers.push(("Authorization".to_string(), hdr));
+        }
+        AuthConfig::Digest {
+            username,
+            password,
+            realm: Some(realm),
+            nonce: Some(nonce),
+            qop,
+            algorithm,
+        } if !realm.trim().is_empty() && !nonce.trim().is_empty() => {
+            let challenge = crate::security_schemes::DigestChallenge {
+                realm: realm.clone(),
+                nonce: nonce.clone(),
+                opaque: None,
+                qop: qop.clone(),
+                algorithm: algorithm.clone().unwrap_or_else(|| "MD5".to_string()),
+            };
+            let uri = url::Url::parse(full_url)
+                .map(|u| match u.query() {
+                    Some(q) => format!("{}?{q}", u.path()),
+                    None => u.path().to_string(),
+                })
+                .unwrap_or_else(|_| "/".to_string());
+            let hdr = crate::security_schemes::build_digest_authorization(
+                method,
+                &uri,
+                username,
+                password,
+                &challenge,
+            );
+            headers.push(("Authorization".to_string(), hdr));
+        }
+        other => apply_auth(other, headers, params),
+    }
+    Ok(())
 }
 
 /// Resolved AWS credentials for SigV4 signing.

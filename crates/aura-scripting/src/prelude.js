@@ -311,3 +311,136 @@
         await testQueue;
     };
 })();
+
+// Async fetch() and aura.sendRequest() backed by Aura host runtime op
+(function () {
+    function normalizeHeaders(rawHeaders) {
+        const out = {};
+        if (!rawHeaders) return out;
+        if (Array.isArray(rawHeaders)) {
+            for (const item of rawHeaders) {
+                if (item && item.key) {
+                    out[String(item.key)] = String(item.value ?? "");
+                }
+            }
+        } else if (typeof rawHeaders === "object") {
+            for (const [k, v] of Object.entries(rawHeaders)) {
+                out[String(k)] = String(v ?? "");
+            }
+        }
+        return out;
+    }
+
+    function trackPending(promise) {
+        if (globalThis.__aura_internal && Array.isArray(globalThis.__aura_internal.pendingFetches)) {
+            globalThis.__aura_internal.pendingFetches.push(promise);
+        }
+        return promise;
+    }
+
+    globalThis.__aura_drain_fetches = async function () {
+        const pending = globalThis.__aura_internal?.pendingFetches;
+        while (pending && pending.length > 0) {
+            const batch = pending.splice(0, pending.length);
+            await Promise.allSettled(batch);
+        }
+    };
+
+    globalThis.fetch = function (input, init = {}) {
+        let url = "";
+        let method = init.method || "GET";
+        let headers = normalizeHeaders(init.headers);
+        let body = init.body != null ? String(init.body) : null;
+
+        if (typeof input === "string") {
+            url = input;
+        } else if (input && typeof input === "object") {
+            url = String(input.url || "");
+            if (input.method) method = String(input.method);
+            headers = { ...normalizeHeaders(input.headers), ...headers };
+            if (body == null && input.body != null) body = String(input.body);
+        }
+
+        const run = (async () => {
+            const raw = await Deno.core.ops.op_aura_fetch({
+                url,
+                method: String(method).toUpperCase(),
+                headers,
+                body,
+            });
+            if (raw.error) {
+                throw new Error(raw.error);
+            }
+            const rawBody = String(raw.body ?? "");
+            return {
+                ok: Boolean(raw.ok),
+                status: Number(raw.status ?? 0),
+                code: Number(raw.status ?? 0),
+                statusText: String(raw.status_text ?? ""),
+                headers: raw.headers || {},
+                url,
+                text: async () => rawBody,
+                json: async () => JSON.parse(rawBody),
+            };
+        })();
+
+        return trackPending(run);
+    };
+
+    if (globalThis.aura) {
+        globalThis.aura.sendRequest = function (reqSpec, callback) {
+            let url = "";
+            let method = "GET";
+            let headers = {};
+            let body = null;
+
+            if (typeof reqSpec === "string") {
+                url = reqSpec;
+            } else if (reqSpec && typeof reqSpec === "object") {
+                url = String(reqSpec.url || "");
+                method = String(reqSpec.method || "GET");
+                headers = normalizeHeaders(reqSpec.headers || reqSpec.header);
+                if (typeof reqSpec.body === "string") {
+                    body = reqSpec.body;
+                } else if (reqSpec.body && typeof reqSpec.body === "object") {
+                    if (reqSpec.body.raw != null) {
+                        body = String(reqSpec.body.raw);
+                    } else {
+                        body = JSON.stringify(reqSpec.body);
+                        if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
+                            headers["Content-Type"] = "application/json";
+                        }
+                    }
+                }
+            }
+
+            const p = globalThis
+                .fetch(url, { method, headers, body })
+                .then(async (resp) => {
+                    const txt = await resp.text();
+                    const adapted = {
+                        ok: resp.ok,
+                        status: resp.status,
+                        code: resp.status,
+                        statusText: resp.statusText,
+                        headers: resp.headers,
+                        body: txt,
+                        text: () => txt,
+                        json: () => JSON.parse(txt),
+                    };
+                    if (typeof callback === "function") {
+                        await callback(null, adapted);
+                    }
+                    return adapted;
+                })
+                .catch(async (err) => {
+                    if (typeof callback === "function") {
+                        await callback(err, null);
+                    }
+                    throw err;
+                });
+
+            return trackPending(p);
+        };
+    }
+})();

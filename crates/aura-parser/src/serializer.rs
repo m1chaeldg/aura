@@ -116,7 +116,22 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
                     out.push_str(&format!("session_token = \"{}\"\n", st.replace('"', "\\\"")));
                 }
             }
-            AuthConfig::OAuth2 { grant_type, access_token, token_url, client_id, client_secret } => {
+            AuthConfig::OAuth2 {
+                grant_type,
+                access_token,
+                token_url,
+                client_id,
+                client_secret,
+                auth_url,
+                redirect_uri,
+                scope,
+                username,
+                password,
+                refresh_token,
+                expires_at,
+                use_pkce,
+                auto_refresh,
+            } => {
                 out.push_str("\n[auth]\n");
                 out.push_str("type = \"oauth2\"\n");
                 out.push_str(&format!("grant_type = \"{}\"\n", grant_type.replace('"', "\\\"")));
@@ -130,6 +145,139 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
                 if let Some(cs) = client_secret {
                     out.push_str(&format!("client_secret = \"{}\"\n", cs.replace('"', "\\\"")));
                 }
+                if let Some(au) = auth_url {
+                    out.push_str(&format!("auth_url = \"{}\"\n", au.replace('"', "\\\"")));
+                }
+                if let Some(ru) = redirect_uri {
+                    out.push_str(&format!("redirect_uri = \"{}\"\n", ru.replace('"', "\\\"")));
+                }
+                if let Some(sc) = scope {
+                    out.push_str(&format!("scope = \"{}\"\n", sc.replace('"', "\\\"")));
+                }
+                if let Some(u) = username {
+                    out.push_str(&format!("username = \"{}\"\n", u.replace('"', "\\\"")));
+                }
+                if let Some(p) = password {
+                    out.push_str(&format!("password = \"{}\"\n", p.replace('"', "\\\"")));
+                }
+                if let Some(rt) = refresh_token {
+                    out.push_str(&format!("refresh_token = \"{}\"\n", rt.replace('"', "\\\"")));
+                }
+                if let Some(exp) = expires_at {
+                    out.push_str(&format!("expires_at = {}\n", exp));
+                }
+                out.push_str(&format!("use_pkce = {}\n", use_pkce));
+                out.push_str(&format!("auto_refresh = {}\n", auto_refresh));
+            }
+            AuthConfig::Digest {
+                username,
+                password,
+                realm,
+                nonce,
+                qop,
+                algorithm,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"digest\"\n");
+                out.push_str(&format!("username = \"{}\"\n", username.replace('"', "\\\"")));
+                out.push_str(&format!("password = \"{}\"\n", password.replace('"', "\\\"")));
+                if let Some(r) = realm {
+                    out.push_str(&format!("realm = \"{}\"\n", r.replace('"', "\\\"")));
+                }
+                if let Some(n) = nonce {
+                    out.push_str(&format!("nonce = \"{}\"\n", n.replace('"', "\\\"")));
+                }
+                if let Some(q) = qop {
+                    out.push_str(&format!("qop = \"{}\"\n", q.replace('"', "\\\"")));
+                }
+                if let Some(a) = algorithm {
+                    out.push_str(&format!("algorithm = \"{}\"\n", a.replace('"', "\\\"")));
+                }
+            }
+            AuthConfig::Ntlm {
+                username,
+                password,
+                domain,
+                workstation,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"ntlm\"\n");
+                out.push_str(&format!("username = \"{}\"\n", username.replace('"', "\\\"")));
+                out.push_str(&format!("password = \"{}\"\n", password.replace('"', "\\\"")));
+                out.push_str(&format!("domain = \"{}\"\n", domain.replace('"', "\\\"")));
+                out.push_str(&format!("workstation = \"{}\"\n", workstation.replace('"', "\\\"")));
+            }
+            AuthConfig::OAuth1 {
+                consumer_key,
+                consumer_secret,
+                token,
+                token_secret,
+                signature_method,
+                callback_url,
+                realm,
+                add_to_query,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"oauth1\"\n");
+                out.push_str(&format!("consumer_key = \"{}\"\n", consumer_key.replace('"', "\\\"")));
+                out.push_str(&format!("consumer_secret = \"{}\"\n", consumer_secret.replace('"', "\\\"")));
+                out.push_str(&format!("token = \"{}\"\n", token.replace('"', "\\\"")));
+                out.push_str(&format!("token_secret = \"{}\"\n", token_secret.replace('"', "\\\"")));
+                out.push_str(&format!("signature_method = \"{}\"\n", signature_method.replace('"', "\\\"")));
+                if let Some(cb) = callback_url {
+                    out.push_str(&format!("callback_url = \"{}\"\n", cb.replace('"', "\\\"")));
+                }
+                if let Some(r) = realm {
+                    out.push_str(&format!("realm = \"{}\"\n", r.replace('"', "\\\"")));
+                }
+                out.push_str(&format!("add_to_query = {}\n", add_to_query));
+            }
+            AuthConfig::Hawk {
+                id,
+                key,
+                algorithm,
+                ext,
+                app,
+                dlg,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"hawk\"\n");
+                out.push_str(&format!("id = \"{}\"\n", id.replace('"', "\\\"")));
+                out.push_str(&format!("key = \"{}\"\n", key.replace('"', "\\\"")));
+                out.push_str(&format!("algorithm = \"{}\"\n", algorithm.replace('"', "\\\"")));
+                if let Some(e) = ext {
+                    out.push_str(&format!("ext = \"{}\"\n", e.replace('"', "\\\"")));
+                }
+                if let Some(a) = app {
+                    out.push_str(&format!("app = \"{}\"\n", a.replace('"', "\\\"")));
+                }
+                if let Some(d) = dlg {
+                    out.push_str(&format!("dlg = \"{}\"\n", d.replace('"', "\\\"")));
+                }
+            }
+            AuthConfig::AkamaiEdgeGrid {
+                client_token,
+                client_secret,
+                access_token,
+                max_body,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"edgegrid\"\n");
+                out.push_str(&format!("client_token = \"{}\"\n", client_token.replace('"', "\\\"")));
+                out.push_str(&format!("client_secret = \"{}\"\n", client_secret.replace('"', "\\\"")));
+                out.push_str(&format!("access_token = \"{}\"\n", access_token.replace('"', "\\\"")));
+                out.push_str(&format!("max_body = {}\n", max_body));
+            }
+            AuthConfig::Wsse {
+                username,
+                password,
+                digest_password,
+            } => {
+                out.push_str("\n[auth]\n");
+                out.push_str("type = \"wsse\"\n");
+                out.push_str(&format!("username = \"{}\"\n", username.replace('"', "\\\"")));
+                out.push_str(&format!("password = \"{}\"\n", password.replace('"', "\\\"")));
+                out.push_str(&format!("digest_password = {}\n", digest_password));
             }
             AuthConfig::Inherit | AuthConfig::None => {}
         }
@@ -297,10 +445,11 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
             }
             out.push_str("```\n");
         }
-    } else if let Some(assert) = &req.assert {
+    }
+    if let Some(assert) = &req.assert {
         if !assert.is_empty() {
-            out.push_str("\n[tests]\n");
-            out.push_str("```javascript\n");
+            out.push_str("\n[assert]\n");
+            out.push_str("```assert\n");
             out.push_str(assert);
             if !assert.ends_with('\n') {
                 out.push('\n');

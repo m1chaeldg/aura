@@ -43,6 +43,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::AssertExpr(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expression.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::AssertExpected(idx) => {
+                    if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
+                        a.expected.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
                         if let Some(item) = items.get_mut(idx) {
@@ -131,41 +143,38 @@ impl AuraAppState {
                     }
                 }
                 ActiveInputTarget::AuthOAuth2Field(field_idx) => {
-                    if let aura_core::model::AuthConfig::OAuth2 {
-                        grant_type,
-                        access_token,
-                        token_url,
-                        client_id,
-                        client_secret,
-                    } = &mut tab.request.auth
-                    {
-                        match field_idx {
-                            0 => access_token.push_str(text),
-                            1 => grant_type.push_str(text),
-                            2 => {
-                                if let Some(tu) = token_url {
-                                    tu.push_str(text);
-                                } else {
-                                    *token_url = Some(text.to_string());
-                                }
-                            }
-                            3 => {
-                                if let Some(ci) = client_id {
-                                    ci.push_str(text);
-                                } else {
-                                    *client_id = Some(text.to_string());
-                                }
-                            }
-                            _ => {
-                                if let Some(cs) = client_secret {
-                                    cs.push_str(text);
-                                } else {
-                                    *client_secret = Some(text.to_string());
-                                }
-                            }
-                        }
+                    if super::security_actions::edit_oauth2_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PushStr(text),
+                    ) {
                         tab.mark_dirty(true);
                     }
+                }
+                ActiveInputTarget::AuthSchemeField(field_idx) => {
+                    if super::security_actions::edit_auth_scheme_field(
+                        &mut tab.request.auth,
+                        field_idx,
+                        super::security_actions::FieldOp::PushStr(text),
+                    ) {
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::SettingCertField(field_idx) => {
+                    super::security_actions::edit_request_cert_field(
+                        &mut tab.request.settings.client_cert,
+                        field_idx,
+                        super::security_actions::FieldOp::PushStr(text),
+                    );
+                    tab.mark_dirty(true);
+                }
+                ActiveInputTarget::SettingProxyField(field_idx) => {
+                    super::network_actions::edit_request_proxy_field(
+                        &mut tab.request.settings.proxy,
+                        field_idx,
+                        super::security_actions::FieldOp::PushStr(text),
+                    );
+                    tab.mark_dirty(true);
                 }
                 ActiveInputTarget::BodyText => {
                     match &mut tab.request.body {
@@ -246,6 +255,12 @@ impl AuraAppState {
                 ActiveInputTarget::FormParamKey(idx) if idx > 0 => {
                     self.active_input_target = Some(ActiveInputTarget::FormParamValue(idx - 1));
                 }
+                ActiveInputTarget::AssertExpected(idx) => {
+                    self.active_input_target = Some(ActiveInputTarget::AssertExpr(idx));
+                }
+                ActiveInputTarget::AssertExpr(idx) if idx > 0 => {
+                    self.active_input_target = Some(ActiveInputTarget::AssertExpected(idx - 1));
+                }
                 ActiveInputTarget::AuthBasicPassword => {
                     self.active_input_target = Some(ActiveInputTarget::AuthBasicUsername);
                 }
@@ -257,6 +272,15 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthOAuth2Field(idx) if idx > 0 => {
                     self.active_input_target = Some(ActiveInputTarget::AuthOAuth2Field(idx - 1));
+                }
+                ActiveInputTarget::AuthSchemeField(idx) if idx > 0 => {
+                    self.active_input_target = Some(ActiveInputTarget::AuthSchemeField(idx - 1));
+                }
+                ActiveInputTarget::SettingCertField(idx) if idx > 0 => {
+                    self.active_input_target = Some(ActiveInputTarget::SettingCertField(idx - 1));
+                }
+                ActiveInputTarget::SettingProxyField(idx) if idx > 0 => {
+                    self.active_input_target = Some(ActiveInputTarget::SettingProxyField(idx - 1));
                 }
                 _ => {}
             }
@@ -330,7 +354,19 @@ impl AuraAppState {
                 }
                 ActiveInputTarget::AuthOAuth2Field(idx) => {
                     self.active_input_target =
-                        Some(ActiveInputTarget::AuthOAuth2Field((idx + 1) % 5));
+                        Some(ActiveInputTarget::AuthOAuth2Field((idx + 1) % 10));
+                }
+                ActiveInputTarget::AuthSchemeField(idx) => {
+                    self.active_input_target =
+                        Some(ActiveInputTarget::AuthSchemeField((idx + 1) % 6));
+                }
+                ActiveInputTarget::SettingCertField(idx) => {
+                    self.active_input_target =
+                        Some(ActiveInputTarget::SettingCertField((idx + 1) % 4));
+                }
+                ActiveInputTarget::SettingProxyField(idx) => {
+                    self.active_input_target =
+                        Some(ActiveInputTarget::SettingProxyField((idx + 1) % 5));
                 }
                 ActiveInputTarget::BodyText
                 | ActiveInputTarget::PreRequestScript

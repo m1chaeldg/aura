@@ -1,8 +1,11 @@
-//! High-concurrency Collection Runner & Statistical HDR Latency Profiler.
+//! High-concurrency Collection Runner, Request Chaining (`setNextRequest`),
+//! Cookie/Variable propagation, & Statistical HDR Latency Profiler.
 
-use crate::engine::execute_request;
+use crate::engine::{execute_request_with_options, ExecutionOptions};
+use aura_core::cookies::CookieJar;
 use aura_core::model::{AuraRequest, AuraResponse};
 use aura_core::templating::TemplateContext;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -58,10 +61,22 @@ pub struct RunnerReport {
     pub execution_log: Vec<RunnerExecutionRecord>,
 }
 
-/// Execute a collection or list of requests with worker pool and HDR metrics
+/// Execute a collection with worker pool, HDR metrics, and Postman/Bruno-compatible
+/// `setNextRequest` flow control and variable/cookie chaining across steps in each iteration.
 pub async fn run_collection(
     requests: Vec<AuraRequest>,
     context: TemplateContext,
+    config: RunnerConfig,
+    log_tx: Option<mpsc::UnboundedSender<RunnerExecutionRecord>>,
+) -> RunnerReport {
+    run_collection_with_options(requests, context, ExecutionOptions::default(), config, log_tx)
+        .await
+}
+
+pub async fn run_collection_with_options(
+    requests: Vec<AuraRequest>,
+    context: TemplateContext,
+    base_options: ExecutionOptions,
     config: RunnerConfig,
     log_tx: Option<mpsc::UnboundedSender<RunnerExecutionRecord>>,
 ) -> RunnerReport {
@@ -84,8 +99,10 @@ pub async fn run_collection(
         let recs = Arc::clone(&records);
         let tx = log_tx.clone();
         let ctx = context.clone();
+        let worker_base_opts = base_options.clone();
         let total = config.total_iterations;
         let delay = config.delay_ms;
+        let max_chain_steps = reqs.len().saturating_mul(10).max(50);
 
         let handle = tokio::spawn(async move {
             loop {
@@ -94,21 +111,50 @@ pub async fn run_collection(
                     break;
                 }
 
-                for req in reqs.iter() {
-                    let res: Result<AuraResponse, anyhow::Error> = execute_request(req, &ctx).await;
-                    let (status, latency, passed, err_msg) = match res {
+                let mut iter_ctx = ctx.clone();
+                let mut iter_jar: CookieJar = worker_base_opts.cookie_jar.clone();
+                let mut cursor = 0usize;
+                let mut steps = 0usize;
+
+                while cursor < reqs.len() && steps < max_chain_steps {
+                    steps += 1;
+                    let mut req_clone = reqs[cursor].clone();
+                    let mut opts = worker_base_opts.clone();
+                    opts.cookie_jar = iter_jar.clone();
+
+                    let res: Result<AuraResponse, anyhow::Error> =
+                        execute_request_with_options(&mut req_clone, &iter_ctx, &opts).await;
+
+                    let (status, latency, passed, err_msg, next_target, stop_chain) = match res {
                         Ok(resp) => {
                             let pass =
                                 resp.status < 400 && resp.assertions.iter().all(|a| a.passed);
-                            (resp.status, resp.duration_ms, pass, None)
+
+                            // Propagate variables and cookies into subsequent chained requests
+                            for (k, v) in &resp.exported_variables {
+                                iter_ctx.request_vars.insert(k.clone(), v.clone());
+                            }
+                            let now = Utc::now();
+                            for c in &resp.captured_cookies {
+                                iter_jar.set_cookie(c.clone(), now);
+                            }
+
+                            (
+                                resp.status,
+                                resp.duration_ms,
+                                pass,
+                                None,
+                                resp.next_request.clone(),
+                                resp.stop_chain,
+                            )
                         }
-                        Err(e) => (0, 0, false, Some(e.to_string())),
+                        Err(e) => (0, 0, false, Some(e.to_string()), None, false),
                     };
 
                     let record = RunnerExecutionRecord {
                         iteration: current_iter + 1,
-                        request_name: req.name.clone(),
-                        method: req.method.as_str().to_string(),
+                        request_name: req_clone.name.clone(),
+                        method: req_clone.method.as_str().to_string(),
                         status,
                         latency_ms: latency,
                         passed,
@@ -123,6 +169,28 @@ pub async fn run_collection(
                     if delay > 0 {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
                     }
+
+                    if stop_chain {
+                        break;
+                    }
+
+                    if let Some(target_name) = next_target {
+                        let target_trim = target_name.trim();
+                        if let Some(next_idx) = reqs.iter().position(|r| {
+                            r.id == target_trim || r.name.eq_ignore_ascii_case(target_trim)
+                        }) {
+                            cursor = next_idx;
+                        } else {
+                            tracing::warn!(
+                                target: "aura_engine::runner",
+                                requested = %target_trim,
+                                "setNextRequest target not found in collection; stopping chain"
+                            );
+                            break;
+                        }
+                    } else {
+                        cursor += 1;
+                    }
                 }
             }
         });
@@ -134,8 +202,6 @@ pub async fn run_collection(
     }
 
     let total_duration = start_overall.elapsed();
-    let _total_duration_ms = total_duration.as_millis() as u64;
-
     let records_list = records.lock().clone();
     compute_report(records_list, total_duration)
 }

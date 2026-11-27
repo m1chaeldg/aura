@@ -17,11 +17,15 @@ use std::rc::Rc;
 mod editor_actions;
 mod editor_dialog;
 mod execution_actions;
+mod git_actions;
+mod git_modal;
 mod input_events;
 mod input_sync;
 mod key_handler;
 mod main_pane;
 mod modals;
+mod network_modals;
+mod security_modal;
 mod sidebar_panel;
 mod status_bar;
 mod toolbar;
@@ -54,6 +58,10 @@ impl AuraWorkspaceView {
         let prefs = crate::preferences::AuraPreferences::load();
         view.state.auto_save_enabled = prefs.auto_save_enabled;
         view.state.auto_save_delay_ms = prefs.auto_save_delay_ms;
+        view.state.domain_client_certs = prefs.domain_client_certs.clone();
+        view.state.vault_config = prefs.vault_config.clone();
+        view.state.global_proxy = prefs.global_proxy.clone();
+        view.state.cookie_jar = prefs.cookie_jar.clone();
         view.state.set_split_ratio(prefs.split_ratio);
         if prefs.layout_orientation.eq_ignore_ascii_case("vertical") {
             view.state.orientation = LayoutOrientation::Vertical;
@@ -82,6 +90,7 @@ impl AuraWorkspaceView {
         if view.state.tabs.is_empty() {
             view.state.new_request();
         }
+        view.spawn_git_refresh(cx);
         view
     }
 
@@ -102,6 +111,9 @@ impl AuraWorkspaceView {
                         let update_res = this.update(&mut cx, |this, cx| {
                             if let Err(e) = this.state.reconcile_workspace_sync() {
                                 tracing::error!(target: "aura_ui::workspace", "Failed to reconcile workspace: {e}");
+                            }
+                            if this.state.is_git_modal_open {
+                                this.spawn_git_refresh(cx);
                             }
                             cx.notify();
                         });
@@ -126,6 +138,10 @@ impl AuraWorkspaceView {
         };
         prefs.auto_save_enabled = self.state.auto_save_enabled;
         prefs.auto_save_delay_ms = self.state.auto_save_delay_ms;
+        prefs.domain_client_certs = self.state.domain_client_certs.clone();
+        prefs.vault_config = self.state.vault_config.clone();
+        prefs.global_proxy = self.state.global_proxy.clone();
+        prefs.cookie_jar = self.state.cookie_jar.clone();
         if let Some(ref root) = self.state.workspace_store.workspace_root {
             prefs.last_workspace_path = Some(root.clone());
         }

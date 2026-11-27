@@ -24,7 +24,7 @@ impl RequestEditorView {
     ) -> Div {
         let auth = request.map(|r| &r.auth);
         let active_auth_type = auth.map(|a| a.type_name()).unwrap_or("Inherit");
-        const STRATEGIES: [&str; 7] = [
+        const STRATEGIES: [&str; 13] = [
             "Inherit",
             "None",
             "Bearer Token",
@@ -32,6 +32,12 @@ impl RequestEditorView {
             "API Key",
             "AWS SigV4",
             "OAuth 2.0",
+            "Digest Auth",
+            "NTLM",
+            "OAuth 1.0",
+            "Hawk",
+            "Akamai EdgeGrid",
+            "WSSE",
         ];
 
         let surface = subtle_surface(cx);
@@ -470,50 +476,28 @@ impl RequestEditorView {
                                 ))
                         }))
                 }
-                Some(AuthConfig::OAuth2 {
-                    grant_type,
-                    access_token,
-                    token_url,
-                    client_id,
-                    client_secret,
-                }) => {
-                    let fields = [
-                        ("Access Token", access_token.as_str(), 0),
-                        ("Grant Type", grant_type.as_str(), 1),
-                        ("Token URL", token_url.as_deref().unwrap_or(""), 2),
-                        ("Client ID", client_id.as_deref().unwrap_or(""), 3),
-                        ("Client Secret", client_secret.as_deref().unwrap_or(""), 4),
-                    ];
-
-                    v_flex()
-                        .gap_3()
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(muted)
-                                .child("OAUTH 2.0"),
-                        )
-                        .children(fields.into_iter().map(|(label, val, f_idx)| {
-                            let is_f = matches!(active_input, Some(ActiveInputTarget::AuthOAuth2Field(i)) if *i == f_idx);
-                            v_flex()
-                                .gap_1()
-                                .child(div().text_xs().text_color(muted).child(label))
-                                .child(Self::render_inline_input(
-                                    ElementId::NamedInteger(
-                                        "input-oauth-field".into(),
-                                        f_idx as u64,
-                                    ),
-                                    inputs.get_input(&InputKey::AuthOAuth2Field(f_idx)),
-                                    val,
-                                    is_f,
-                                    false,
-                                    field_bg,
-                                    border,
-                                    normal,
-                                ))
-                        }))
-                }
+                Some(oauth2 @ AuthConfig::OAuth2 { .. }) => Self::render_oauth2_panel(
+                    oauth2,
+                    active_input,
+                    inputs,
+                    field_bg,
+                    border,
+                    muted,
+                    normal,
+                    cx,
+                    on_action,
+                ),
+                Some(other_auth) => Self::render_extended_auth_scheme(
+                    other_auth,
+                    active_input,
+                    inputs,
+                    field_bg,
+                    border,
+                    muted,
+                    normal,
+                    cx,
+                    on_action,
+                ),
             })
     }
 }

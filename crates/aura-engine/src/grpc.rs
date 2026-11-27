@@ -349,5 +349,10 @@ pub async fn execute_grpc_call(
         script_errors: Vec::new(),
         sse_events: Vec::new(),
         stream_messages,
+        timing: None,
+        captured_cookies: Vec::new(),
+        next_request: None,
+        stop_chain: false,
+        exported_variables: HashMap::new(),
     })
 }

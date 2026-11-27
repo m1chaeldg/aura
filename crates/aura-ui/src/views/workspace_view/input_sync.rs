@@ -179,6 +179,27 @@ impl AuraWorkspaceView {
                 graphql_schema: self.state.graphql_schemas.get(&tab.id).cloned(),
             });
 
+            for (idx, a) in tab.request.scripts.assertions.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::AssertExpr(idx),
+                    &a.expression,
+                    "res.status / res.body.id / res.duration_ms",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::AssertExpected(idx),
+                    &a.expected,
+                    "200 / \"value\"",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
             for (idx, p) in tab.request.params.iter().enumerate() {
                 inputs.ensure_input(
                     InputKey::ParamKey(idx),
@@ -473,20 +494,185 @@ impl AuraWorkspaceView {
                     token_url,
                     client_id,
                     client_secret,
+                    auth_url,
+                    redirect_uri,
+                    scope,
+                    username,
+                    password,
+                    ..
                 } => {
                     let fields = [
-                        (0, access_token.as_str(), "Enter Access Token..."),
-                        (1, grant_type.as_str(), "Enter Grant Type..."),
-                        (2, token_url.as_deref().unwrap_or(""), "Enter Token URL..."),
-                        (3, client_id.as_deref().unwrap_or(""), "Enter Client ID..."),
-                        (4, client_secret.as_deref().unwrap_or(""), "Enter Client Secret..."),
+                        (0, access_token.as_str(), "Enter Access Token...", false),
+                        (1, grant_type.as_str(), "authorization_code | client_credentials | password | implicit", false),
+                        (2, token_url.as_deref().unwrap_or(""), "https://auth.example.com/oauth/token", false),
+                        (3, client_id.as_deref().unwrap_or(""), "Enter Client ID...", false),
+                        (4, client_secret.as_deref().unwrap_or(""), "Enter Client Secret...", true),
+                        (5, auth_url.as_deref().unwrap_or(""), "https://auth.example.com/authorize", false),
+                        (6, redirect_uri.as_deref().unwrap_or(""), "http://127.0.0.1:8765/callback", false),
+                        (7, scope.as_deref().unwrap_or(""), "read write", false),
+                        (8, username.as_deref().unwrap_or(""), "Resource owner username", false),
+                        (9, password.as_deref().unwrap_or(""), "Resource owner password", true),
                     ];
-                    for (idx, val, ph) in fields {
+                    for (idx, val, ph, masked) in fields {
                         inputs.ensure_input(
                             InputKey::AuthOAuth2Field(idx),
                             val,
                             ph,
-                            false,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::Digest {
+                    username,
+                    password,
+                    realm,
+                    nonce,
+                    qop,
+                    algorithm,
+                } => {
+                    let fields = [
+                        (0, username.as_str(), "Digest username", false),
+                        (1, password.as_str(), "Digest password", true),
+                        (2, realm.as_deref().unwrap_or(""), "Auto from 401 WWW-Authenticate", false),
+                        (3, nonce.as_deref().unwrap_or(""), "Auto from 401 WWW-Authenticate", false),
+                        (4, qop.as_deref().unwrap_or(""), "auth", false),
+                        (5, algorithm.as_deref().unwrap_or(""), "MD5 | MD5-sess | SHA-256", false),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::Ntlm {
+                    username,
+                    password,
+                    domain,
+                    workstation,
+                } => {
+                    let fields = [
+                        (0, username.as_str(), "NTLM username", false),
+                        (1, password.as_str(), "NTLM password", true),
+                        (2, domain.as_str(), "DOMAIN (optional)", false),
+                        (3, workstation.as_str(), "WORKSTATION", false),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::OAuth1 {
+                    consumer_key,
+                    consumer_secret,
+                    token,
+                    token_secret,
+                    callback_url,
+                    realm,
+                    ..
+                } => {
+                    let fields = [
+                        (0, consumer_key.as_str(), "Consumer Key", false),
+                        (1, consumer_secret.as_str(), "Consumer Secret", true),
+                        (2, token.as_str(), "Access Token (optional)", false),
+                        (3, token_secret.as_str(), "Token Secret (optional)", true),
+                        (4, callback_url.as_deref().unwrap_or(""), "Callback URL (optional)", false),
+                        (5, realm.as_deref().unwrap_or(""), "Realm (optional)", false),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::Hawk {
+                    id,
+                    key,
+                    ext,
+                    app,
+                    dlg,
+                    ..
+                } => {
+                    let fields = [
+                        (0, id.as_str(), "Hawk Auth ID", false),
+                        (1, key.as_str(), "Hawk Auth Key", true),
+                        (2, ext.as_deref().unwrap_or(""), "App-specific data (ext)", false),
+                        (3, app.as_deref().unwrap_or(""), "Application ID (app)", false),
+                        (4, dlg.as_deref().unwrap_or(""), "Delegated By (dlg)", false),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::AkamaiEdgeGrid {
+                    client_token,
+                    client_secret,
+                    access_token,
+                    max_body,
+                } => {
+                    let max_b = max_body.to_string();
+                    let fields = [
+                        (0, client_token.as_str(), "Client Token", false),
+                        (1, client_secret.as_str(), "Client Secret", true),
+                        (2, access_token.as_str(), "Access Token", false),
+                        (3, max_b.as_str(), "131072", false),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
+                            window,
+                            cx,
+                            Self::handle_input_event,
+                        );
+                    }
+                }
+                AuthConfig::Wsse {
+                    username,
+                    password,
+                    ..
+                } => {
+                    let fields = [
+                        (0, username.as_str(), "WSSE Username", false),
+                        (1, password.as_str(), "WSSE Password", true),
+                    ];
+                    for (idx, val, ph, masked) in fields {
+                        inputs.ensure_input(
+                            InputKey::AuthSchemeField(idx),
+                            val,
+                            ph,
+                            masked,
                             window,
                             cx,
                             Self::handle_input_event,
@@ -494,6 +680,52 @@ impl AuraWorkspaceView {
                     }
                 }
                 AuthConfig::None | AuthConfig::Inherit => {}
+            }
+
+            // Per-request mTLS client certificate fields
+            let req_cert = tab.request.settings.client_cert.as_ref();
+            let cert_fields = [
+                (0, req_cert.map(|c| c.cert_path.as_str()).unwrap_or(""), "Path to .pem, .pfx, or .p12 certificate", false),
+                (1, req_cert.and_then(|c| c.key_path.as_deref()).unwrap_or(""), "Path to PEM private key (optional)", false),
+                (2, req_cert.and_then(|c| c.passphrase.as_deref()).unwrap_or(""), "PKCS#12 passphrase (optional)", true),
+            ];
+            for (idx, val, ph, masked) in cert_fields {
+                inputs.ensure_input(
+                    InputKey::SettingCertField(idx),
+                    val,
+                    ph,
+                    masked,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
+            // Per-request proxy fields
+            let req_proxy = tab.request.settings.proxy.as_ref();
+            let req_proxy_port = req_proxy
+                .map(|p| p.port.to_string())
+                .unwrap_or_else(|| "8080".to_string());
+            let req_proxy_bypass = req_proxy
+                .map(|p| p.bypass_list.join(", "))
+                .unwrap_or_default();
+            let proxy_fields = [
+                (0, req_proxy.map(|p| p.host.as_str()).unwrap_or(""), "127.0.0.1 or proxy.corp.local", false),
+                (1, req_proxy_port.as_str(), "8080", false),
+                (2, req_proxy.map(|p| p.username.as_str()).unwrap_or(""), "Proxy username", false),
+                (3, req_proxy.map(|p| p.password.as_str()).unwrap_or(""), "Proxy password", true),
+                (4, req_proxy_bypass.as_str(), "localhost, 127.0.0.1, *.local", false),
+            ];
+            for (idx, val, ph, masked) in proxy_fields {
+                inputs.ensure_input(
+                    InputKey::SettingProxyField(idx),
+                    val,
+                    ph,
+                    masked,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
             }
 
             inputs.ensure_editor(
@@ -783,6 +1015,270 @@ impl AuraWorkspaceView {
         }
 
         inputs.sync_all_template_highlights(cx);
+        if self.state.is_security_vault_modal_open {
+            inputs.ensure_input(
+                InputKey::KeychainService,
+                &self.state.keychain_service,
+                "Service (e.g. aura)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeychainKey,
+                &self.state.keychain_key,
+                "Key name",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeychainValue,
+                &self.state.keychain_value,
+                "Secret value",
+                true,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::VaultAddr,
+                &self.state.vault_config.vault_addr,
+                "https://vault.example.com:8200",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::VaultToken,
+                &self.state.vault_config.vault_token,
+                "Vault token",
+                true,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::VaultNamespace,
+                self.state
+                    .vault_config
+                    .vault_namespace
+                    .as_deref()
+                    .unwrap_or(""),
+                "Namespace (optional)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::VaultAwsRegion,
+                &self.state.vault_config.aws_region,
+                "AWS Region (e.g. us-east-1)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::VaultAwsProfile,
+                self.state.vault_config.aws_profile.as_deref().unwrap_or(""),
+                "AWS Profile (default)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::DomainCertDomain,
+                &self.state.draft_cert_domain,
+                "*.api.example.com",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::DomainCertPath,
+                &self.state.draft_cert_path,
+                "Cert path (.pem/.pfx/.p12)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::DomainCertKeyPath,
+                &self.state.draft_cert_key_path,
+                "Key path (optional PEM)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::DomainCertPassphrase,
+                &self.state.draft_cert_passphrase,
+                "Passphrase",
+                true,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_proxy_modal_open {
+            let gproxy_port = self.state.global_proxy.port.to_string();
+            let gproxy_bypass = self.state.global_proxy.bypass_list.join(", ");
+            inputs.ensure_input(
+                InputKey::GlobalProxyHost,
+                &self.state.global_proxy.host,
+                "Proxy host (e.g. 127.0.0.1)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GlobalProxyPort,
+                &gproxy_port,
+                "8080",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GlobalProxyUsername,
+                &self.state.global_proxy.username,
+                "Username",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GlobalProxyPassword,
+                &self.state.global_proxy.password,
+                "Password",
+                true,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GlobalProxyBypass,
+                &gproxy_bypass,
+                "localhost, 127.0.0.1",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_cookie_modal_open {
+            inputs.ensure_input(
+                InputKey::CookieFilter,
+                &self.state.cookie_domain_filter,
+                "Filter by domain...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::CookieDraftDomain,
+                &self.state.draft_cookie_domain,
+                "example.com",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::CookieDraftPath,
+                &self.state.draft_cookie_path,
+                "/",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::CookieDraftName,
+                &self.state.draft_cookie_name,
+                "session_id",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::CookieDraftValue,
+                &self.state.draft_cookie_value,
+                "Cookie value",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_interceptor_modal_open {
+            inputs.ensure_input(
+                InputKey::InterceptorBindAddr,
+                &self.state.interceptor_bind_addr,
+                "127.0.0.1:8888",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::InterceptorRuleMatch,
+                &self.state.draft_rule_match,
+                "Match URL substring (e.g. /v1/)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::InterceptorRuleTarget,
+                &self.state.draft_rule_target,
+                "Rewrite replacement (optional)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_git_modal_open {
+            inputs.ensure_input(
+                InputKey::GitCommitMessage,
+                &self.state.git_commit_message,
+                "Commit message (e.g. Add auth requests)...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::GitNewBranchName,
+                &self.state.git_new_branch_name,
+                "New branch name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
         self.inputs = inputs;
         self.sync_sidebar_tree(cx);
     }

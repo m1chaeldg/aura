@@ -1,0 +1,21 @@
+version = "1.0"
+name = "03 Fallback Auth Error"
+method = "GET"
+url = "https://postman-echo.com/status/401"
+
+[settings]
+inherit_auth = false
+verify_ssl = true
+follow_redirects = true
+max_redirects = 10
+timeout_ms = 15000
+
+[scripts.post-response]
+```javascript
+console.warn("Reached authentication fallback handler cleanly.");
+aura.variables.set("auth_token", "");
+aura.execution.setNextRequest(null);
+```
+
+[assert]
+res.status = "isNumber"

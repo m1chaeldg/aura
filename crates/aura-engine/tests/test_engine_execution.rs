@@ -13,6 +13,7 @@ async fn test_execute_request_with_scripts_and_console_logs() {
         pre_request: "console.log('Pre-request script executed'); aura.variables.set('test_var', '123');".to_string(),
         post_response: "console.log('Post-response status is', response.status);".to_string(),
         tests: "describe('Status Check', () => { it('is 200', () => { expect(response.status).toBe(200); }); });".to_string(),
+        assertions: Vec::new(),
     };
 
     let context = TemplateContext::default();

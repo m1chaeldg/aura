@@ -147,7 +147,28 @@ impl RequestEditorView {
                             cx,
                             on_action,
                         ))
+                        .child(Self::render_snippet_chip(
+                            "Chain Next Req",
+                            is_pre,
+                            "if (response.status === 200) {\n    aura.setNextRequest(\"Next Request Name\");\n} else {\n    aura.setNextRequest(null);\n}\n",
+                            cx,
+                            on_action,
+                        ))
                     })
+                    .child(Self::render_snippet_chip(
+                        "Async Fetch",
+                        is_pre,
+                        "const res = await fetch(\"https://postman-echo.com/get\");\nconst json = await res.json();\naura.variables.set(\"fetched\", JSON.stringify(json));\n",
+                        cx,
+                        on_action,
+                    ))
+                    .child(Self::render_snippet_chip(
+                        "Send Request",
+                        is_pre,
+                        "const res = await aura.sendRequest({\n    url: \"https://postman-echo.com/post\",\n    method: \"POST\",\n    headers: { \"content-type\": \"application/json\" },\n    body: { hello: \"aura\" }\n});\nconsole.log(\"Sub-request status:\", res.status);\n",
+                        cx,
+                        on_action,
+                    ))
                     .child(Self::render_snippet_chip(
                         "Log Info",
                         is_pre,

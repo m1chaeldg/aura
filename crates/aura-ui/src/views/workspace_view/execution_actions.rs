@@ -20,6 +20,13 @@ impl AuraWorkspaceView {
         let tab_id = active_tab.id.clone();
         let request = active_tab.request.clone();
         let context = self.state.active_template_context();
+        let options = aura_engine::ExecutionOptions {
+            domain_certs: self.state.domain_client_certs.clone(),
+            vault_config: self.state.vault_config.clone(),
+            global_proxy: Some(self.state.global_proxy.clone()),
+            cookie_jar: self.state.cookie_jar.clone(),
+            interceptor: Some(self.state.interceptor_manager.clone()),
+        };
 
         if request.protocol == aura_core::model::RequestProtocol::Websocket {
             if self.state.is_active_ws_connected() {
@@ -58,11 +65,11 @@ impl AuraWorkspaceView {
             let mut cx = cx.clone();
             async move {
                 let result = execution_service
-                    .dispatch_with_token(request, context, cancel_token)
+                    .dispatch_with_options(request, context, options, cancel_token)
                     .await;
                 let _ = this.update(&mut cx, |this, cx| {
                     match result {
-                        Ok(resp) => {
+                        Ok((updated_req, resp)) => {
                             let test_summary = if resp.assertions.is_empty() {
                                 String::new()
                             } else {
@@ -84,7 +91,14 @@ impl AuraWorkspaceView {
                                     test_summary
                                 ))
                             };
+                            if !resp.captured_cookies.is_empty() {
+                                this.state.ingest_captured_cookies(resp.captured_cookies.clone());
+                            }
                             if let Some(tab) = this.state.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                if updated_req.auth != tab.request.auth {
+                                    tab.request.auth = updated_req.auth;
+                                    tab.mark_dirty(true);
+                                }
                                 tab.response = Some(resp);
                             }
                         }
@@ -436,4 +450,132 @@ impl AuraWorkspaceView {
         .detach();
     }
 
+    /// Launches interactive or headless OAuth 2.0 token acquisition on a background task
+    /// and writes the obtained access_token / refresh_token / expires_at back into the active tab.
+    pub(super) fn dispatch_oauth2_flow(&mut self, cx: &mut Context<Self>) {
+        if self.state.is_oauth2_in_flight {
+            self.state.status_message =
+                Some("OAuth 2.0 authorization flow is already running...".to_string());
+            cx.notify();
+            return;
+        }
+        let Some(tab) = self.state.active_tab().cloned() else {
+            return;
+        };
+        let aura_core::model::AuthConfig::OAuth2 {
+            grant_type,
+            token_url,
+            client_id,
+            client_secret,
+            auth_url,
+            redirect_uri,
+            scope,
+            username,
+            password,
+            use_pkce,
+            ..
+        } = &tab.request.auth
+        else {
+            return;
+        };
+
+        let ctx = self.state.active_template_context();
+        let tab_id = tab.id.clone();
+        let grant_type = ctx.render(grant_type);
+        let auth_url = auth_url.as_ref().map(|s| ctx.render(s));
+        let token_url = token_url.as_ref().map(|s| ctx.render(s));
+        let client_id = client_id.as_ref().map(|s| ctx.render(s));
+        let client_secret = client_secret.as_ref().map(|s| ctx.render(s));
+        let redirect_uri = redirect_uri.as_ref().map(|s| ctx.render(s));
+        let scope = scope.as_ref().map(|s| ctx.render(s));
+        let username = username.as_ref().map(|s| ctx.render(s));
+        let password = password.as_ref().map(|s| ctx.render(s));
+        let use_pkce = *use_pkce;
+        let verify_ssl = tab.request.settings.verify_ssl;
+
+        self.state.is_oauth2_in_flight = true;
+        self.state.status_message = Some(format!(
+            "Acquiring OAuth 2.0 token ({grant_type})..."
+        ));
+        cx.notify();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let res = aura_engine::run_oauth2_token_acquisition(
+                    &grant_type,
+                    auth_url.as_deref(),
+                    token_url.as_deref(),
+                    client_id.as_deref(),
+                    client_secret.as_deref(),
+                    redirect_uri.as_deref(),
+                    scope.as_deref(),
+                    username.as_deref(),
+                    password.as_deref(),
+                    use_pkce,
+                    verify_ssl,
+                )
+                .await;
+
+                let _ = this.update(&mut cx, |this, cx| {
+                    this.state.is_oauth2_in_flight = false;
+                    match res {
+                        Ok(token_res) => {
+                            this.state.apply_oauth2_token_result(&tab_id, token_res);
+                            this.state.status_message =
+                                Some("OAuth 2.0 access token updated".to_string());
+                        }
+                        Err(e) => {
+                            this.state.status_message =
+                                Some(format!("OAuth 2.0 flow failed: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(super) fn dispatch_toggle_capture_proxy(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.state.capture_proxy_handle.take() {
+            handle.stop();
+            self.state.status_message = Some("Capture proxy stopped".to_string());
+            cx.notify();
+            return;
+        }
+
+        let bind_addr = if self.state.interceptor_bind_addr.trim().is_empty() {
+            "127.0.0.1:8888".to_string()
+        } else {
+            self.state.interceptor_bind_addr.trim().to_string()
+        };
+        let mgr = self.state.interceptor_manager.clone();
+        self.state.status_message = Some(format!("Starting capture proxy on {bind_addr}..."));
+        cx.notify();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let res = aura_engine::start_capture_proxy(&bind_addr, mgr).await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    match res {
+                        Ok(handle) => {
+                            let addr = handle.listen_addr.clone();
+                            this.state.capture_proxy_handle = Some(handle);
+                            this.state.status_message = Some(format!(
+                                "MITM capture proxy listening on {addr}"
+                            ));
+                        }
+                        Err(e) => {
+                            this.state.status_message =
+                                Some(format!("Failed to start capture proxy: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
 }

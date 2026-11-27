@@ -1,22 +1,127 @@
 //! Offline Sandboxed JavaScript Scripting Runtime powered by deno_core.
-//! Eradicates any telemetry or tracking. Scripts run completely offline.
-//! Provides BDD `aura.test()` framework and console log capture.
+//! Eradicates any telemetry or tracking. Provides BDD `aura.test()`, `fetch()`,
+//! `aura.sendRequest()`, `aura.setNextRequest()`, and console log capture.
 
 use anyhow::{Context, Result};
 use aura_core::model::TestAssertion;
-use deno_core::{JsRuntime, RuntimeOptions};
+use deno_core::{op2, Extension, JsRuntime, OpState, RuntimeOptions};
 use parking_lot::Mutex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub use aura_core::model::ConsoleMessage;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScriptHttpRequest {
+    pub url: String,
+    #[serde(default = "default_http_method")]
+    pub method: String,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+fn default_http_method() -> String {
+    "GET".to_string()
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ScriptHttpResponse {
+    pub ok: bool,
+    pub status: u16,
+    pub status_text: String,
+    pub headers: HashMap<String, String>,
+    pub body: String,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+pub type ScriptHttpHandler = Arc<
+    dyn Fn(ScriptHttpRequest) -> Pin<Box<dyn Future<Output = Result<ScriptHttpResponse>> + Send>>
+        + Send
+        + Sync,
+>;
+
+#[op2(async)]
+#[serde]
+async fn op_aura_fetch(
+    state: Rc<RefCell<OpState>>,
+    #[serde] req: ScriptHttpRequest,
+) -> ScriptHttpResponse {
+    let handler_opt = {
+        let borrowed = state.borrow();
+        borrowed.try_borrow::<ScriptHttpHandler>().cloned()
+    };
+
+    let Some(handler) = handler_opt else {
+        return ScriptHttpResponse {
+            ok: false,
+            status: 0,
+            status_text: String::new(),
+            headers: HashMap::new(),
+            body: String::new(),
+            error: Some("Auxiliary HTTP fetch handler is not enabled in this runtime".to_string()),
+        };
+    };
+
+    // Execute future cleanly even when `run()` is invoked synchronously outside Tokio
+    if tokio::runtime::Handle::try_current().is_ok() {
+        match handler(req).await {
+            Ok(resp) => resp,
+            Err(e) => ScriptHttpResponse {
+                ok: false,
+                status: 0,
+                status_text: String::new(),
+                headers: HashMap::new(),
+                body: String::new(),
+                error: Some(format!("{e:#}")),
+            },
+        }
+    } else {
+        let join = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            match rt {
+                Ok(rt) => rt.block_on(handler(req)),
+                Err(e) => Err(anyhow::anyhow!("Failed to start HTTP runtime: {e}")),
+            }
+        });
+        match join.join() {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => ScriptHttpResponse {
+                ok: false,
+                status: 0,
+                status_text: String::new(),
+                headers: HashMap::new(),
+                body: String::new(),
+                error: Some(format!("{e:#}")),
+            },
+            Err(_) => ScriptHttpResponse {
+                ok: false,
+                status: 0,
+                status_text: String::new(),
+                headers: HashMap::new(),
+                body: String::new(),
+                error: Some("HTTP fetch worker thread panicked".to_string()),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct ScriptExecutionResult {
     pub variables: HashMap<String, String>,
     pub console_logs: Vec<ConsoleMessage>,
     pub test_assertions: Vec<TestAssertion>,
+    pub next_request: Option<String>,
+    pub stop_chain: bool,
 }
 
 /// Script Runner wrapping a sandboxed deno_core JsRuntime
@@ -31,12 +136,37 @@ const PRELUDE_JS: &str = include_str!("prelude.js");
 
 impl AuraScriptRuntime {
     pub fn new(initial_vars: HashMap<String, String>) -> Result<Self> {
-        let options = RuntimeOptions {
-            is_main: false,
+        Self::create_internal(initial_vars, None)
+    }
+
+    pub fn with_http_handler(
+        initial_vars: HashMap<String, String>,
+        http_handler: ScriptHttpHandler,
+    ) -> Result<Self> {
+        Self::create_internal(initial_vars, Some(http_handler))
+    }
+
+    fn create_internal(
+        initial_vars: HashMap<String, String>,
+        http_handler: Option<ScriptHttpHandler>,
+    ) -> Result<Self> {
+        let ext = Extension {
+            name: "aura_runtime_ops",
+            ops: std::borrow::Cow::Owned(vec![op_aura_fetch()]),
             ..Default::default()
         };
 
-        let runtime = JsRuntime::new(options);
+        let options = RuntimeOptions {
+            is_main: false,
+            extensions: vec![ext],
+            ..Default::default()
+        };
+
+        let mut runtime = JsRuntime::new(options);
+        if let Some(handler) = http_handler {
+            runtime.op_state().borrow_mut().put(handler);
+        }
+
         let captured_logs = Arc::new(Mutex::new(Vec::new()));
         let variables = Arc::new(Mutex::new(initial_vars));
         let assertions = Arc::new(Mutex::new(Vec::new()));
@@ -74,7 +204,11 @@ impl AuraScriptRuntime {
                 globalThis.__aura_internal = {{
                     vars: _vars,
                     logs: _logs,
-                    assertions: _assertions
+                    assertions: _assertions,
+                    nextRequest: null,
+                    stopChain: false,
+                    scriptError: null,
+                    pendingFetches: []
                 }};
 
                 // Console interceptor
@@ -90,11 +224,25 @@ impl AuraScriptRuntime {
                     }}
                 }};
 
-                // Aura BDD test and variable framework
+                // Aura BDD test, variable, HTTP fetch/sendRequest, and chaining framework
                 globalThis.aura = {{
                     variables: {{
                         get: function(key) {{ return _vars[key]; }},
                         set: function(key, val) {{ _vars[key] = String(val); }}
+                    }},
+                    setNextRequest: function(target) {{
+                        if (target === null || target === undefined || String(target).trim() === "") {{
+                            globalThis.__aura_internal.nextRequest = null;
+                            globalThis.__aura_internal.stopChain = true;
+                        }} else {{
+                            globalThis.__aura_internal.nextRequest = String(target);
+                            globalThis.__aura_internal.stopChain = false;
+                        }}
+                    }},
+                    execution: {{
+                        setNextRequest: function(target) {{
+                            return globalThis.aura.setNextRequest(target);
+                        }}
                     }},
                     test: function(name, fn) {{
                         if (typeof globalThis.it === 'function') {{
@@ -114,10 +262,21 @@ impl AuraScriptRuntime {
             .execute_script("aura_prelude.js", PRELUDE_JS.to_string())
             .context("Failed to load prelude.js")?;
 
-        // Link aura.expect to global expect
+        // Link aura.expect to global expect & expose pm compatibility alias
         let alias_script = r#"
             if (typeof globalThis.expect === 'function' && globalThis.aura) {
                 globalThis.aura.expect = globalThis.expect;
+            }
+            if (!globalThis.pm && globalThis.aura) {
+                globalThis.pm = {
+                    variables: globalThis.aura.variables,
+                    environment: globalThis.aura.variables,
+                    sendRequest: (...args) => globalThis.aura.sendRequest(...args),
+                    setNextRequest: (target) => globalThis.aura.setNextRequest(target),
+                    execution: globalThis.aura.execution,
+                    test: (name, fn) => globalThis.aura.test(name, fn),
+                    expect: globalThis.expect
+                };
             }
         "#;
         self.runtime
@@ -153,14 +312,18 @@ impl AuraScriptRuntime {
                 const _rawBody = {escaped_body};
                 globalThis.response = {{
                     status: {status},
+                    code: {status},
                     duration_ms: {duration_ms},
+                    responseTime: {duration_ms},
                     body: _rawBody,
                     headers: {headers_json},
+                    text: function() {{ return _rawBody; }},
                     json: function() {{
                         return JSON.parse(_rawBody);
                     }}
                 }};
                 globalThis.aura.response = globalThis.response;
+                if (globalThis.pm) {{ globalThis.pm.response = globalThis.response; }}
             }})();
             "#
         );
@@ -172,46 +335,53 @@ impl AuraScriptRuntime {
         Ok(())
     }
 
-    /// Execute user script in sandbox
-    pub fn run(&mut self, script: &str) -> Result<ScriptExecutionResult> {
-        if script.trim().is_empty() {
-            return Ok(ScriptExecutionResult {
-                variables: self.variables.lock().clone(),
-                console_logs: Vec::new(),
-                test_assertions: Vec::new(),
-            });
-        }
+    fn prepare_and_drain_script(&mut self, script: &str) -> Result<()> {
+        let wrapped = format!(
+            r#"
+            globalThis.__aura_internal.scriptError = null;
+            (async function() {{
+                try {{
+                    await (async function() {{
+{script}
+                    }})();
+                    if (typeof globalThis.__aura_drain_fetches === 'function') {{
+                        await globalThis.__aura_drain_fetches();
+                    }}
+                    if (typeof globalThis.__aura_drain_tests === 'function') {{
+                        await globalThis.__aura_drain_tests();
+                    }}
+                    if (typeof globalThis.__aura_drain_fetches === 'function') {{
+                        await globalThis.__aura_drain_fetches();
+                    }}
+                }} catch (err) {{
+                    globalThis.__aura_internal.scriptError = (err && err.stack)
+                        ? String(err.stack)
+                        : String(err);
+                }}
+            }})();
+            "#
+        );
 
-        if let Err(err) = self
-            .runtime
-            .execute_script("user_script.js", script.to_string())
-        {
+        if let Err(err) = self.runtime.execute_script("user_script.js", wrapped) {
             return Err(anyhow::anyhow!("{err:#}"));
         }
+        Ok(())
+    }
 
-        // Drain async tests
-        let drain_script = r#"
-            (async function() {
-                if (typeof globalThis.__aura_drain_tests === 'function') {
-                    await globalThis.__aura_drain_tests();
-                }
-            })();
-        "#;
-        let _ = self
-            .runtime
-            .execute_script("aura_drain.js", drain_script.to_string());
-        let _ = futures::executor::block_on(self.runtime.run_event_loop(Default::default()));
-
-        // Extract mutated variables, console logs, and test assertions, then reset per-run buffers
+    fn extract_result(&mut self) -> Result<ScriptExecutionResult> {
         let extract_script = r#"
             (function() {
                 const payload = JSON.stringify({
                     vars: globalThis.__aura_internal.vars,
                     logs: globalThis.__aura_internal.logs,
-                    assertions: globalThis.__aura_internal.assertions
+                    assertions: globalThis.__aura_internal.assertions,
+                    next_request: globalThis.__aura_internal.nextRequest,
+                    stop_chain: Boolean(globalThis.__aura_internal.stopChain),
+                    script_error: globalThis.__aura_internal.scriptError
                 });
                 globalThis.__aura_internal.logs.length = 0;
                 globalThis.__aura_internal.assertions.length = 0;
+                globalThis.__aura_internal.scriptError = null;
                 return payload;
             })()
         "#;
@@ -229,6 +399,12 @@ impl AuraScriptRuntime {
             vars: HashMap<String, String>,
             logs: Vec<ConsoleLogDto>,
             assertions: Vec<AssertionDto>,
+            #[serde(default)]
+            next_request: Option<String>,
+            #[serde(default)]
+            stop_chain: bool,
+            #[serde(default)]
+            script_error: Option<String>,
         }
 
         #[derive(Deserialize)]
@@ -249,6 +425,12 @@ impl AuraScriptRuntime {
 
         let extracted: ExtractedData =
             serde_json::from_str(&json_str).context("Failed to parse extracted script data")?;
+
+        if let Some(err_msg) = extracted.script_error {
+            return Err(anyhow::anyhow!("{err_msg}"));
+        }
+
+        *self.variables.lock() = extracted.vars.clone();
 
         let logs = extracted
             .logs
@@ -275,6 +457,35 @@ impl AuraScriptRuntime {
             variables: extracted.vars,
             console_logs: logs,
             test_assertions: assertions,
+            next_request: extracted.next_request,
+            stop_chain: extracted.stop_chain,
         })
+    }
+
+    /// Execute user script synchronously (blocks current thread until promises/tests drain).
+    pub fn run(&mut self, script: &str) -> Result<ScriptExecutionResult> {
+        if script.trim().is_empty() {
+            return Ok(ScriptExecutionResult {
+                variables: self.variables.lock().clone(),
+                ..Default::default()
+            });
+        }
+        self.prepare_and_drain_script(script)?;
+        let _ = futures::executor::block_on(self.runtime.run_event_loop(Default::default()));
+        self.extract_result()
+    }
+
+    /// Execute user script asynchronously inside an active Tokio runtime so `fetch()`
+    /// and `aura.sendRequest()` can run concurrent HTTP requests cleanly.
+    pub async fn run_async(&mut self, script: &str) -> Result<ScriptExecutionResult> {
+        if script.trim().is_empty() {
+            return Ok(ScriptExecutionResult {
+                variables: self.variables.lock().clone(),
+                ..Default::default()
+            });
+        }
+        self.prepare_and_drain_script(script)?;
+        let _ = self.runtime.run_event_loop(Default::default()).await;
+        self.extract_result()
     }
 }

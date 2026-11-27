@@ -202,6 +202,26 @@ impl AuraWorkspaceView {
                 }
                 Err(e) => self.state.status_message = Some(e),
             },
+            RequestEditorAction::AddAssertion => {
+                self.state.add_declarative_assertion();
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::ToggleAssertion(idx) => {
+                self.state.toggle_declarative_assertion(idx);
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::RemoveAssertion(idx) => {
+                self.state.remove_declarative_assertion(idx);
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::CycleAssertionOperator(idx) => {
+                self.state.cycle_assertion_operator(idx);
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::AddPresetAssertion(expr, op, expected) => {
+                self.state.add_preset_assertion(expr, op, expected);
+                self.schedule_auto_save(cx);
+            }
             RequestEditorAction::ToggleApiKeyPlacement(in_header) => {
                 if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
                     if let aura_core::model::AuthConfig::ApiKey {
@@ -216,6 +236,48 @@ impl AuraWorkspaceView {
             }
             RequestEditorAction::ToggleAwsUseProfile(use_profile) => {
                 self.state.set_aws_use_profile(use_profile);
+            }
+            RequestEditorAction::SetOAuth2GrantType(grant) => {
+                self.state.set_oauth2_grant_type(grant);
+            }
+            RequestEditorAction::ToggleOAuth2Pkce => {
+                self.state.toggle_oauth2_pkce();
+            }
+            RequestEditorAction::ToggleOAuth2AutoRefresh => {
+                self.state.toggle_oauth2_auto_refresh();
+            }
+            RequestEditorAction::StartOAuth2Flow => {
+                self.dispatch_oauth2_flow(cx);
+            }
+            RequestEditorAction::SetOAuth1SigMethod(m) => {
+                self.state.set_oauth1_sig_method(m);
+            }
+            RequestEditorAction::ToggleOAuth1Query => {
+                self.state.toggle_oauth1_add_to_query();
+            }
+            RequestEditorAction::SetHawkAlgorithm(alg) => {
+                self.state.set_hawk_algorithm(alg);
+            }
+            RequestEditorAction::ToggleWsseDigest => {
+                self.state.toggle_wsse_digest();
+            }
+            RequestEditorAction::ToggleRequestCertEnabled => {
+                self.state.toggle_request_cert_enabled();
+            }
+            RequestEditorAction::OpenSecurityVaultModal => {
+                self.state.is_security_vault_modal_open = true;
+            }
+            RequestEditorAction::ToggleRequestProxyEnabled => {
+                self.state.toggle_request_proxy_enabled();
+            }
+            RequestEditorAction::SetRequestProxyProtocol(proto) => {
+                self.state.set_request_proxy_protocol(proto);
+            }
+            RequestEditorAction::ToggleRequestProxyAuth => {
+                self.state.toggle_request_proxy_auth();
+            }
+            RequestEditorAction::OpenGlobalProxyModal => {
+                self.state.is_proxy_modal_open = true;
             }
             RequestEditorAction::FocusSpec => {
                 self.state

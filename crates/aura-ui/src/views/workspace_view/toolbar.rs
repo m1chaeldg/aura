@@ -117,6 +117,107 @@ impl AuraWorkspaceView {
                             })),
                     )
                     .child({
+                        let count = self.state.cookie_jar.cookies.len();
+                        Button::new("open-cookies-btn")
+                            .label(if count > 0 {
+                                format!("Cookies ({count})")
+                            } else {
+                                "Cookies".to_string()
+                            })
+                            .small()
+                            .ghost()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Inspect, edit, and clear persisted domain cookies")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.is_cookie_modal_open = true;
+                                cx.notify();
+                            }))
+                    })
+                    .child({
+                        let btn = Button::new("open-proxy-btn")
+                            .label(if self.state.global_proxy.enabled {
+                                format!("Proxy: {}", self.state.global_proxy.protocol.as_str())
+                            } else {
+                                "Proxy".to_string()
+                            })
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Configure global HTTP / HTTPS / SOCKS5 proxy settings");
+                        let btn = if self.state.global_proxy.enabled {
+                            btn.primary()
+                        } else {
+                            btn.ghost()
+                        };
+                        btn.on_click(cx.listener(|this, _, _window, cx| {
+                            this.state.is_proxy_modal_open = true;
+                            cx.notify();
+                        }))
+                    })
+                    .child({
+                        let running = self.state.capture_proxy_handle.is_some();
+                        let cap_count = self.state.interceptor_manager.list_captures().len();
+                        let label = if running {
+                            format!("Capture LIVE ({cap_count})")
+                        } else if cap_count > 0 {
+                            format!("Capture ({cap_count})")
+                        } else {
+                            "Capture".to_string()
+                        };
+                        let btn = Button::new("open-capture-proxy-btn")
+                            .label(label)
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Start local HTTP/HTTPS MITM capture proxy & interceptor rules");
+                        let btn = if running { btn.primary() } else { btn.ghost() };
+                        btn.on_click(cx.listener(|this, _, _window, cx| {
+                            this.state.is_interceptor_modal_open = true;
+                            cx.notify();
+                        }))
+                    })
+                    .child(
+                        Button::new("open-codegen-btn")
+                            .icon(icon(IconName::Code))
+                            .label("Code")
+                            .small()
+                            .ghost()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Export active request as cURL, fetch, axios, Python, Rust, or Go")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.is_codegen_modal_open = true;
+                                cx.notify();
+                            })),
+                    )
+                    .child({
+                        let git_label = match &self.state.git_snapshot {
+                            Some(s) if s.is_repo => {
+                                let count = s.total_changes();
+                                if count > 0 {
+                                    format!("Git: {} ({count})", s.branch)
+                                } else {
+                                    format!("Git: {}", s.branch)
+                                }
+                            }
+                            _ => "Git".to_string(),
+                        };
+                        let has_changes = self
+                            .state
+                            .git_snapshot
+                            .as_ref()
+                            .map(|s| s.is_repo && s.total_changes() > 0)
+                            .unwrap_or(false);
+                        let btn = Button::new("open-git-btn")
+                            .icon(icon(IconName::RefreshCw))
+                            .label(git_label)
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Open built-in Git status, diff viewer, commit, branch & push/pull")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.is_git_modal_open = true;
+                                this.spawn_git_refresh(cx);
+                            }));
+                        if has_changes { btn.outline() } else { btn.ghost() }
+                    })
+                    .child({
                         let btn = Button::new("toggle-logs-btn")
                             .icon(icon(IconName::ScrollText))
                             .label("Logs")
@@ -294,6 +395,7 @@ impl AuraWorkspaceView {
                         Ok(()) => {
                             this.start_workspace_watcher(folder.clone(), cx);
                             this.save_preferences_sync();
+                            this.spawn_git_refresh(cx);
                             this.state.status_message =
                                 Some(format!("Opened workspace: {}", folder.display()));
                         }

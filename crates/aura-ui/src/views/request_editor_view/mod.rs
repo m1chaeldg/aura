@@ -18,6 +18,7 @@ use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 
 
 mod auth_panel;
+mod auth_schemes_panel;
 mod body_panel;
 mod form_body_panel;
 mod graphql_panel;
@@ -73,6 +74,22 @@ pub enum RequestEditorAction {
     FocusAuthField(ActiveInputTarget),
     ToggleApiKeyPlacement(bool),
     ToggleAwsUseProfile(bool),
+    SetOAuth2GrantType(&'static str),
+    ToggleOAuth2Pkce,
+    ToggleOAuth2AutoRefresh,
+    StartOAuth2Flow,
+    SetOAuth1SigMethod(&'static str),
+    ToggleOAuth1Query,
+    SetHawkAlgorithm(&'static str),
+    ToggleWsseDigest,
+    // Security Vaults & mTLS
+    ToggleRequestCertEnabled,
+    OpenSecurityVaultModal,
+    // Proxy
+    ToggleRequestProxyEnabled,
+    SetRequestProxyProtocol(aura_core::model::ProxyProtocol),
+    ToggleRequestProxyAuth,
+    OpenGlobalProxyModal,
     // Scripts
     SelectScriptSubTab(ScriptSubTab),
     FocusScript(ScriptSubTab),
@@ -81,6 +98,16 @@ pub enum RequestEditorAction {
     FocusTests,
     InsertTestSnippet(&'static str),
     RunTests,
+    // Declarative Assertions
+    AddAssertion,
+    ToggleAssertion(usize),
+    RemoveAssertion(usize),
+    CycleAssertionOperator(usize),
+    AddPresetAssertion(
+        &'static str,
+        aura_core::assertions::AssertOperator,
+        &'static str,
+    ),
     // Variables
     AddVariableDirect,
     ToggleVariable(usize),

@@ -41,10 +41,15 @@ pub enum InputKey {
     AuthApiKeyValue,
     AuthAwsField(usize),
     AuthOAuth2Field(usize),
+    AuthSchemeField(usize),
+    SettingCertField(usize),
+    SettingProxyField(usize),
     BodyText,
     PreRequestScript,
     PostResponseScript,
     TestScript,
+    AssertExpr(usize),
+    AssertExpected(usize),
     SpecText,
     CommandPaletteSearch,
     RenameDialog,
@@ -73,6 +78,33 @@ pub enum InputKey {
     SoapNamespace,
     SoapAction,
     WsdlImportText,
+    VaultAddr,
+    VaultToken,
+    VaultNamespace,
+    VaultAwsRegion,
+    VaultAwsProfile,
+    KeychainService,
+    KeychainKey,
+    KeychainValue,
+    DomainCertDomain,
+    DomainCertPath,
+    DomainCertKeyPath,
+    DomainCertPassphrase,
+    GlobalProxyHost,
+    GlobalProxyPort,
+    GlobalProxyUsername,
+    GlobalProxyPassword,
+    GlobalProxyBypass,
+    CookieFilter,
+    CookieDraftDomain,
+    CookieDraftPath,
+    CookieDraftName,
+    CookieDraftValue,
+    InterceptorBindAddr,
+    InterceptorRuleMatch,
+    InterceptorRuleTarget,
+    GitCommitMessage,
+    GitNewBranchName,
 }
 
 impl InputKey {
@@ -109,10 +141,15 @@ impl InputKey {
             InputKey::AuthApiKeyValue => Some(ActiveInputTarget::AuthApiKeyValue),
             InputKey::AuthAwsField(i) => Some(ActiveInputTarget::AuthAwsField(*i)),
             InputKey::AuthOAuth2Field(i) => Some(ActiveInputTarget::AuthOAuth2Field(*i)),
+            InputKey::AuthSchemeField(i) => Some(ActiveInputTarget::AuthSchemeField(*i)),
+            InputKey::SettingCertField(i) => Some(ActiveInputTarget::SettingCertField(*i)),
+            InputKey::SettingProxyField(i) => Some(ActiveInputTarget::SettingProxyField(*i)),
             InputKey::BodyText => Some(ActiveInputTarget::BodyText),
             InputKey::PreRequestScript => Some(ActiveInputTarget::PreRequestScript),
             InputKey::PostResponseScript => Some(ActiveInputTarget::PostResponseScript),
             InputKey::TestScript => Some(ActiveInputTarget::TestScript),
+            InputKey::AssertExpr(i) => Some(ActiveInputTarget::AssertExpr(*i)),
+            InputKey::AssertExpected(i) => Some(ActiveInputTarget::AssertExpected(*i)),
             InputKey::SpecText => Some(ActiveInputTarget::SpecText),
             InputKey::CommandPaletteSearch
             | InputKey::RenameDialog
@@ -140,7 +177,34 @@ impl InputKey {
             | InputKey::SoapOperation
             | InputKey::SoapNamespace
             | InputKey::SoapAction
-            | InputKey::WsdlImportText => None,
+            | InputKey::WsdlImportText
+            | InputKey::VaultAddr
+            | InputKey::VaultToken
+            | InputKey::VaultNamespace
+            | InputKey::VaultAwsRegion
+            | InputKey::VaultAwsProfile
+            | InputKey::KeychainService
+            | InputKey::KeychainKey
+            | InputKey::KeychainValue
+            | InputKey::DomainCertDomain
+            | InputKey::DomainCertPath
+            | InputKey::DomainCertKeyPath
+            | InputKey::DomainCertPassphrase
+            | InputKey::GlobalProxyHost
+            | InputKey::GlobalProxyPort
+            | InputKey::GlobalProxyUsername
+            | InputKey::GlobalProxyPassword
+            | InputKey::GlobalProxyBypass
+            | InputKey::CookieFilter
+            | InputKey::CookieDraftDomain
+            | InputKey::CookieDraftPath
+            | InputKey::CookieDraftName
+            | InputKey::CookieDraftValue
+            | InputKey::InterceptorBindAddr
+            | InputKey::InterceptorRuleMatch
+            | InputKey::InterceptorRuleTarget
+            | InputKey::GitCommitMessage
+            | InputKey::GitNewBranchName => None,
         }
     }
 }

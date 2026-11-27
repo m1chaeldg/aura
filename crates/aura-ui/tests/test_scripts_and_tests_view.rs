@@ -52,6 +52,11 @@ fn test_tests_panel_snippets_and_manual_evaluation() {
         script_errors: Vec::new(),
         sse_events: Vec::new(),
         stream_messages: Vec::new(),
+        timing: None,
+        captured_cookies: Vec::new(),
+        next_request: None,
+        stop_chain: false,
+        exported_variables: HashMap::new(),
     });
 
     // Run tests directly on demand
@@ -84,6 +89,11 @@ fn test_script_syntax_error_populates_response_script_errors() {
         script_errors: Vec::new(),
         sse_events: Vec::new(),
         stream_messages: Vec::new(),
+        timing: None,
+        captured_cookies: Vec::new(),
+        next_request: None,
+        stop_chain: false,
+        exported_variables: HashMap::new(),
     });
 
     let err = state.run_active_tests().expect_err("syntax error should fail");

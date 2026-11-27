@@ -208,6 +208,7 @@ pub fn toml_to_request(toml_str: &str, existing_id: Option<&str>) -> Result<Aura
         pre_request: schema.pre_request_script.unwrap_or_default(),
         post_response: schema.post_response_script.unwrap_or_default(),
         tests: schema.tests_script.unwrap_or_default(),
+        assertions: Vec::new(),
     };
     if let Some(t) = schema.timeout_ms {
         req.settings.timeout_ms = t;

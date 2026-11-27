@@ -266,6 +266,11 @@ impl AuraAppState {
                 script_errors: Vec::new(),
                 sse_events: Vec::new(),
                 stream_messages: Vec::new(),
+                timing: None,
+                captured_cookies: Vec::new(),
+                next_request: None,
+                stop_chain: false,
+                exported_variables: std::collections::HashMap::new(),
             });
             resp.stream_messages.push(msg.clone());
             resp.size_bytes += msg.payload.len();
@@ -291,6 +296,11 @@ impl AuraAppState {
                 script_errors: Vec::new(),
                 sse_events: Vec::new(),
                 stream_messages: Vec::new(),
+                timing: None,
+                captured_cookies: Vec::new(),
+                next_request: None,
+                stop_chain: false,
+                exported_variables: Default::default(),
             });
             resp.size_bytes += ev.data.len();
             if !resp.body.is_empty() {

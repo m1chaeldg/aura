@@ -96,6 +96,91 @@ impl AuraWorkspaceView {
                         InputKey::SoapAction => {
                             self.state.soap_action = val;
                         }
+                        InputKey::VaultAddr => {
+                            self.state.vault_config.vault_addr = val;
+                        }
+                        InputKey::VaultToken => {
+                            self.state.vault_config.vault_token = val;
+                        }
+                        InputKey::VaultNamespace => {
+                            self.state.vault_config.vault_namespace =
+                                if val.trim().is_empty() { None } else { Some(val) };
+                        }
+                        InputKey::VaultAwsRegion => {
+                            self.state.vault_config.aws_region = val;
+                        }
+                        InputKey::VaultAwsProfile => {
+                            self.state.vault_config.aws_profile =
+                                if val.trim().is_empty() { None } else { Some(val) };
+                        }
+                        InputKey::KeychainService => {
+                            self.state.keychain_service = val;
+                        }
+                        InputKey::KeychainKey => {
+                            self.state.keychain_key = val;
+                        }
+                        InputKey::KeychainValue => {
+                            self.state.keychain_value = val;
+                        }
+                        InputKey::DomainCertDomain => {
+                            self.state.draft_cert_domain = val;
+                        }
+                        InputKey::DomainCertPath => {
+                            self.state.draft_cert_path = val;
+                        }
+                        InputKey::DomainCertKeyPath => {
+                            self.state.draft_cert_key_path = val;
+                        }
+                        InputKey::DomainCertPassphrase => {
+                            self.state.draft_cert_passphrase = val;
+                        }
+                        InputKey::GlobalProxyHost => {
+                            self.state.global_proxy.host = val;
+                        }
+                        InputKey::GlobalProxyPort => {
+                            if let Ok(p) = val.trim().parse::<u16>() {
+                                self.state.global_proxy.port = p;
+                            }
+                        }
+                        InputKey::GlobalProxyUsername => {
+                            self.state.global_proxy.username = val;
+                        }
+                        InputKey::GlobalProxyPassword => {
+                            self.state.global_proxy.password = val;
+                        }
+                        InputKey::GlobalProxyBypass => {
+                            self.state.set_global_proxy_bypass_csv(&val);
+                        }
+                        InputKey::CookieFilter => {
+                            self.state.cookie_domain_filter = val;
+                        }
+                        InputKey::CookieDraftDomain => {
+                            self.state.draft_cookie_domain = val;
+                        }
+                        InputKey::CookieDraftPath => {
+                            self.state.draft_cookie_path = val;
+                        }
+                        InputKey::CookieDraftName => {
+                            self.state.draft_cookie_name = val;
+                        }
+                        InputKey::CookieDraftValue => {
+                            self.state.draft_cookie_value = val;
+                        }
+                        InputKey::InterceptorBindAddr => {
+                            self.state.interceptor_bind_addr = val;
+                        }
+                        InputKey::InterceptorRuleMatch => {
+                            self.state.draft_rule_match = val;
+                        }
+                        InputKey::InterceptorRuleTarget => {
+                            self.state.draft_rule_target = val;
+                        }
+                        InputKey::GitCommitMessage => {
+                            self.state.git_commit_message = val;
+                        }
+                        InputKey::GitNewBranchName => {
+                            self.state.git_new_branch_name = val;
+                        }
                         _ => {}
                     }
                 }

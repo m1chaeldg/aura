@@ -72,6 +72,34 @@ pub const JS_REFERENCE_ENTRIES: &[ReferenceEntry] = &[
     },
     ReferenceEntry {
         category: "Aura Sandbox",
+        label: "fetch",
+        detail: "(url: string, init?: RequestInit) => Promise<Response>",
+        insert_text: "const res = await fetch(\"https://postman-echo.com/get\");\nconst data = await res.json();\n",
+        description: "Performs an async HTTP/HTTPS request inside pre-request, post-response, or test scripts.",
+    },
+    ReferenceEntry {
+        category: "Aura Sandbox",
+        label: "aura.sendRequest",
+        detail: "(req: string | RequestSpec, cb?: (err, res) => void) => Promise<Response>",
+        insert_text: "const res = await aura.sendRequest({ url: \"https://postman-echo.com/get\", method: \"GET\" });\n",
+        description: "Sends an auxiliary HTTP request asynchronously (Postman pm.sendRequest compatible).",
+    },
+    ReferenceEntry {
+        category: "Aura Sandbox",
+        label: "aura.setNextRequest",
+        detail: "(nameOrId: string | null) => void",
+        insert_text: "aura.setNextRequest(\"Next Request Name\");\n",
+        description: "Controls Collection Runner chaining order; pass null to halt the chain cleanly.",
+    },
+    ReferenceEntry {
+        category: "Aura Sandbox",
+        label: "aura.execution.setNextRequest",
+        detail: "(nameOrId: string | null) => void",
+        insert_text: "aura.execution.setNextRequest(null);\n",
+        description: "Alias for aura.setNextRequest matching Postman execution API.",
+    },
+    ReferenceEntry {
+        category: "Aura Sandbox",
         label: "console.log",
         detail: "(...args: any[]) => void",
         insert_text: "console.log(\"debug:\", );",
@@ -257,6 +285,13 @@ pub const SPEC_REFERENCE_ENTRIES: &[ReferenceEntry] = &[
         detail: "Runner retry & flow rules",
         insert_text: "\n[flow]\nonce_per_run = false\nretry_until = \"response.status == 200\"\nretry_interval_ms = 1000\nmax_retries = 3\n",
         description: "Controls collection runner retries and once-per-run behavior.",
+    },
+    ReferenceEntry {
+        category: "Spec Sections",
+        label: "[assert]",
+        detail: "No-code declarative assertions",
+        insert_text: "\n[assert]\nres.status: eq 200\nres.body.id: isNumber\nres.duration_ms: lt 1000\n",
+        description: "Bruno-style lightweight declarative rules evaluated on every response.",
     },
     ReferenceEntry {
         category: "Template Built-ins",
