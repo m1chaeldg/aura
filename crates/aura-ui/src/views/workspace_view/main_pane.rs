@@ -28,6 +28,9 @@ impl AuraWorkspaceView {
                 .flex()
                 .flex_col()
                 .size_full()
+                .min_h_0()
+                .min_w_0()
+                .overflow_hidden()
                 .child(TabBarView::render(
                     &self.state,
                     cx,
@@ -325,7 +328,7 @@ impl AuraWorkspaceView {
                 },
             ));
 
-        if is_horizontal {
+        let split = if is_horizontal {
             h_resizable("editor-response-split")
                 .child(editor_panel)
                 .child(response_panel)
@@ -333,6 +336,13 @@ impl AuraWorkspaceView {
             v_resizable("editor-response-split")
                 .child(editor_panel)
                 .child(response_panel)
-        }
+        };
+
+        div()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .overflow_hidden()
+            .child(split)
     }
 }

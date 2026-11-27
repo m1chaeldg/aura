@@ -79,7 +79,7 @@ impl ResponsePaneView {
                         v_flex()
                             .id("response-tree-scroll")
                             .flex_1()
-                            .min_h(px(240.0))
+                            .min_h_0()
                             .overflow_y_scrollbar()
                             .gap_0p5()
                             .p_2()

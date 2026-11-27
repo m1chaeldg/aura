@@ -285,7 +285,11 @@ impl ResponsePaneView {
             (ResponseTab::Raw, "Raw".to_string()),
             (
                 ResponseTab::Tests,
-                format!("Tests ({}/{})", passed_tests, total_tests),
+                if total_tests > 0 {
+                    "Tests".to_string()
+                } else {
+                    "Tests (0/0)".to_string()
+                },
             ),
             (
                 ResponseTab::Console,
@@ -402,7 +406,7 @@ impl ResponsePaneView {
                         let mut bar = TabBar::new("response-tabs");
                         for (tab, label) in tabs {
                             let is_active = tab == effective_tab;
-                            let item = Tab::new()
+                            let mut item = Tab::new()
                                 .label(label)
                                 .selected(is_active)
                                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -413,6 +417,15 @@ impl ResponsePaneView {
                                         cx,
                                     );
                                 }));
+                            if tab == ResponseTab::Tests && total_tests > 0 {
+                                let count_label = format!("{passed_tests}/{total_tests}");
+                                let badge = if passed_tests == total_tests {
+                                    Tag::success().xsmall().child(count_label)
+                                } else {
+                                    Tag::danger().xsmall().child(count_label)
+                                };
+                                item = item.suffix(badge);
+                            }
                             bar = bar.child(item);
                         }
                         bar
@@ -462,6 +475,7 @@ impl ResponsePaneView {
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
+                        .overflow_hidden()
                         .p_4()
                         .child(content)
                         .into_any_element()
@@ -664,7 +678,7 @@ impl ResponsePaneView {
     fn render_readonly_editor_box(ed: &Entity<EditorState>, border: Hsla) -> AnyElement {
         div()
             .flex_1()
-            .min_h(px(240.0))
+            .min_h_0()
             .w_full()
             .rounded_md()
             .border_1()
@@ -1031,7 +1045,7 @@ impl ResponsePaneView {
 
     fn render_tests_tab<V: 'static>(
         resp: &AuraResponse,
-        tests_editor: Option<&Entity<EditorState>>,
+        _tests_editor: Option<&Entity<EditorState>>,
         border: Hsla,
         muted: Hsla,
         cx: &mut Context<V>,
@@ -1040,6 +1054,10 @@ impl ResponsePaneView {
         let (passed, total) = Self::assertion_counts(&resp.assertions);
         let failed = total.saturating_sub(passed);
         let formatted_text = Self::format_tests_text(resp);
+        let pass_color = cx.theme().success;
+        let fail_color = cx.theme().danger;
+        let surface = subtle_surface(cx);
+        let radius = cx.theme().radius;
 
         div()
             .flex()
@@ -1122,15 +1140,97 @@ impl ResponsePaneView {
                             .description(EmptyDescription::new().child("No test assertions executed.")),
                     )
                     .into_any_element()
-            } else if let Some(ed) = tests_editor {
-                Self::render_readonly_editor_box(ed, border)
             } else {
-                div()
+                v_flex()
+                    .id("response-tests-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .gap_1p5()
                     .p_2()
-                    .font_family("monospace")
-                    .text_xs()
-                    .text_color(cx.theme().foreground)
-                    .child(formatted_text)
+                    .rounded(radius)
+                    .bg(surface)
+                    .border_1()
+                    .border_color(border)
+                    .children(resp.assertions.iter().enumerate().map(|(idx, assertion)| {
+                        let accent = if assertion.passed {
+                            pass_color
+                        } else {
+                            fail_color
+                        };
+                        let row_bg = accent.opacity(0.08);
+                        let row_border = accent.opacity(0.32);
+                        let status_icon = if assertion.passed {
+                            IconName::Check
+                        } else {
+                            IconName::X
+                        };
+                        let badge = if assertion.passed {
+                            Tag::success().xsmall().child("PASS")
+                        } else {
+                            Tag::danger().xsmall().child("FAIL")
+                        };
+
+                        v_flex()
+                            .id(ElementId::NamedInteger(
+                                "resp-test-row".into(),
+                                idx as u64,
+                            ))
+                            .gap_1()
+                            .px_2p5()
+                            .py_1p5()
+                            .rounded(radius)
+                            .bg(row_bg)
+                            .border_1()
+                            .border_color(row_border)
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .gap_2()
+                                    .min_w_0()
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .child(
+                                                div()
+                                                    .text_color(accent)
+                                                    .flex_shrink_0()
+                                                    .child(icon(status_icon).size(px(13.0))),
+                                            )
+                                            .child(badge)
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(cx.theme().foreground)
+                                                    .truncate()
+                                                    .child(assertion.name.clone()),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_family("monospace")
+                                            .text_color(muted)
+                                            .flex_shrink_0()
+                                            .child(format!("{} ms", assertion.duration_ms)),
+                                    ),
+                            )
+                            .when(!assertion.passed, |el| {
+                                el.when_some(assertion.message.as_ref(), |el, msg| {
+                                    el.child(
+                                        div()
+                                            .pl(px(21.0))
+                                            .font_family("monospace")
+                                            .text_xs()
+                                            .text_color(fail_color)
+                                            .child(msg.clone()),
+                                    )
+                                })
+                            })
+                    }))
                     .into_any_element()
             })
     }

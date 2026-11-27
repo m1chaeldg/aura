@@ -215,16 +215,23 @@ impl Render for AuraWorkspaceView {
             }))
             .child(self.render_top_toolbar(is_horizontal, cx))
             .child(
-                h_resizable("workspace-main-split")
-                    .child(self.render_sidebar_panel(cx))
-                    .child(self.render_main_pane(
-                        active_tab,
-                        &active_title,
-                        active_method,
-                        is_horizontal,
-                        is_in_flight,
-                        cx,
-                    )),
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(
+                        h_resizable("workspace-main-split")
+                            .child(self.render_sidebar_panel(cx))
+                            .child(self.render_main_pane(
+                                active_tab,
+                                &active_title,
+                                active_method,
+                                is_horizontal,
+                                is_in_flight,
+                                cx,
+                            )),
+                    ),
             )
             .child(self.render_status_bar(is_horizontal, split_pct))
             .when(self.state.is_command_palette_open, |el| {
