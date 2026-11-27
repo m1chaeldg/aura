@@ -240,6 +240,23 @@ impl AuraWorkspaceView {
                         if is_running { btn.primary() } else { btn.ghost() }
                     })
                     .child({
+                        let btn = Button::new("toggle-ai-drawer-btn")
+                            .icon(icon(IconName::Bot))
+                            .label("AI")
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Toggle AI Assistant drawer")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.toggle_ai_drawer();
+                                cx.notify();
+                            }));
+                        if self.state.is_ai_drawer_open {
+                            btn.primary()
+                        } else {
+                            btn.ghost()
+                        }
+                    })
+                    .child({
                         let btn = Button::new("toggle-logs-btn")
                             .icon(icon(IconName::ScrollText))
                             .label("Logs")

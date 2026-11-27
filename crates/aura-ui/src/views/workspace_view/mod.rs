@@ -14,6 +14,7 @@ use gpui_kit::component::tree::TreeState;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod ai_actions;
 mod app_menus_and_modals;
 mod editor_actions;
 mod editor_dialog;
@@ -69,6 +70,10 @@ impl AuraWorkspaceView {
         view.state.cookie_jar = prefs.cookie_jar.clone();
         view.state.update_check_frequency = prefs.update_check_frequency;
         view.state.last_update_check_epoch = prefs.last_update_check_epoch;
+        view.state.ai_prefs = prefs.ai.clone();
+        if view.state.ai_prefs.cli_profiles.is_empty() {
+            view.spawn_ai_discovery(cx);
+        }
         view.state.set_split_ratio(prefs.split_ratio);
         if prefs.layout_orientation.eq_ignore_ascii_case("vertical") {
             view.state.orientation = LayoutOrientation::Vertical;
@@ -230,7 +235,10 @@ impl Render for AuraWorkspaceView {
                                 is_horizontal,
                                 is_in_flight,
                                 cx,
-                            )),
+                            ))
+                            .when(self.state.is_ai_drawer_open, |el| {
+                                el.child(self.render_ai_drawer_panel(cx))
+                            }),
                     ),
             )
             .child(self.render_status_bar(is_horizontal, split_pct))

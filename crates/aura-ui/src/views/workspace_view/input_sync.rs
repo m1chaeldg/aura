@@ -40,6 +40,92 @@ impl AuraWorkspaceView {
             Self::handle_input_event,
         );
 
+        if self.state.is_ai_drawer_open {
+            let draft = self.state.ai_prompt_draft.clone();
+            inputs.ensure_input(
+                InputKey::AiPromptInput,
+                &draft,
+                "Ask Aura AI to edit body, scripts, spec, or run commands...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_settings_modal_open && self.state.settings_tab_ai {
+            let cli_name = self.state.ai_custom_cli_name.clone();
+            let cli_cmd = self.state.ai_custom_cli_cmd.clone();
+            let cli_args = self.state.ai_custom_cli_args.clone();
+            let http_name = self.state.ai_http_name.clone();
+            let http_url = self.state.ai_http_url.clone();
+            let http_model = self.state.ai_http_model.clone();
+            let http_key = self.state.ai_http_api_key.clone();
+            inputs.ensure_input(
+                InputKey::AiCustomCliName,
+                &cli_name,
+                "Display name (e.g. My Agent)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiCustomCliCmd,
+                &cli_cmd,
+                "Command or path (e.g. claude)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiCustomCliArgs,
+                &cli_args,
+                "Args template (e.g. -p {prompt})",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiHttpName,
+                &http_name,
+                "Endpoint name (e.g. OpenRouter)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiHttpUrl,
+                &http_url,
+                "Base URL (e.g. https://api.openai.com/v1)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiHttpModel,
+                &http_model,
+                "Model (e.g. gpt-4o)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AiHttpApiKey,
+                &http_key,
+                "API key or $ENV_VAR",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
         if let Some(ref rd) = self.state.rename_dialog {
             let v = rd.current_name.clone();
             inputs.ensure_input(

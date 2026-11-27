@@ -51,6 +51,127 @@ pub struct AuraPreferences {
     pub update_check_frequency: UpdateCheckFrequency,
     #[serde(default)]
     pub last_update_check_epoch: Option<i64>,
+    #[serde(default)]
+    pub ai: AiPreferences,
+}
+
+/// Protocol kind for HTTP-based AI endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AiHttpKind {
+    #[default]
+    OpenAiCompatible,
+    Anthropic,
+}
+
+impl AiHttpKind {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => "OpenAI-Compatible",
+            Self::Anthropic => "Anthropic Messages",
+        }
+    }
+}
+
+/// Configuration for a local AI Agent CLI (e.g. claude, codex, copilot, cursor, gemini, agy).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiCliProfile {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_ai_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub auto_discovered: bool,
+    #[serde(default = "default_ai_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+/// Configuration for an HTTP AI endpoint (OpenAI, Anthropic, Ollama, LM Studio, custom).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiHttpProfile {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub kind: AiHttpKind,
+    pub base_url: String,
+    pub model: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_ai_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub auto_discovered: bool,
+}
+
+/// Persisted AI agent & endpoint preferences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiPreferences {
+    #[serde(default)]
+    pub active_provider_id: Option<String>,
+    #[serde(default)]
+    pub cli_profiles: Vec<AiCliProfile>,
+    #[serde(default = "default_ai_http_profiles")]
+    pub http_profiles: Vec<AiHttpProfile>,
+    #[serde(default = "default_ai_true")]
+    pub redact_secrets: bool,
+    #[serde(default)]
+    pub auto_apply_edits: bool,
+    #[serde(default = "default_ai_true")]
+    pub attach_request_context: bool,
+    #[serde(default = "default_ai_true")]
+    pub attach_response_context: bool,
+    #[serde(default)]
+    pub custom_system_prompt: Option<String>,
+}
+
+fn default_ai_true() -> bool {
+    true
+}
+
+fn default_ai_timeout_secs() -> u64 {
+    120
+}
+
+fn default_ai_http_profiles() -> Vec<AiHttpProfile> {
+    vec![
+        AiHttpProfile {
+            id: "http:openai".to_string(),
+            name: "OpenAI (ChatGPT)".to_string(),
+            kind: AiHttpKind::OpenAiCompatible,
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o".to_string(),
+            api_key: "$OPENAI_API_KEY".to_string(),
+            enabled: true,
+            auto_discovered: false,
+        },
+        AiHttpProfile {
+            id: "http:anthropic".to_string(),
+            name: "Anthropic (Claude)".to_string(),
+            kind: AiHttpKind::Anthropic,
+            base_url: "https://api.anthropic.com/v1".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            api_key: "$ANTHROPIC_API_KEY".to_string(),
+            enabled: true,
+            auto_discovered: false,
+        },
+    ]
+}
+
+impl Default for AiPreferences {
+    fn default() -> Self {
+        Self {
+            active_provider_id: None,
+            cli_profiles: Vec::new(),
+            http_profiles: default_ai_http_profiles(),
+            redact_secrets: true,
+            auto_apply_edits: false,
+            attach_request_context: true,
+            attach_response_context: true,
+            custom_system_prompt: None,
+        }
+    }
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -83,6 +204,7 @@ impl Default for AuraPreferences {
             cookie_jar: aura_core::cookies::CookieJar::default(),
             update_check_frequency: UpdateCheckFrequency::default(),
             last_update_check_epoch: None,
+            ai: AiPreferences::default(),
         }
     }
 }

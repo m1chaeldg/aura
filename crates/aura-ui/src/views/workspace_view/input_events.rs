@@ -261,6 +261,30 @@ impl AuraWorkspaceView {
                         InputKey::LoadSlaErrorPct => {
                             self.state.load_sla_err_str = val;
                         }
+                        InputKey::AiPromptInput => {
+                            self.state.ai_prompt_draft = val;
+                        }
+                        InputKey::AiCustomCliName => {
+                            self.state.ai_custom_cli_name = val;
+                        }
+                        InputKey::AiCustomCliCmd => {
+                            self.state.ai_custom_cli_cmd = val;
+                        }
+                        InputKey::AiCustomCliArgs => {
+                            self.state.ai_custom_cli_args = val;
+                        }
+                        InputKey::AiHttpName => {
+                            self.state.ai_http_name = val;
+                        }
+                        InputKey::AiHttpUrl => {
+                            self.state.ai_http_url = val;
+                        }
+                        InputKey::AiHttpModel => {
+                            self.state.ai_http_model = val;
+                        }
+                        InputKey::AiHttpApiKey => {
+                            self.state.ai_http_api_key = val;
+                        }
                         _ => {}
                     }
                 }

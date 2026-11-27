@@ -1,5 +1,6 @@
 //! Modular GPUI presentation components adhering to AGENTS.md Layer C.
 
+pub mod ai_assistant_view;
 pub mod command_palette_view;
 pub mod context_menu_view;
 pub mod log_viewer_view;
@@ -11,6 +12,7 @@ pub mod split_resizer_view;
 pub mod tab_bar_view;
 pub mod workspace_view;
 
+pub use ai_assistant_view::{AiAssistantAction, AiAssistantView};
 pub use command_palette_view::CommandPaletteView;
 pub use context_menu_view::{ContextMenuView, SidebarMenuAction};
 pub use log_viewer_view::LogViewerView;

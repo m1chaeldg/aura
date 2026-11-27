@@ -11,6 +11,7 @@ use gpui::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+mod ai_actions;
 mod editor_dialog;
 mod inline_input_edit;
 mod inline_input_nav;
@@ -382,6 +383,7 @@ pub enum TopMenuKind {
     Workspace,
     View,
     Tools,
+    Ai,
     Help,
 }
 
@@ -548,6 +550,38 @@ pub struct AuraAppState {
     pub update_available: Option<ReleaseInfo>,
     #[serde(skip)]
     pub update_status_message: Option<String>,
+    #[serde(default)]
+    pub ai_prefs: crate::preferences::AiPreferences,
+    #[serde(skip)]
+    pub is_ai_drawer_open: bool,
+    #[serde(skip)]
+    pub ai_chat_history: Vec<crate::services::AiChatMessage>,
+    #[serde(skip)]
+    pub ai_prompt_draft: String,
+    #[serde(skip)]
+    pub ai_is_busy: bool,
+    #[serde(skip)]
+    pub ai_status_message: Option<String>,
+    #[serde(skip)]
+    pub ai_discovery_in_flight: bool,
+    #[serde(skip)]
+    pub ai_cancel_token: Option<tokio_util::sync::CancellationToken>,
+    #[serde(skip)]
+    pub ai_custom_cli_name: String,
+    #[serde(skip)]
+    pub ai_custom_cli_cmd: String,
+    #[serde(skip)]
+    pub ai_custom_cli_args: String,
+    #[serde(skip)]
+    pub ai_http_name: String,
+    #[serde(skip)]
+    pub ai_http_url: String,
+    #[serde(skip)]
+    pub ai_http_model: String,
+    #[serde(skip)]
+    pub ai_http_api_key: String,
+    #[serde(skip)]
+    pub settings_tab_ai: bool,
     #[serde(skip)]
     pub cookie_domain_filter: String,
     #[serde(skip)]
@@ -802,6 +836,22 @@ impl Default for AuraAppState {
             update_installing: false,
             update_available: None,
             update_status_message: None,
+            ai_prefs: crate::preferences::AiPreferences::default(),
+            is_ai_drawer_open: false,
+            ai_chat_history: Vec::new(),
+            ai_prompt_draft: String::new(),
+            ai_is_busy: false,
+            ai_status_message: None,
+            ai_discovery_in_flight: false,
+            ai_cancel_token: None,
+            ai_custom_cli_name: String::new(),
+            ai_custom_cli_cmd: String::new(),
+            ai_custom_cli_args: "-p {prompt}".to_string(),
+            ai_http_name: String::new(),
+            ai_http_url: "https://api.openai.com/v1".to_string(),
+            ai_http_model: "gpt-4o".to_string(),
+            ai_http_api_key: "$OPENAI_API_KEY".to_string(),
+            settings_tab_ai: false,
             cookie_domain_filter: String::new(),
             draft_cookie_domain: String::new(),
             draft_cookie_path: "/".to_string(),

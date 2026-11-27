@@ -131,6 +131,14 @@ pub enum InputKey {
     LoadSlaP95Ms,
     LoadSlaP99Ms,
     LoadSlaErrorPct,
+    AiPromptInput,
+    AiCustomCliName,
+    AiCustomCliCmd,
+    AiCustomCliArgs,
+    AiHttpName,
+    AiHttpUrl,
+    AiHttpModel,
+    AiHttpApiKey,
 }
 
 impl InputKey {
@@ -256,7 +264,15 @@ impl InputKey {
             | InputKey::LoadMaxSizeBytes
             | InputKey::LoadSlaP95Ms
             | InputKey::LoadSlaP99Ms
-            | InputKey::LoadSlaErrorPct => None,
+            | InputKey::LoadSlaErrorPct
+            | InputKey::AiPromptInput
+            | InputKey::AiCustomCliName
+            | InputKey::AiCustomCliCmd
+            | InputKey::AiCustomCliArgs
+            | InputKey::AiHttpName
+            | InputKey::AiHttpUrl
+            | InputKey::AiHttpModel
+            | InputKey::AiHttpApiKey => None,
         }
     }
 }

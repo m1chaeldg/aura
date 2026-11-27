@@ -1,6 +1,7 @@
 use super::AuraWorkspaceView;
 use crate::app_state::TopMenuKind;
-use crate::preferences::UpdateCheckFrequency;
+use crate::input_registry::InputKey;
+use crate::preferences::{AiHttpKind, UpdateCheckFrequency};
 use crate::services::{CURRENT_VERSION, GITHUB_REPO, UpdateCheckOutcome, UpdateService};
 use crate::theme::icon;
 use gpui::prelude::FluentBuilder;
@@ -9,6 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::{Dialog, DialogFooter};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::Tag;
@@ -80,7 +82,19 @@ impl AuraWorkspaceView {
             "cmd:load_tester" => {
                 self.state.is_load_tester_modal_open = true;
             }
+            "cmd:ai_toggle" => {
+                self.state.toggle_ai_drawer();
+            }
+            "cmd:ai_discover" => {
+                self.state.is_ai_drawer_open = true;
+                self.spawn_ai_discovery(cx);
+            }
+            "cmd:ai_settings" => {
+                self.state.settings_tab_ai = true;
+                self.state.is_settings_modal_open = true;
+            }
             "cmd:settings" => {
+                self.state.settings_tab_ai = false;
                 self.state.is_settings_modal_open = true;
             }
             "cmd:help" => {
@@ -228,6 +242,15 @@ impl AuraWorkspaceView {
                 ],
             ),
             (
+                TopMenuKind::Ai,
+                "AI",
+                &[
+                    ("cmd:ai_toggle", "Toggle AI Assistant"),
+                    ("cmd:ai_discover", "Discover Local CLIs..."),
+                    ("cmd:ai_settings", "AI & Agent Settings..."),
+                ],
+            ),
+            (
                 TopMenuKind::Help,
                 "Help",
                 &[
@@ -335,6 +358,44 @@ impl AuraWorkspaceView {
                         v_flex()
                             .gap_3()
                             .child(
+                                h_flex()
+                                    .gap_1p5()
+                                    .child({
+                                        let btn = Button::new("settings-tab-general")
+                                            .label("General & Updates")
+                                            .xsmall()
+                                            .rounded(ButtonRounded::Small)
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.state.settings_tab_ai = false;
+                                                cx.notify();
+                                            }));
+                                        if !self.state.settings_tab_ai {
+                                            btn.primary()
+                                        } else {
+                                            btn.outline()
+                                        }
+                                    })
+                                    .child({
+                                        let btn = Button::new("settings-tab-ai")
+                                            .label("AI & Agents")
+                                            .xsmall()
+                                            .rounded(ButtonRounded::Small)
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.state.settings_tab_ai = true;
+                                                cx.notify();
+                                            }));
+                                        if self.state.settings_tab_ai {
+                                            btn.primary()
+                                        } else {
+                                            btn.outline()
+                                        }
+                                    }),
+                            )
+                            .when(self.state.settings_tab_ai, |el| {
+                                self.render_ai_settings_section(el, fg, muted, border, radius, cx)
+                            })
+                            .when(!self.state.settings_tab_ai, |el| {
+                                el.child(
                                 v_flex()
                                     .gap_1p5()
                                     .p_3()
@@ -426,7 +487,8 @@ impl AuraWorkspaceView {
                                             el.child(div().text_xs().text_color(muted).child(msg))
                                         },
                                     ),
-                            ),
+                            )
+                            }),
                     )
                     .footer(
                         DialogFooter::new()
@@ -715,5 +777,231 @@ impl AuraWorkspaceView {
                     ),
             )
         })
+    }
+
+    pub(super) fn render_ai_settings_section(
+        &self,
+        el: Div,
+        fg: Hsla,
+        muted: Hsla,
+        border: Hsla,
+        radius: Pixels,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let active_id = self.state.ai_prefs.active_provider_id.clone();
+        let cli_name_in = self.inputs.get_input(&InputKey::AiCustomCliName);
+        let cli_cmd_in = self.inputs.get_input(&InputKey::AiCustomCliCmd);
+        let cli_args_in = self.inputs.get_input(&InputKey::AiCustomCliArgs);
+        let http_name_in = self.inputs.get_input(&InputKey::AiHttpName);
+        let http_url_in = self.inputs.get_input(&InputKey::AiHttpUrl);
+        let http_model_in = self.inputs.get_input(&InputKey::AiHttpModel);
+        let http_key_in = self.inputs.get_input(&InputKey::AiHttpApiKey);
+
+        el.child(
+            v_flex()
+                .id("ai-settings-scroll")
+                .max_h(px(360.))
+                .overflow_y_scrollbar()
+                .gap_2p5()
+                .child(
+                    v_flex()
+                        .gap_1p5()
+                        .p_3()
+                        .rounded(radius)
+                        .border_1()
+                        .border_color(border)
+                        .child(
+                            h_flex()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(fg)
+                                        .child("Active Providers & Auto-Discovery"),
+                                )
+                                .child(
+                                    Button::new("ai-settings-discover-btn")
+                                        .icon(icon(IconName::RefreshCw))
+                                        .label(if self.state.ai_discovery_in_flight {
+                                            "Scanning..."
+                                        } else {
+                                            "Discover CLIs"
+                                        })
+                                        .xsmall()
+                                        .outline()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.spawn_ai_discovery(cx);
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("Scans PATH for claude, codex, copilot, cursor, gemini, agy & local Ollama/LM Studio."),
+                        )
+                        .children(self.state.ai_prefs.cli_profiles.iter().enumerate().map(|(i, p)| {
+                            let pid = p.id.clone();
+                            let is_sel = active_id.as_deref() == Some(pid.as_str());
+                            h_flex()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(fg)
+                                        .child(format!("CLI: {} ({})", p.name, p.command)),
+                                )
+                                .child(
+                                    Button::new(ElementId::NamedInteger("ai-set-cli".into(), i as u64))
+                                        .label(if is_sel { "Active" } else { "Use" })
+                                        .xsmall()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                            this.state.ai_prefs.active_provider_id = Some(pid.clone());
+                                            this.save_ai_preferences_sync();
+                                            cx.notify();
+                                        })),
+                                )
+                        }))
+                        .children(self.state.ai_prefs.http_profiles.iter().enumerate().map(|(i, p)| {
+                            let pid = p.id.clone();
+                            let is_sel = active_id.as_deref() == Some(pid.as_str());
+                            h_flex()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(fg)
+                                        .child(format!("HTTP: {} [{}]", p.name, p.model)),
+                                )
+                                .child(
+                                    Button::new(ElementId::NamedInteger("ai-set-http".into(), i as u64))
+                                        .label(if is_sel { "Active" } else { "Use" })
+                                        .xsmall()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                            this.state.ai_prefs.active_provider_id = Some(pid.clone());
+                                            this.save_ai_preferences_sync();
+                                            cx.notify();
+                                        })),
+                                )
+                        })),
+                )
+                .child(
+                    v_flex()
+                        .gap_1p5()
+                        .p_3()
+                        .rounded(radius)
+                        .border_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(fg)
+                                .child("Safety & Context"),
+                        )
+                        .child(
+                            Checkbox::new("ai-settings-redact")
+                                .checked(self.state.ai_prefs.redact_secrets)
+                                .label("Redact sensitive headers, tokens & env secrets")
+                                .small()
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.state.ai_prefs.redact_secrets = !this.state.ai_prefs.redact_secrets;
+                                    this.save_ai_preferences_sync();
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Checkbox::new("ai-settings-auto-apply")
+                                .checked(self.state.ai_prefs.auto_apply_edits)
+                                .label("Auto-apply proposed body, script & spec edits")
+                                .small()
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.state.ai_prefs.auto_apply_edits = !this.state.ai_prefs.auto_apply_edits;
+                                    this.save_ai_preferences_sync();
+                                    cx.notify();
+                                })),
+                        ),
+                )
+                .child(
+                    v_flex()
+                        .gap_1p5()
+                        .p_3()
+                        .rounded(radius)
+                        .border_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(fg)
+                                .child("Add Custom Agent CLI"),
+                        )
+                        .when_some(cli_name_in, |el, s| el.child(Input::new(&s).small()))
+                        .when_some(cli_cmd_in, |el, s| el.child(Input::new(&s).small()))
+                        .when_some(cli_args_in, |el, s| el.child(Input::new(&s).small()))
+                        .child(
+                            Button::new("ai-add-cli-btn")
+                                .label("Add CLI Profile")
+                                .xsmall()
+                                .primary()
+                                .rounded(ButtonRounded::Small)
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.add_custom_ai_cli_profile();
+                                    cx.notify();
+                                })),
+                        ),
+                )
+                .child(
+                    v_flex()
+                        .gap_1p5()
+                        .p_3()
+                        .rounded(radius)
+                        .border_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(fg)
+                                .child("Add OpenAI-Compatible / Anthropic Endpoint"),
+                        )
+                        .when_some(http_name_in, |el, s| el.child(Input::new(&s).small()))
+                        .when_some(http_url_in, |el, s| el.child(Input::new(&s).small()))
+                        .when_some(http_model_in, |el, s| el.child(Input::new(&s).small()))
+                        .when_some(http_key_in, |el, s| el.child(Input::new(&s).small()))
+                        .child(
+                            h_flex()
+                                .gap_1p5()
+                                .child(
+                                    Button::new("ai-add-openai-btn")
+                                        .label("Add OpenAI-Compatible")
+                                        .xsmall()
+                                        .primary()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.add_custom_ai_http_profile(AiHttpKind::OpenAiCompatible);
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("ai-add-anthropic-btn")
+                                        .label("Add Anthropic")
+                                        .xsmall()
+                                        .outline()
+                                        .rounded(ButtonRounded::Small)
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.add_custom_ai_http_profile(AiHttpKind::Anthropic);
+                                            cx.notify();
+                                        })),
+                                ),
+                        ),
+                ),
+        )
     }
 }
