@@ -202,3 +202,68 @@ fn test_workspace_store_clipboard_and_context_menu_state() {
     store.close_context_menu();
     assert!(store.active_context_menu.is_none());
 }
+
+#[test]
+fn test_workspace_store_excludes_environment_folders_from_collections_and_tree() {
+    use aura_ui::app_state::AuraAppState;
+    use aura_ui::views::SidebarView;
+
+    let temp_dir = std::env::temp_dir().join(format!("aura_env_skip_{}", uuid::Uuid::new_v4()));
+    let users_dir = temp_dir.join("Users");
+    let env_dir = temp_dir.join("environment");
+    let envs_dir = temp_dir.join("environments");
+    std::fs::create_dir_all(&users_dir).unwrap();
+    std::fs::create_dir_all(&env_dir).unwrap();
+    std::fs::create_dir_all(&envs_dir).unwrap();
+
+    std::fs::write(
+        users_dir.join("profile.aura"),
+        "version = \"1.0\"\nname = \"Profile\"\nmethod = \"GET\"\nurl = \"https://example.com\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        env_dir.join("Production.toml"),
+        "name = \"Production\"\n\n[variables]\nAPI = \"https://prod.example.com\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        envs_dir.join("Staging.toml"),
+        "name = \"Staging\"\n\n[variables]\nAPI = \"https://stg.example.com\"\n",
+    )
+    .unwrap();
+
+    let mut store = WorkspaceStore::new();
+    let loaded = store.load_workspace_collections(&temp_dir).unwrap();
+    assert_eq!(loaded, 1);
+    assert_eq!(store.collections.len(), 1);
+    assert_eq!(store.collections[0].name, "Users");
+
+    // Defense-in-depth: SidebarView::build_tree_items also filters out environment folders
+    let mut state = AuraAppState::new();
+    state.workspace_store.tree = vec![
+        WorkspaceTreeNode::Folder {
+            name: "environment".to_string(),
+            path: env_dir.clone(),
+            is_expanded: true,
+            children: vec![WorkspaceTreeNode::Request {
+                name: "Production.toml".to_string(),
+                path: env_dir.join("Production.toml"),
+                method: HttpMethod::GET,
+            }],
+        },
+        WorkspaceTreeNode::Folder {
+            name: "Users".to_string(),
+            path: users_dir.clone(),
+            is_expanded: true,
+            children: Vec::new(),
+        },
+    ];
+    let (items, meta) = SidebarView::build_tree_items(&state);
+    assert_eq!(items.len(), 1);
+    assert!(!meta.values().any(|m| match m {
+        aura_ui::views::sidebar_view::SidebarNodeMeta::Folder { name, .. } => name == "environment",
+        aura_ui::views::sidebar_view::SidebarNodeMeta::Request { name, .. } => name == "Production.toml",
+    }));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

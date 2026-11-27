@@ -200,6 +200,27 @@ impl AuraWorkspaceView {
                 );
             }
 
+            for (idx, ext) in tab.request.extractors.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::ExtractorVar(idx),
+                    &ext.variable,
+                    "var_name",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::ExtractorExpr(idx),
+                    &ext.expression,
+                    "$.data.token / regex / header",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+
             for (idx, p) in tab.request.params.iter().enumerate() {
                 inputs.ensure_input(
                     InputKey::ParamKey(idx),
@@ -1272,6 +1293,247 @@ impl AuraWorkspaceView {
                 InputKey::GitNewBranchName,
                 &self.state.git_new_branch_name,
                 "New branch name...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
+        if self.state.is_load_tester_modal_open {
+            inputs.ensure_input(
+                InputKey::LoadIterations,
+                &self.state.load_iterations_str,
+                "20",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadConcurrency,
+                &self.state.load_concurrency_str,
+                "4",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadDelayMs,
+                &self.state.load_delay_ms_str,
+                "0",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadRampUpSecs,
+                &self.state.load_ramp_up_str,
+                "5",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadRampDownSecs,
+                &self.state.load_ramp_down_str,
+                "5",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadDurationSecs,
+                &self.state.load_duration_str,
+                "20",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadTargetRps,
+                &self.state.load_target_rps_str,
+                "50",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            for (idx, (vus, secs)) in self.state.load_stages.iter().enumerate() {
+                inputs.ensure_input(
+                    InputKey::LoadStageVus(idx),
+                    vus,
+                    "10",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+                inputs.ensure_input(
+                    InputKey::LoadStageDurationSecs(idx),
+                    secs,
+                    "15",
+                    false,
+                    window,
+                    cx,
+                    Self::handle_input_event,
+                );
+            }
+            inputs.ensure_input(
+                InputKey::LoadThinkA,
+                &self.state.load_think_a_str,
+                "200",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadThinkB,
+                &self.state.load_think_b_str,
+                "600",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadBarrierGroupSize,
+                &self.state.load_barrier_size_str,
+                "4",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadBarrierTimeoutMs,
+                &self.state.load_barrier_timeout_str,
+                "5000",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+
+            let active_flow = self
+                .state
+                .active_request()
+                .and_then(|r| r.flow.as_ref());
+            let w_str = active_flow
+                .and_then(|f| f.weight_percent)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let lc_str = active_flow
+                .and_then(|f| f.loop_count)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let if_str = active_flow
+                .and_then(|f| f.condition_if.as_deref())
+                .unwrap_or("");
+            let while_str = active_flow
+                .and_then(|f| f.loop_while.as_deref())
+                .unwrap_or("");
+
+            inputs.ensure_input(
+                InputKey::FlowWeightPercent,
+                &w_str,
+                "50",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::FlowLoopCount,
+                &lc_str,
+                "1",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::FlowConditionIf,
+                if_str,
+                "prev.status == 200",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::FlowLoopWhile,
+                while_str,
+                "res.status == 202",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadDataFilePath,
+                &self.state.load_data_file_path,
+                "Path to .csv or .json data file...",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadMaxDurationMs,
+                &self.state.load_max_duration_ms_str,
+                "Max ms",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadMinSizeBytes,
+                &self.state.load_min_size_bytes_str,
+                "Min B",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadMaxSizeBytes,
+                &self.state.load_max_size_bytes_str,
+                "Max B",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadSlaP95Ms,
+                &self.state.load_sla_p95_str,
+                "p95 ms",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadSlaP99Ms,
+                &self.state.load_sla_p99_str,
+                "p99 ms",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::LoadSlaErrorPct,
+                &self.state.load_sla_err_str,
+                "Err %",
                 false,
                 window,
                 cx,

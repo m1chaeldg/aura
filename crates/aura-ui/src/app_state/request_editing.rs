@@ -165,6 +165,49 @@ impl AuraAppState {
         }
     }
 
+    pub fn add_native_extractor(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            tab.request
+                .extractors
+                .push(aura_core::extractors::NativeExtractor::default());
+            let idx = tab.request.extractors.len().saturating_sub(1);
+            tab.mark_dirty(true);
+            self.active_input_target = Some(super::ActiveInputTarget::ExtractorVar(idx));
+        }
+    }
+
+    pub fn toggle_native_extractor(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let Some(ext) = tab.request.extractors.get_mut(index) {
+                ext.enabled = !ext.enabled;
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
+    pub fn remove_native_extractor(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if index < tab.request.extractors.len() {
+                tab.request.extractors.remove(index);
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
+    pub fn cycle_extractor_type(&mut self, index: usize) {
+        use aura_core::extractors::NativeExtractorType;
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            if let Some(ext) = tab.request.extractors.get_mut(index) {
+                let pos = NativeExtractorType::ALL
+                    .iter()
+                    .position(|k| *k == ext.kind)
+                    .unwrap_or(0);
+                ext.kind = NativeExtractorType::ALL[(pos + 1) % NativeExtractorType::ALL.len()];
+                tab.mark_dirty(true);
+            }
+        }
+    }
+
     // =========================================================================
     // Request Settings & Variables Operations
     // =========================================================================

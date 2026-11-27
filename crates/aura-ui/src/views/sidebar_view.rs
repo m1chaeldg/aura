@@ -58,10 +58,18 @@ impl SidebarView {
 
         if !state.workspace_store.tree.is_empty() {
             for node in &state.workspace_store.tree {
+                if let crate::stores::workspace_store::WorkspaceTreeNode::Folder { name, .. } = node {
+                    if aura_sync::workspace_meta::is_ignored_workspace_dir(name) {
+                        continue;
+                    }
+                }
                 items.push(node_to_tree_item(node, &mut meta));
             }
         } else {
             for col in &state.collections {
+                if aura_sync::workspace_meta::is_ignored_workspace_dir(&col.name) {
+                    continue;
+                }
                 let col_key = format!("col:{}", col.id);
                 meta.insert(
                     col_key.clone(),

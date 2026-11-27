@@ -244,3 +244,66 @@ async fn test_workspace_service_paste_item_and_missing_source() {
     let err = service.paste_item(root, &fake_payload, &folder_b).await;
     assert!(err.is_err(), "Expected error when pasting missing source");
 }
+
+#[tokio::test]
+async fn test_open_and_reconcile_workspace_skips_environment_folder_and_children() {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path();
+    let service = WorkspaceService::new();
+
+    // Create a real API folder + an environment folder with .toml files
+    let api_dir = service.create_folder(root, root, "Users").await.unwrap();
+    let _req = service
+        .create_request(root, &api_dir, "GetProfile", HttpMethod::GET)
+        .await
+        .unwrap();
+
+    let env_dir = root.join("environment");
+    fs::create_dir_all(&env_dir).unwrap();
+    fs::write(
+        env_dir.join("TestEnv.toml"),
+        "name = \"TestEnv\"\n\n[variables]\nHOST = \"https://api.example.com\"\n",
+    )
+    .unwrap();
+
+    // Seed stale workspace.json that previously included `environment` to confirm migration pruning
+    let stale_meta = serde_json::json!({
+        "version": 1,
+        "name": "test_ws",
+        "order": [
+            { "type": "folder", "name": "Users", "order": [{ "type": "request", "name": "GetProfile.aura" }] },
+            { "type": "folder", "name": "environment", "order": [{ "type": "request", "name": "TestEnv.toml" }] }
+        ]
+    });
+    fs::write(
+        root.join("workspace.json"),
+        serde_json::to_string_pretty(&stale_meta).unwrap(),
+    )
+    .unwrap();
+
+    let mut state = aura_ui::app_state::AuraAppState::new();
+    state.open_workspace_sync(root).expect("open workspace");
+
+    // Environments ARE still loaded for the Environment Selector
+    assert_eq!(state.environments.len(), 1);
+    assert_eq!(state.environments[0].1.name, "TestEnv");
+
+    // Sidebar request tree & workspace.json MUST NOT contain `environment` or `TestEnv.toml`
+    assert_eq!(state.workspace_store.tree.len(), 1);
+    assert_eq!(state.workspace_store.tree[0].name(), "Users");
+    assert!(!state
+        .workspace_store
+        .tree
+        .iter()
+        .any(|n| n.name().eq_ignore_ascii_case("environment")));
+
+    let persisted = aura_sync::workspace_meta::WorkspaceMetadata::load_from_disk(root)
+        .expect("read migrated workspace.json");
+    assert!(!persisted
+        .order
+        .iter()
+        .any(|o| o.name().eq_ignore_ascii_case("environment")));
+
+    let (tree_items, _meta) = aura_ui::views::SidebarView::build_tree_items(&state);
+    assert_eq!(tree_items.len(), 1);
+}

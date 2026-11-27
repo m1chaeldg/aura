@@ -55,6 +55,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::ExtractorVar(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.variable.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::ExtractorExpr(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.expression.push_str(text);
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body {
                         if let Some(item) = items.get_mut(idx) {

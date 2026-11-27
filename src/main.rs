@@ -6,8 +6,16 @@ use aura::ui::AuraWorkspaceView;
 use gpui::WindowOptions;
 use gpui_kit::AppContext as _;
 
+mod cli_load;
+
 fn main() -> Result<()> {
-    // Increase main-thread stack to 8 MB for deeply nested GPUI render trees in debug builds.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("load") {
+        let code = cli_load::run_headless_load_sync(&args[2..]);
+        std::process::exit(code);
+    }
+
+    // Increase main-thread stack to 8 MB for deeply nested UI hierarchies.
     // The default Windows stack (1 MB) overflows with deeply nested UI hierarchies.
     const STACK_SIZE: usize = 8 * 1024 * 1024;
     let builder = std::thread::Builder::new()

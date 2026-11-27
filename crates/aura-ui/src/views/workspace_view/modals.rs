@@ -770,6 +770,7 @@ impl AuraWorkspaceView {
         });
         let el = self.render_security_vault_modal(el, cx);
         let el = self.render_git_modal(el, cx);
+        let el = self.render_load_tester_modal(el, cx);
         self.render_network_modals(el, cx)
     }
 }

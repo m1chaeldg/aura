@@ -222,6 +222,22 @@ impl AuraWorkspaceView {
                 self.state.add_preset_assertion(expr, op, expected);
                 self.schedule_auto_save(cx);
             }
+            RequestEditorAction::AddExtractor => {
+                self.state.add_native_extractor();
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::ToggleExtractor(idx) => {
+                self.state.toggle_native_extractor(idx);
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::RemoveExtractor(idx) => {
+                self.state.remove_native_extractor(idx);
+                self.schedule_auto_save(cx);
+            }
+            RequestEditorAction::CycleExtractorType(idx) => {
+                self.state.cycle_extractor_type(idx);
+                self.schedule_auto_save(cx);
+            }
             RequestEditorAction::ToggleApiKeyPlacement(in_header) => {
                 if let Some(tab) = self.state.tabs.get_mut(self.state.active_tab_index) {
                     if let aura_core::model::AuthConfig::ApiKey {

@@ -20,6 +20,7 @@ use gpui_kit::component::{ActiveTheme as _, Selectable, Sizable, h_flex};
 mod auth_panel;
 mod auth_schemes_panel;
 mod body_panel;
+mod extractors_panel;
 mod form_body_panel;
 mod graphql_panel;
 mod headers_panel;
@@ -108,6 +109,11 @@ pub enum RequestEditorAction {
         aura_core::assertions::AssertOperator,
         &'static str,
     ),
+    // Native Extractors
+    AddExtractor,
+    ToggleExtractor(usize),
+    RemoveExtractor(usize),
+    CycleExtractorType(usize),
     // Variables
     AddVariableDirect,
     ToggleVariable(usize),

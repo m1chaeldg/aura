@@ -350,6 +350,9 @@ pub(super) fn build_tree_from_metadata(
     for item in order {
         match item {
             WorkspaceOrderItem::Folder { name, order } => {
+                if aura_sync::workspace_meta::is_ignored_workspace_dir(name) {
+                    continue;
+                }
                 let folder_path = dir.join(name);
                 let children = build_tree_from_metadata(&folder_path, order)?;
                 tree.push(WorkspaceTreeNode::Folder {

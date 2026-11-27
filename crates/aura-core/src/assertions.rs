@@ -334,6 +334,68 @@ pub fn evaluate_assertions(
     out
 }
 
+/// Evaluate a non-code logic-controller condition (JMeter `If` / `While` controller)
+/// against an optional response (`res.*` / `prev.*` / `response.*`) and variable scope (`vars.*` / `var.*`).
+pub fn evaluate_flow_condition(
+    expr: &str,
+    resp: Option<&AuraResponse>,
+    vars: &std::collections::HashMap<String, String>,
+) -> bool {
+    let trimmed = expr.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    if let Some(rule) = parse_assertion_line(trimmed) {
+        let actual = resolve_condition_lhs(&rule.expression, resp, vars);
+        let (passed, _) = eval_rule(&actual, rule.operator, &rule.expected);
+        return passed;
+    }
+
+    // Bare truthy expression (e.g. `vars.token` or `!vars.skip`)
+    let (negated, key_expr) = if let Some(rest) = trimmed.strip_prefix('!') {
+        (true, rest.trim())
+    } else {
+        (false, trimmed)
+    };
+    let val = resolve_condition_lhs(key_expr, resp, vars);
+    let truthy = match val {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => b,
+        Some(Value::String(s)) => {
+            !s.is_empty() && !s.eq_ignore_ascii_case("false") && s != "0"
+        }
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0) != 0.0,
+        Some(Value::Array(a)) => !a.is_empty(),
+        Some(Value::Object(m)) => !m.is_empty(),
+    };
+    if negated { !truthy } else { truthy }
+}
+
+fn resolve_condition_lhs(
+    lhs: &str,
+    resp: Option<&AuraResponse>,
+    vars: &std::collections::HashMap<String, String>,
+) -> Option<Value> {
+    let trimmed = lhs.trim();
+    if let Some(var_name) = trimmed
+        .strip_prefix("vars.")
+        .or_else(|| trimmed.strip_prefix("var."))
+    {
+        return vars.get(var_name.trim()).map(|s| {
+            serde_json::from_str::<Value>(s).unwrap_or_else(|_| Value::String(s.clone()))
+        });
+    }
+    let normalized = if let Some(rest) = trimmed.strip_prefix("prev.") {
+        format!("res.{rest}")
+    } else {
+        trimmed.to_string()
+    };
+    let r = resp?;
+    let parsed_body = serde_json::from_str::<Value>(&r.body).ok();
+    resolve_expression(&normalized, r, parsed_body.as_ref())
+}
+
 fn resolve_expression(expr: &str, resp: &AuraResponse, parsed_body: Option<&Value>) -> Option<Value> {
     let trimmed = expr.trim();
     let rest = trimmed
@@ -383,7 +445,83 @@ fn resolve_expression(expr: &str, resp: &AuraResponse, parsed_body: Option<&Valu
     parsed_body.and_then(|root| traverse_json_path(root, rest))
 }
 
-fn traverse_json_path(root: &Value, path: &str) -> Option<Value> {
+/// Fast native performance bounds evaluated per sample (zero V8 overhead).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PerformanceAssertionConfig {
+    #[serde(default)]
+    pub max_duration_ms: Option<u64>,
+    #[serde(default)]
+    pub min_size_bytes: Option<usize>,
+    #[serde(default)]
+    pub max_size_bytes: Option<usize>,
+}
+
+impl PerformanceAssertionConfig {
+    pub fn is_empty(&self) -> bool {
+        self.max_duration_ms.is_none()
+            && self.min_size_bytes.is_none()
+            && self.max_size_bytes.is_none()
+    }
+}
+
+/// Evaluates Duration (`max_duration_ms`) and Size (`min_size_bytes..=max_size_bytes`) bounds cleanly.
+pub fn evaluate_performance_assertions(
+    cfg: &PerformanceAssertionConfig,
+    resp: &AuraResponse,
+) -> Vec<TestAssertion> {
+    let mut out = Vec::new();
+    if let Some(max_ms) = cfg.max_duration_ms {
+        let passed = resp.duration_ms <= max_ms;
+        out.push(TestAssertion {
+            name: format!("Duration <= {max_ms} ms"),
+            passed,
+            message: if passed {
+                None
+            } else {
+                Some(format!(
+                    "Response duration {} ms exceeded max {} ms",
+                    resp.duration_ms, max_ms
+                ))
+            },
+            duration_ms: 0,
+        });
+    }
+    if let Some(min_b) = cfg.min_size_bytes {
+        let passed = resp.size_bytes >= min_b;
+        out.push(TestAssertion {
+            name: format!("Size >= {min_b} bytes"),
+            passed,
+            message: if passed {
+                None
+            } else {
+                Some(format!(
+                    "Response size {} bytes below minimum {} bytes",
+                    resp.size_bytes, min_b
+                ))
+            },
+            duration_ms: 0,
+        });
+    }
+    if let Some(max_b) = cfg.max_size_bytes {
+        let passed = resp.size_bytes <= max_b;
+        out.push(TestAssertion {
+            name: format!("Size <= {max_b} bytes"),
+            passed,
+            message: if passed {
+                None
+            } else {
+                Some(format!(
+                    "Response size {} bytes exceeded maximum {} bytes",
+                    resp.size_bytes, max_b
+                ))
+            },
+            duration_ms: 0,
+        });
+    }
+    out
+}
+
+pub(crate) fn traverse_json_path(root: &Value, path: &str) -> Option<Value> {
     let mut current = root;
     let tokens = parse_path_segments(path);
     for seg in tokens {

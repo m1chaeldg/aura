@@ -283,6 +283,9 @@ impl WorkspaceStore {
             let path = entry.path();
             if path.is_dir() {
                 let col_name = path.file_name().unwrap().to_string_lossy().to_string();
+                if aura_sync::workspace_meta::is_ignored_workspace_dir(&col_name) {
+                    continue;
+                }
                 let mut col = Collection {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: col_name,

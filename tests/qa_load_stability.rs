@@ -30,6 +30,7 @@ async fn test_qa_high_concurrency_collection_runner() {
         total_iterations: 6,
         concurrency: 3,
         delay_ms: 10,
+        ..Default::default()
     };
 
     let report = run_collection(requests, TemplateContext::new(), config, None).await;

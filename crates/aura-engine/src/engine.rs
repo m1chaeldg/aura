@@ -1225,6 +1225,26 @@ pub async fn execute_request_with_options(
         exported_variables: exported_vars,
     };
 
+    if !req.extractors.is_empty() {
+        let native_vars = aura_core::extractors::evaluate_native_extractors(&req.extractors, &final_resp);
+        for (k, v) in native_vars {
+            final_resp.exported_variables.entry(k).or_insert(v);
+        }
+    }
+
+    if let Some(ref flow) = req.flow {
+        let perf_cfg = aura_core::assertions::PerformanceAssertionConfig {
+            max_duration_ms: flow.max_duration_ms,
+            min_size_bytes: flow.min_size_bytes,
+            max_size_bytes: flow.max_size_bytes,
+        };
+        if !perf_cfg.is_empty() {
+            let mut perf_res =
+                aura_core::assertions::evaluate_performance_assertions(&perf_cfg, &final_resp);
+            final_resp.assertions.append(&mut perf_res);
+        }
+    }
+
     if !req.scripts.assertions.is_empty() {
         let mut decl = aura_core::assertions::evaluate_assertions(&req.scripts.assertions, &final_resp);
         decl.append(&mut final_resp.assertions);

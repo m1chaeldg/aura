@@ -30,6 +30,9 @@ impl RequestEditorView {
         let decl_rules = request
             .map(|r| r.scripts.assertions.as_slice())
             .unwrap_or(&[]);
+        let extractors = request
+            .map(|r| r.extractors.as_slice())
+            .unwrap_or(&[]);
         let is_focused = matches!(active_input, Some(ActiveInputTarget::TestScript));
 
         let total_tests = assertions.map(|a| a.len()).unwrap_or(0);
@@ -87,6 +90,16 @@ impl RequestEditorView {
             )
             .child(Self::render_declarative_assertions_section(
                 decl_rules,
+                active_input,
+                inputs,
+                border,
+                muted,
+                normal,
+                cx,
+                on_action,
+            ))
+            .child(Self::render_native_extractors_section(
+                extractors,
                 active_input,
                 inputs,
                 border,

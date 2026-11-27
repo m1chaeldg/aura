@@ -54,6 +54,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::ExtractorVar(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.variable.push(c);
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::ExtractorExpr(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.expression.push(c);
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body
                     {
@@ -317,6 +329,18 @@ impl AuraAppState {
                         tab.mark_dirty(true);
                     }
                 }
+                ActiveInputTarget::ExtractorVar(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.variable.pop();
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::ExtractorExpr(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.expression.pop();
+                        tab.mark_dirty(true);
+                    }
+                }
                 ActiveInputTarget::FormParamKey(idx) => {
                     if let aura_core::model::BodyType::FormUrlEncoded(items) = &mut tab.request.body
                     {
@@ -525,6 +549,16 @@ impl AuraAppState {
                 .assertions
                 .get(*idx)
                 .map(|a| a.expected.clone()),
+            ActiveInputTarget::ExtractorVar(idx) => tab
+                .request
+                .extractors
+                .get(*idx)
+                .map(|e| e.variable.clone()),
+            ActiveInputTarget::ExtractorExpr(idx) => tab
+                .request
+                .extractors
+                .get(*idx)
+                .map(|e| e.expression.clone()),
             ActiveInputTarget::FormParamKey(idx) => {
                 if let aura_core::model::BodyType::FormUrlEncoded(items) = &tab.request.body {
                     items.get(*idx).map(|item| item.key.clone())
@@ -687,6 +721,18 @@ impl AuraAppState {
                 ActiveInputTarget::AssertExpected(idx) => {
                     if let Some(a) = tab.request.scripts.assertions.get_mut(idx) {
                         a.expected = text;
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::ExtractorVar(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.variable = text;
+                        tab.mark_dirty(true);
+                    }
+                }
+                ActiveInputTarget::ExtractorExpr(idx) => {
+                    if let Some(e) = tab.request.extractors.get_mut(idx) {
+                        e.expression = text;
                         tab.mark_dirty(true);
                     }
                 }

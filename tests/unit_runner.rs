@@ -16,6 +16,7 @@ async fn test_collection_runner_metrics() {
         total_iterations: 3,
         concurrency: 1,
         delay_ms: 10,
+        ..Default::default()
     };
 
     let report = run_collection(requests, TemplateContext::new(), config, None).await;

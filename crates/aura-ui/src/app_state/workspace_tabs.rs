@@ -131,6 +131,10 @@ impl AuraAppState {
                 if p.is_file() {
                     paths_to_check.push(p);
                 } else if p.is_dir() {
+                    let dir_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if aura_sync::workspace_meta::is_ignored_workspace_dir(dir_name) {
+                        continue;
+                    }
                     if let Ok(sub_entries) = std::fs::read_dir(&p) {
                         for sub in sub_entries.flatten() {
                             let sub_p = sub.path();

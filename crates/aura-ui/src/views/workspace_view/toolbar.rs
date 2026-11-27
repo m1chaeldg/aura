@@ -218,6 +218,20 @@ impl AuraWorkspaceView {
                         if has_changes { btn.outline() } else { btn.ghost() }
                     })
                     .child({
+                        let is_running = self.state.load_is_running;
+                        let btn = Button::new("open-load-tester-btn")
+                            .icon(icon(IconName::Zap))
+                            .label(if is_running { "Load Test (LIVE)" } else { "Load Test" })
+                            .small()
+                            .rounded(ButtonRounded::Medium)
+                            .tooltip("Run JMeter-style load tests (ramp-up, soak duration, spike stages, target RPS)")
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.is_load_tester_modal_open = true;
+                                cx.notify();
+                            }));
+                        if is_running { btn.primary() } else { btn.ghost() }
+                    })
+                    .child({
                         let btn = Button::new("toggle-logs-btn")
                             .icon(icon(IconName::ScrollText))
                             .label("Logs")

@@ -3,7 +3,9 @@
 pub mod assertions;
 pub mod codegen;
 pub mod cookies;
+pub mod data_feeder;
 pub mod design;
+pub mod extractors;
 pub mod graphql;
 pub mod grpc;
 pub mod interceptor;

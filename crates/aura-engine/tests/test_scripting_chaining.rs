@@ -227,6 +227,7 @@ async fn test_collection_runner_chaining_branch_and_stop() {
             total_iterations: 1,
             concurrency: 1,
             delay_ms: 0,
+            ..Default::default()
         },
         None,
     )

@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-Platform Release Workflow (`.github/workflows/release.yml`)**:
+  - Automated GitHub Actions workflow building release binaries for **macOS** (Apple Silicon `aarch64-apple-darwin` and Intel `x86_64-apple-darwin`), **Linux** (`x86_64-unknown-linux-gnu`), and **Windows** (`x86_64-pc-windows-msvc`).
+  - Bundles `README.md`, `CHANGELOG.md`, `LICENSE`, `docs/`, and SHA256 checksums into each release archive and auto-populates GitHub Release notes from `CHANGELOG.md`.
+- **Multi-Protocol Support (GraphQL, WebSockets, SSE, gRPC, SOAP)**:
+  - **GraphQL**: Dedicated query & variables editor and execution support.
+  - **WebSockets (`ws://` / `wss://`)**: Live bidirectional connection management and message streaming.
+  - **Server-Sent Events (SSE)**: Streaming `text/event-stream` viewer.
+  - **gRPC & SOAP/WSDL**: `.proto` / gRPC request support and WSDL import into Aura collections.
+- **JMeter-Style Load Testing & Headless CLI (`aura load`)**:
+  - **Load Profiles**: Fixed iterations, time-boxed soak/stress durations (`--duration`), ramp-up/ramp-down (`--ramp-up`, `--ramp-down`), multi-stage spike schedules (`--stages`), constant throughput shaping (`--target-rps`), uniform/Gaussian think-time timers, synchronizing rendezvous barriers (`--sync-barrier`), and weighted traffic routing (`--weighted`).
+  - **CSV / JSON Data Feeder**: Parameterize virtual users with `AllVUs` (shared) or `PerVU` row distribution and `Recycle` or `StopVuOnEof` EOF handling.
+  - **Zero-JS Native Extractors**: High-concurrency response correlation via JSONPath, Regex Body, Regex Header, Header, and Cookie extractors without V8 overhead.
+  - **SLA Gates & Reporting**: Per-sample duration/size assertions, global CI SLA thresholds (`--sla-p95`, `--sla-p99`, `--sla-error`), and exports to JTL-style CSV, JSON, and standalone HTML reports.
+- **Declarative Assertions, Async Scripting & Request Chaining**:
+  - **No-Code Assertions (`[assert]`)**: Point-and-click response validation rules (`res.status`, `res.duration_ms`, `res.body.*`, `res.headers.*`) persisted directly in `.aura` files.
+  - **Async `fetch` & `aura.sendRequest`**: Pre-request, post-response, and test scripts support `await fetch(...)` and `await aura.sendRequest(...)` (plus `pm.sendRequest`).
+  - **Request Chaining (`aura.setNextRequest`)**: Conditional flow control across Collection Runner steps with shared variables and cookies.
+- **Network Tooling, Codegen & Git Integration**:
+  - **Cookie Jar**: Automatic `Set-Cookie` persistence and modal inspection/management.
+  - **Proxy & MITM Capture Proxy**: Global HTTP/HTTPS/SOCKS5 proxy configuration plus a local capture proxy & interceptor rules.
+  - **Code Snippet Generator**: Export active requests as `cURL`, `fetch`, `axios`, Python, Rust, or Go.
+  - **Built-in Git UI**: In-app `git status`, diff viewer, commit, branch, and push/pull controls.
 - **Request Spec Tab & Lossless Bidirectional Sync**:
   - Added new "Spec" sub-tab in `RequestEditorView` (positioned after Settings) displaying the canonical `.aura` specification format (`docs/file_format.md`).
   - Implemented lossless bidirectional synchronization: visual tab modifications automatically regenerate the spec buffer on switch, and live text edits in the Spec editor update the underlying request model and visual tabs in real-time.

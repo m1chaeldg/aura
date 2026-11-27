@@ -173,6 +173,16 @@ impl WorkspaceMetadata {
     }
 }
 
+/// Returns true if a directory name should be excluded from workspace request trees
+/// (dot-folders, build/dependency caches, or the `<workspace>/environment` folder).
+pub fn is_ignored_workspace_dir(name: &str) -> bool {
+    name.starts_with('.')
+        || name.eq_ignore_ascii_case("environment")
+        || name.eq_ignore_ascii_case("environments")
+        || name == "node_modules"
+        || name == "target"
+}
+
 fn reconcile_directory(
     dir: &Path,
     existing_order: &[WorkspaceOrderItem],
@@ -192,11 +202,7 @@ fn reconcile_directory(
             Err(_) => continue,
         };
 
-        if file_name.starts_with('.')
-            || file_name == "node_modules"
-            || file_name == "target"
-            || file_name == "workspace.json"
-        {
+        if is_ignored_workspace_dir(&file_name) || file_name == "workspace.json" {
             continue;
         }
 

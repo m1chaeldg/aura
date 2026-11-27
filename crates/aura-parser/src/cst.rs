@@ -368,6 +368,52 @@ impl CstDocument {
                                             flow.jitter_max_ms = Some(i as u64);
                                         }
                                     }
+                                    "gaussian_mean_ms" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.gaussian_mean_ms = Some(i as u64);
+                                        }
+                                    }
+                                    "gaussian_stddev_ms" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.gaussian_stddev_ms = Some(i as u64);
+                                        }
+                                    }
+                                    "weight_percent" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.weight_percent = Some(i.clamp(0, 100) as u8);
+                                        }
+                                    }
+                                    "loop_count" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.loop_count = Some(i.max(1) as u32);
+                                        }
+                                    }
+                                    "condition_if" => {
+                                        flow.condition_if = Some(kv.value.as_str().to_string());
+                                    }
+                                    "loop_while" => {
+                                        flow.loop_while = Some(kv.value.as_str().to_string());
+                                    }
+                                    "max_loops" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.max_loops = i.max(1) as u32;
+                                        }
+                                    }
+                                    "max_duration_ms" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.max_duration_ms = Some(i.max(0) as u64);
+                                        }
+                                    }
+                                    "min_size_bytes" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.min_size_bytes = Some(i.max(0) as usize);
+                                        }
+                                    }
+                                    "max_size_bytes" => {
+                                        if let Some(i) = kv.value.as_i64() {
+                                            flow.max_size_bytes = Some(i.max(0) as usize);
+                                        }
+                                    }
                                     _ => {}
                                 }
                             }
@@ -563,6 +609,18 @@ impl CstDocument {
                             if let CstTableItem::FencedBlock(fb) = sub {
                                 req.tests =
                                     Some(fb.content.trim_end_matches(['\r', '\n']).to_string());
+                            }
+                        }
+                    }
+                    "extractors" | "extractor" => {
+                        for sub in &table.items {
+                            if let CstTableItem::KeyValue(kv) = sub {
+                                if let Some(ext) = aura_core::extractors::parse_extractor_kv(
+                                    &kv.key,
+                                    kv.value.as_str(),
+                                ) {
+                                    req.extractors.push(ext);
+                                }
                             }
                         }
                     }

@@ -9,6 +9,7 @@ pub mod mtls;
 pub mod oauth2;
 pub mod proxy;
 pub mod runner;
+pub mod runner_reporting;
 pub mod sse;
 pub mod tls;
 pub mod vaults;
@@ -29,7 +30,18 @@ pub use oauth2::{
     exchange_oauth2_token, maybe_refresh_oauth2_auth, run_oauth2_token_acquisition,
     OAuth2TokenResult,
 };
-pub use runner::{run_collection, RunnerConfig, RunnerExecutionRecord, RunnerReport};
+pub use aura_core::assertions::PerformanceAssertionConfig;
+pub use aura_core::data_feeder::{DataEofBehavior, DataFeederConfig, DataSharingMode};
+pub use aura_core::model::ThinkTimeConfig;
+pub use runner::{
+    run_collection, run_collection_with_cancel, run_collection_with_options, LoadProfileMode,
+    LoadStage, ResolvedSchedule, RunnerConfig, RunnerExecutionRecord, RunnerReport, SlaThresholds,
+    SlaViolation, SynchronizingTimerConfig,
+};
+pub use runner_reporting::{
+    compute_aggregate_report, compute_time_series, export_samples_json, export_samples_jtl_csv,
+    generate_html_report, EndpointAggregateRow, TimeSeriesBucket,
+};
 pub use sse::{execute_sse_request, SseStreamParser};
 pub use vaults::{
     fetch_aws_secrets_manager, fetch_hashicorp_vault_secret, keychain_delete, keychain_get,

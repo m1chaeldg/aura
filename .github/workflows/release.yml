@@ -1,0 +1,218 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0). Defaults to ref_name when triggered by tag."
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.os_label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os_label: macOS (Apple Silicon)
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: aura-macos-aarch64
+            ext: tar.gz
+            bin_name: aura
+          - os_label: macOS (Intel)
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: aura-macos-x86_64
+            ext: tar.gz
+            bin_name: aura
+          - os_label: Linux (x86_64)
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: aura-linux-x86_64
+            ext: tar.gz
+            bin_name: aura
+          - os_label: Windows (x86_64)
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: aura-windows-x86_64
+            ext: zip
+            bin_name: aura.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libwayland-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libvulkan-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libdbus-1-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --bin aura --target ${{ matrix.target }}
+
+      - name: Package release archive (macOS & Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          STAGE_DIR="stage/${{ matrix.asset_name }}"
+          mkdir -p "${STAGE_DIR}/docs"
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "${STAGE_DIR}/"
+          chmod +x "${STAGE_DIR}/${{ matrix.bin_name }}"
+          cp README.md CHANGELOG.md LICENSE "${STAGE_DIR}/"
+          cp -r docs/* "${STAGE_DIR}/docs/"
+          mkdir -p dist
+          tar -czf "dist/${{ matrix.asset_name }}.tar.gz" -C stage "${{ matrix.asset_name }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${{ matrix.asset_name }}.tar.gz" > "${{ matrix.asset_name }}.tar.gz.sha256")
+          else
+            (cd dist && shasum -a 256 "${{ matrix.asset_name }}.tar.gz" > "${{ matrix.asset_name }}.tar.gz.sha256")
+          fi
+
+      - name: Package release archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stageDir = "stage/${{ matrix.asset_name }}"
+          New-Item -ItemType Directory -Force -Path "$stageDir/docs" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "$stageDir/"
+          Copy-Item "README.md", "CHANGELOG.md", "LICENSE" "$stageDir/"
+          Copy-Item -Recurse "docs/*" "$stageDir/docs/"
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+          $zipPath = "dist/${{ matrix.asset_name }}.zip"
+          Compress-Archive -Path "$stageDir" -DestinationPath $zipPath -Force
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.asset_name }}.zip" | Out-File -FilePath "$zipPath.sha256" -Encoding ascii
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="v$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          VERSION="${TAG#v}"
+          {
+            echo "# Aura ${TAG}"
+            echo ""
+            echo "## Downloads"
+            echo "| Platform | Archive |"
+            echo "|---|---|"
+            echo "| macOS (Apple Silicon) | \`aura-macos-aarch64.tar.gz\` |"
+            echo "| macOS (Intel) | \`aura-macos-x86_64.tar.gz\` |"
+            echo "| Linux (x86_64) | \`aura-linux-x86_64.tar.gz\` |"
+            echo "| Windows (x86_64) | \`aura-windows-x86_64.zip\` |"
+            echo ""
+            echo "## Documentation"
+            echo "- [User & Developer Guide (README)](https://github.com/${{ github.repository }}/blob/${TAG}/README.md)"
+            echo "- [Scripting, Assertions & Chaining](https://github.com/${{ github.repository }}/blob/${TAG}/docs/scripting_and_chaining.md)"
+            echo "- [.aura File Format Specification](https://github.com/${{ github.repository }}/blob/${TAG}/docs/file_format.md)"
+            echo "- [Full Changelog](https://github.com/${{ github.repository }}/blob/${TAG}/CHANGELOG.md)"
+            echo ""
+            echo "## Changelog"
+            echo ""
+          } > release_notes.md
+
+          # Extract section for [VERSION] if present, otherwise fall back to [Unreleased]
+          SECTION=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$SECTION" ]; then
+            SECTION=$(awk '
+              /^## \[Unreleased\]/ { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md)
+          fi
+
+          if [ -n "$SECTION" ]; then
+            echo "$SECTION" >> release_notes.md
+          else
+            echo "See [CHANGELOG.md](CHANGELOG.md) for details." >> release_notes.md
+          fi
+
+          echo "" >> release_notes.md
+          echo "## SHA256 Checksums" >> release_notes.md
+          echo '```text' >> release_notes.md
+          cat artifacts/*.sha256 >> release_notes.md || true
+          echo '```' >> release_notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: Aura ${{ steps.notes.outputs.tag }}
+          body_path: release_notes.md
+          prerelease: ${{ inputs.prerelease || contains(steps.notes.outputs.tag, '-') }}
+          files: |
+            artifacts/*

@@ -181,6 +181,86 @@ impl AuraWorkspaceView {
                         InputKey::GitNewBranchName => {
                             self.state.git_new_branch_name = val;
                         }
+                        InputKey::LoadIterations => {
+                            self.state.load_iterations_str = val;
+                        }
+                        InputKey::LoadConcurrency => {
+                            self.state.load_concurrency_str = val;
+                        }
+                        InputKey::LoadDelayMs => {
+                            self.state.load_delay_ms_str = val;
+                        }
+                        InputKey::LoadRampUpSecs => {
+                            self.state.load_ramp_up_str = val;
+                        }
+                        InputKey::LoadRampDownSecs => {
+                            self.state.load_ramp_down_str = val;
+                        }
+                        InputKey::LoadDurationSecs => {
+                            self.state.load_duration_str = val;
+                        }
+                        InputKey::LoadTargetRps => {
+                            self.state.load_target_rps_str = val;
+                        }
+                        InputKey::LoadStageVus(idx) => {
+                            if let Some(st) = self.state.load_stages.get_mut(*idx) {
+                                st.0 = val;
+                            }
+                        }
+                        InputKey::LoadStageDurationSecs(idx) => {
+                            if let Some(st) = self.state.load_stages.get_mut(*idx) {
+                                st.1 = val;
+                            }
+                        }
+                        InputKey::LoadThinkA => {
+                            self.state.load_think_a_str = val;
+                        }
+                        InputKey::LoadThinkB => {
+                            self.state.load_think_b_str = val;
+                        }
+                        InputKey::LoadBarrierGroupSize => {
+                            self.state.load_barrier_size_str = val;
+                        }
+                        InputKey::LoadBarrierTimeoutMs => {
+                            self.state.load_barrier_timeout_str = val;
+                        }
+                        InputKey::FlowWeightPercent => {
+                            self.state.set_active_flow_weight_str(&val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::FlowLoopCount => {
+                            self.state.set_active_flow_loop_count_str(&val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::FlowConditionIf => {
+                            self.state.set_active_flow_condition_if(val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::FlowLoopWhile => {
+                            self.state.set_active_flow_loop_while(val);
+                            self.schedule_auto_save(cx);
+                        }
+                        InputKey::LoadDataFilePath => {
+                            self.state.load_data_file_path = val;
+                        }
+                        InputKey::LoadMaxDurationMs => {
+                            self.state.load_max_duration_ms_str = val;
+                        }
+                        InputKey::LoadMinSizeBytes => {
+                            self.state.load_min_size_bytes_str = val;
+                        }
+                        InputKey::LoadMaxSizeBytes => {
+                            self.state.load_max_size_bytes_str = val;
+                        }
+                        InputKey::LoadSlaP95Ms => {
+                            self.state.load_sla_p95_str = val;
+                        }
+                        InputKey::LoadSlaP99Ms => {
+                            self.state.load_sla_p99_str = val;
+                        }
+                        InputKey::LoadSlaErrorPct => {
+                            self.state.load_sla_err_str = val;
+                        }
                         _ => {}
                     }
                 }

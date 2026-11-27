@@ -50,6 +50,8 @@ pub enum InputKey {
     TestScript,
     AssertExpr(usize),
     AssertExpected(usize),
+    ExtractorVar(usize),
+    ExtractorExpr(usize),
     SpecText,
     CommandPaletteSearch,
     RenameDialog,
@@ -105,6 +107,30 @@ pub enum InputKey {
     InterceptorRuleTarget,
     GitCommitMessage,
     GitNewBranchName,
+    LoadIterations,
+    LoadConcurrency,
+    LoadDelayMs,
+    LoadRampUpSecs,
+    LoadRampDownSecs,
+    LoadDurationSecs,
+    LoadTargetRps,
+    LoadStageVus(usize),
+    LoadStageDurationSecs(usize),
+    LoadThinkA,
+    LoadThinkB,
+    LoadBarrierGroupSize,
+    LoadBarrierTimeoutMs,
+    FlowWeightPercent,
+    FlowLoopCount,
+    FlowConditionIf,
+    FlowLoopWhile,
+    LoadDataFilePath,
+    LoadMaxDurationMs,
+    LoadMinSizeBytes,
+    LoadMaxSizeBytes,
+    LoadSlaP95Ms,
+    LoadSlaP99Ms,
+    LoadSlaErrorPct,
 }
 
 impl InputKey {
@@ -150,6 +176,8 @@ impl InputKey {
             InputKey::TestScript => Some(ActiveInputTarget::TestScript),
             InputKey::AssertExpr(i) => Some(ActiveInputTarget::AssertExpr(*i)),
             InputKey::AssertExpected(i) => Some(ActiveInputTarget::AssertExpected(*i)),
+            InputKey::ExtractorVar(i) => Some(ActiveInputTarget::ExtractorVar(*i)),
+            InputKey::ExtractorExpr(i) => Some(ActiveInputTarget::ExtractorExpr(*i)),
             InputKey::SpecText => Some(ActiveInputTarget::SpecText),
             InputKey::CommandPaletteSearch
             | InputKey::RenameDialog
@@ -204,7 +232,31 @@ impl InputKey {
             | InputKey::InterceptorRuleMatch
             | InputKey::InterceptorRuleTarget
             | InputKey::GitCommitMessage
-            | InputKey::GitNewBranchName => None,
+            | InputKey::GitNewBranchName
+            | InputKey::LoadIterations
+            | InputKey::LoadConcurrency
+            | InputKey::LoadDelayMs
+            | InputKey::LoadRampUpSecs
+            | InputKey::LoadRampDownSecs
+            | InputKey::LoadDurationSecs
+            | InputKey::LoadTargetRps
+            | InputKey::LoadStageVus(_)
+            | InputKey::LoadStageDurationSecs(_)
+            | InputKey::LoadThinkA
+            | InputKey::LoadThinkB
+            | InputKey::LoadBarrierGroupSize
+            | InputKey::LoadBarrierTimeoutMs
+            | InputKey::FlowWeightPercent
+            | InputKey::FlowLoopCount
+            | InputKey::FlowConditionIf
+            | InputKey::FlowLoopWhile
+            | InputKey::LoadDataFilePath
+            | InputKey::LoadMaxDurationMs
+            | InputKey::LoadMinSizeBytes
+            | InputKey::LoadMaxSizeBytes
+            | InputKey::LoadSlaP95Ms
+            | InputKey::LoadSlaP99Ms
+            | InputKey::LoadSlaErrorPct => None,
         }
     }
 }

@@ -48,6 +48,25 @@ impl WorkspaceService {
         handle.map(|h| h.path().to_path_buf())
     }
 
+    /// Native CSV / JSON data feeder file picker dialog.
+    pub async fn pick_data_file() -> Option<PathBuf> {
+        let handle = rfd::AsyncFileDialog::new()
+            .add_filter("Data Files (CSV, JSON)", &["csv", "tsv", "json", "ndjson"])
+            .pick_file()
+            .await;
+        handle.map(|h| h.path().to_path_buf())
+    }
+
+    /// Native save-file picker dialog for exporting load test telemetry / HTML reports.
+    pub async fn pick_save_report_file(default_name: &str, ext: &str) -> Option<PathBuf> {
+        let handle = rfd::AsyncFileDialog::new()
+            .set_file_name(default_name)
+            .add_filter("Report", &[ext])
+            .save_file()
+            .await;
+        handle.map(|h| h.path().to_path_buf())
+    }
+
     /// Asynchronously creates a new request `.aura` file and updates `workspace.json`.
     pub async fn create_request(
         &self,

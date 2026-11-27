@@ -23,6 +23,9 @@ pub mod engine {
 pub mod runner {
     pub use aura_engine::runner::*;
 }
+pub mod reporting {
+    pub use aura_engine::runner_reporting::*;
+}
 pub mod mock {
     pub use aura_engine::mock::*;
 }

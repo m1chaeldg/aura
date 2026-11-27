@@ -30,6 +30,80 @@ pub enum ScriptSubTab {
     PostResponse,
 }
 
+/// UI tab inside Load Tester results section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadResultsViewTab {
+    #[default]
+    TimeSeriesCharts,
+    AggregateTable,
+    RawStream,
+}
+
+impl LoadResultsViewTab {
+    pub const ALL: [Self; 3] = [
+        Self::TimeSeriesCharts,
+        Self::AggregateTable,
+        Self::RawStream,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::TimeSeriesCharts => "Live Charts",
+            Self::AggregateTable => "Aggregate Report",
+            Self::RawStream => "Raw Samples",
+        }
+    }
+}
+
+/// Time-series metric plotted in the Live Charts tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadChartMetric {
+    #[default]
+    Rps,
+    ActiveVus,
+    LatencyPercentiles,
+    ErrorRate,
+}
+
+impl LoadChartMetric {
+    pub const ALL: [Self; 4] = [
+        Self::Rps,
+        Self::ActiveVus,
+        Self::LatencyPercentiles,
+        Self::ErrorRate,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Rps => "RPS",
+            Self::ActiveVus => "Active VUs",
+            Self::LatencyPercentiles => "Latency (p50/p95/p99)",
+            Self::ErrorRate => "Error Rate %",
+        }
+    }
+}
+
+/// UI selector for JMeter-style jittered Think-Time mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadThinkMode {
+    #[default]
+    None,
+    Uniform,
+    Gaussian,
+}
+
+impl LoadThinkMode {
+    pub const ALL: [Self; 3] = [Self::None, Self::Uniform, Self::Gaussian];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::None => "No Think-Time",
+            Self::Uniform => "Uniform (min..max ms)",
+            Self::Gaussian => "Gaussian (mean ± std)",
+        }
+    }
+}
+
 /// Active input focus target for modal-free inline editing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActiveInputTarget {
@@ -60,6 +134,8 @@ pub enum ActiveInputTarget {
     TestScript,
     AssertExpr(usize),
     AssertExpected(usize),
+    ExtractorVar(usize),
+    ExtractorExpr(usize),
     SpecText,
 }
 
@@ -496,6 +572,78 @@ pub struct AuraAppState {
     pub git_last_output: Option<String>,
     #[serde(skip)]
     pub git_error: Option<String>,
+    #[serde(skip)]
+    pub is_load_tester_modal_open: bool,
+    #[serde(skip)]
+    pub load_profile_mode: aura_engine::LoadProfileMode,
+    #[serde(skip)]
+    pub load_use_collection: bool,
+    #[serde(skip)]
+    pub load_iterations_str: String,
+    #[serde(skip)]
+    pub load_concurrency_str: String,
+    #[serde(skip)]
+    pub load_delay_ms_str: String,
+    #[serde(skip)]
+    pub load_ramp_up_str: String,
+    #[serde(skip)]
+    pub load_ramp_down_str: String,
+    #[serde(skip)]
+    pub load_duration_str: String,
+    #[serde(skip)]
+    pub load_target_rps_enabled: bool,
+    #[serde(skip)]
+    pub load_target_rps_str: String,
+    #[serde(skip)]
+    pub load_stages: Vec<(String, String)>,
+    #[serde(skip)]
+    pub load_is_running: bool,
+    #[serde(skip)]
+    pub load_cancel: Option<tokio_util::sync::CancellationToken>,
+    #[serde(skip)]
+    pub load_live_records: Vec<aura_engine::RunnerExecutionRecord>,
+    #[serde(skip)]
+    pub load_report: Option<aura_engine::RunnerReport>,
+    #[serde(skip)]
+    pub load_error: Option<String>,
+    #[serde(skip)]
+    pub load_think_mode: LoadThinkMode,
+    #[serde(skip)]
+    pub load_think_a_str: String,
+    #[serde(skip)]
+    pub load_think_b_str: String,
+    #[serde(skip)]
+    pub load_barrier_enabled: bool,
+    #[serde(skip)]
+    pub load_barrier_size_str: String,
+    #[serde(skip)]
+    pub load_barrier_timeout_str: String,
+    #[serde(skip)]
+    pub load_weighted_routing: bool,
+    #[serde(skip)]
+    pub load_data_enabled: bool,
+    #[serde(skip)]
+    pub load_data_file_path: String,
+    #[serde(skip)]
+    pub load_data_sharing: aura_engine::DataSharingMode,
+    #[serde(skip)]
+    pub load_data_eof: aura_engine::DataEofBehavior,
+    #[serde(skip)]
+    pub load_max_duration_ms_str: String,
+    #[serde(skip)]
+    pub load_min_size_bytes_str: String,
+    #[serde(skip)]
+    pub load_max_size_bytes_str: String,
+    #[serde(skip)]
+    pub load_sla_p95_str: String,
+    #[serde(skip)]
+    pub load_sla_p99_str: String,
+    #[serde(skip)]
+    pub load_sla_err_str: String,
+    #[serde(skip)]
+    pub load_results_tab: LoadResultsViewTab,
+    #[serde(skip)]
+    pub load_chart_metric: LoadChartMetric,
     #[serde(skip, default = "default_workspace_service")]
     pub workspace_service: std::sync::Arc<crate::services::WorkspaceService>,
     #[serde(skip, default = "default_execution_service")]
@@ -636,6 +784,46 @@ impl Default for AuraAppState {
             git_is_busy: false,
             git_last_output: None,
             git_error: None,
+            is_load_tester_modal_open: false,
+            load_profile_mode: aura_engine::LoadProfileMode::FixedIterations,
+            load_use_collection: false,
+            load_iterations_str: "20".to_string(),
+            load_concurrency_str: "4".to_string(),
+            load_delay_ms_str: "0".to_string(),
+            load_ramp_up_str: "5".to_string(),
+            load_ramp_down_str: "5".to_string(),
+            load_duration_str: "20".to_string(),
+            load_target_rps_enabled: false,
+            load_target_rps_str: "50".to_string(),
+            load_stages: vec![
+                ("5".to_string(), "5".to_string()),
+                ("25".to_string(), "10".to_string()),
+                ("5".to_string(), "5".to_string()),
+            ],
+            load_is_running: false,
+            load_cancel: None,
+            load_live_records: Vec::new(),
+            load_report: None,
+            load_error: None,
+            load_think_mode: LoadThinkMode::None,
+            load_think_a_str: "200".to_string(),
+            load_think_b_str: "600".to_string(),
+            load_barrier_enabled: false,
+            load_barrier_size_str: "4".to_string(),
+            load_barrier_timeout_str: "5000".to_string(),
+            load_weighted_routing: false,
+            load_data_enabled: false,
+            load_data_file_path: String::new(),
+            load_data_sharing: aura_engine::DataSharingMode::AllVUs,
+            load_data_eof: aura_engine::DataEofBehavior::Recycle,
+            load_max_duration_ms_str: String::new(),
+            load_min_size_bytes_str: String::new(),
+            load_max_size_bytes_str: String::new(),
+            load_sla_p95_str: String::new(),
+            load_sla_p99_str: String::new(),
+            load_sla_err_str: String::new(),
+            load_results_tab: LoadResultsViewTab::TimeSeriesCharts,
+            load_chart_metric: LoadChartMetric::Rps,
             workspace_service: default_workspace_service(),
             execution_service: default_execution_service(),
         }
@@ -652,6 +840,268 @@ impl AuraAppState {
             .workspace_root
             .clone()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    }
+
+    pub fn build_load_runner_config(&self) -> aura_engine::RunnerConfig {
+        use aura_core::model::ThinkTimeConfig;
+        use aura_engine::{LoadProfileMode, LoadStage, RunnerConfig, SynchronizingTimerConfig};
+
+        let total_iterations = self
+            .load_iterations_str
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(10)
+            .max(1);
+        let concurrency = self
+            .load_concurrency_str
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(2)
+            .max(1);
+        let delay_ms = self.load_delay_ms_str.trim().parse::<u64>().unwrap_or(0);
+        let target_rps = if self.load_target_rps_enabled {
+            self.load_target_rps_str
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| *v > 0.0)
+        } else {
+            None
+        };
+        let think_time = match self.load_think_mode {
+            LoadThinkMode::None => ThinkTimeConfig::None,
+            LoadThinkMode::Uniform => ThinkTimeConfig::Uniform {
+                min_ms: self.load_think_a_str.trim().parse::<u64>().unwrap_or(0),
+                max_ms: self.load_think_b_str.trim().parse::<u64>().unwrap_or(0),
+            },
+            LoadThinkMode::Gaussian => ThinkTimeConfig::Gaussian {
+                mean_ms: self.load_think_a_str.trim().parse::<f64>().unwrap_or(0.0).max(0.0),
+                stddev_ms: self.load_think_b_str.trim().parse::<f64>().unwrap_or(0.0).max(0.0),
+            },
+        };
+        let sync_barrier = if self.load_barrier_enabled {
+            Some(SynchronizingTimerConfig {
+                group_size: self
+                    .load_barrier_size_str
+                    .trim()
+                    .parse::<usize>()
+                    .unwrap_or(2)
+                    .max(2),
+                timeout_ms: self
+                    .load_barrier_timeout_str
+                    .trim()
+                    .parse::<u64>()
+                    .unwrap_or(5000)
+                    .max(50),
+            })
+        } else {
+            None
+        };
+        let weighted_routing = self.load_weighted_routing;
+        let data_feeder = if self.load_data_enabled && !self.load_data_file_path.trim().is_empty() {
+            Some(aura_engine::DataFeederConfig {
+                enabled: true,
+                file_path: self.load_data_file_path.trim().to_string(),
+                sharing_mode: self.load_data_sharing,
+                eof_behavior: self.load_data_eof,
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+        let sample_assertions = aura_engine::PerformanceAssertionConfig {
+            max_duration_ms: self.load_max_duration_ms_str.trim().parse::<u64>().ok().filter(|&v| v > 0),
+            min_size_bytes: self.load_min_size_bytes_str.trim().parse::<usize>().ok().filter(|&v| v > 0),
+            max_size_bytes: self.load_max_size_bytes_str.trim().parse::<usize>().ok().filter(|&v| v > 0),
+        };
+        let max_p95_ms = self.load_sla_p95_str.trim().parse::<u64>().ok().filter(|&v| v > 0);
+        let max_p99_ms = self.load_sla_p99_str.trim().parse::<u64>().ok().filter(|&v| v > 0);
+        let max_error_rate_percent = self.load_sla_err_str.trim().parse::<f64>().ok().filter(|&v| v >= 0.0);
+        let sla_thresholds = if max_p95_ms.is_some() || max_p99_ms.is_some() || max_error_rate_percent.is_some() {
+            Some(aura_engine::SlaThresholds {
+                max_p95_ms,
+                max_p99_ms,
+                max_error_rate_percent,
+            })
+        } else {
+            None
+        };
+
+        match self.load_profile_mode {
+            LoadProfileMode::FixedIterations => RunnerConfig {
+                total_iterations,
+                concurrency,
+                delay_ms,
+                ramp_up_secs: self
+                    .load_ramp_up_str
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(0.0)
+                    .max(0.0),
+                ramp_down_secs: 0.0,
+                duration_secs: None,
+                stages: Vec::new(),
+                target_rps,
+                think_time,
+                sync_barrier,
+                weighted_routing,
+                data_feeder,
+                sample_assertions,
+                sla_thresholds,
+            },
+            LoadProfileMode::Duration => RunnerConfig {
+                total_iterations,
+                concurrency,
+                delay_ms,
+                ramp_up_secs: 0.0,
+                ramp_down_secs: 0.0,
+                duration_secs: Some(
+                    self.load_duration_str
+                        .trim()
+                        .parse::<f64>()
+                        .unwrap_or(15.0)
+                        .max(0.5),
+                ),
+                stages: Vec::new(),
+                target_rps,
+                think_time,
+                sync_barrier,
+                weighted_routing,
+                data_feeder,
+                sample_assertions,
+                sla_thresholds,
+            },
+            LoadProfileMode::RampUpDown => RunnerConfig {
+                total_iterations,
+                concurrency,
+                delay_ms,
+                ramp_up_secs: self
+                    .load_ramp_up_str
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(5.0)
+                    .max(0.0),
+                ramp_down_secs: self
+                    .load_ramp_down_str
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(5.0)
+                    .max(0.0),
+                duration_secs: Some(
+                    self.load_duration_str
+                        .trim()
+                        .parse::<f64>()
+                        .unwrap_or(20.0)
+                        .max(1.0),
+                ),
+                stages: Vec::new(),
+                target_rps,
+                think_time,
+                sync_barrier,
+                weighted_routing,
+                data_feeder,
+                sample_assertions,
+                sla_thresholds,
+            },
+            LoadProfileMode::SteppedStages => {
+                let stages = self
+                    .load_stages
+                    .iter()
+                    .map(|(vus, secs)| {
+                        LoadStage::new(
+                            vus.trim().parse::<usize>().unwrap_or(1).max(1),
+                            secs.trim().parse::<f64>().unwrap_or(5.0).max(0.1),
+                        )
+                    })
+                    .collect();
+                RunnerConfig {
+                    total_iterations,
+                    concurrency,
+                    delay_ms,
+                    ramp_up_secs: 0.0,
+                    ramp_down_secs: 0.0,
+                    duration_secs: None,
+                    stages,
+                    target_rps,
+                    think_time,
+                    sync_barrier,
+                    weighted_routing,
+                    data_feeder,
+                    sample_assertions,
+                    sla_thresholds,
+                }
+            }
+        }
+    }
+
+    pub fn toggle_active_flow_once_per_run(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let flow = tab
+                .request
+                .flow
+                .get_or_insert_with(aura_core::model::FlowControl::default);
+            flow.once_per_run = !flow.once_per_run;
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
+    }
+
+    pub fn set_active_flow_weight_str(&mut self, text: &str) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let val = text.trim().parse::<u8>().ok().map(|v| v.clamp(1, 100));
+            let flow = tab
+                .request
+                .flow
+                .get_or_insert_with(aura_core::model::FlowControl::default);
+            flow.weight_percent = val;
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
+    }
+
+    pub fn set_active_flow_loop_count_str(&mut self, text: &str) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let val = text.trim().parse::<u32>().ok().filter(|&v| v > 1);
+            let flow = tab
+                .request
+                .flow
+                .get_or_insert_with(aura_core::model::FlowControl::default);
+            flow.loop_count = val;
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
+    }
+
+    pub fn set_active_flow_condition_if(&mut self, text: String) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let flow = tab
+                .request
+                .flow
+                .get_or_insert_with(aura_core::model::FlowControl::default);
+            flow.condition_if = if text.trim().is_empty() {
+                None
+            } else {
+                Some(text)
+            };
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
+    }
+
+    pub fn set_active_flow_loop_while(&mut self, text: String) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab_index) {
+            let flow = tab
+                .request
+                .flow
+                .get_or_insert_with(aura_core::model::FlowControl::default);
+            flow.loop_while = if text.trim().is_empty() {
+                None
+            } else {
+                Some(text)
+            };
+            tab.mark_dirty(true);
+            tab.sync_spec_from_request();
+        }
     }
 
     pub fn set_editor_tab(&mut self, tab: EditorTab) {
@@ -1368,5 +1818,74 @@ mod tests {
         assert_eq!(ed.mode, EnvironmentEditorMode::Ui);
         assert!(ed.code_error.is_none());
         assert_eq!(ed.profile.variables[0].key, "TOKEN");
+    }
+
+    #[test]
+    fn test_load_runner_config_builder_modes() {
+        let mut state = AuraAppState::new();
+        state.load_concurrency_str = "8".into();
+        state.load_iterations_str = "40".into();
+        state.load_duration_str = "30".into();
+        state.load_ramp_up_str = "5".into();
+        state.load_ramp_down_str = "4".into();
+        state.load_target_rps_enabled = true;
+        state.load_target_rps_str = "250".into();
+
+        state.load_profile_mode = aura_engine::LoadProfileMode::RampUpDown;
+        let ramp_cfg = state.build_load_runner_config();
+        assert_eq!(ramp_cfg.concurrency, 8);
+        assert_eq!(ramp_cfg.duration_secs, Some(30.0));
+        assert_eq!(ramp_cfg.ramp_up_secs, 5.0);
+        assert_eq!(ramp_cfg.ramp_down_secs, 4.0);
+        assert_eq!(ramp_cfg.target_rps, Some(250.0));
+
+        state.load_profile_mode = aura_engine::LoadProfileMode::SteppedStages;
+        state.load_stages = vec![("10".into(), "30".into()), ("100".into(), "60".into())];
+        let stage_cfg = state.build_load_runner_config();
+        assert_eq!(stage_cfg.stages.len(), 2);
+        assert_eq!(stage_cfg.stages[0].target_vus, 10);
+        assert_eq!(stage_cfg.stages[1].target_vus, 100);
+        assert_eq!(stage_cfg.stages[1].duration_secs, 60.0);
+
+        state.load_think_mode = LoadThinkMode::Gaussian;
+        state.load_think_a_str = "300".into();
+        state.load_think_b_str = "75".into();
+        state.load_barrier_enabled = true;
+        state.load_barrier_size_str = "6".into();
+        state.load_barrier_timeout_str = "2500".into();
+        state.load_weighted_routing = true;
+        let adv_cfg = state.build_load_runner_config();
+        assert_eq!(
+            adv_cfg.think_time,
+            aura_core::model::ThinkTimeConfig::Gaussian {
+                mean_ms: 300.0,
+                stddev_ms: 75.0
+            }
+        );
+        assert_eq!(
+            adv_cfg.sync_barrier,
+            Some(aura_engine::SynchronizingTimerConfig {
+                group_size: 6,
+                timeout_ms: 2500
+            })
+        );
+        assert!(adv_cfg.weighted_routing);
+
+        state.load_data_enabled = true;
+        state.load_data_file_path = "users.csv".into();
+        state.load_data_sharing = aura_engine::DataSharingMode::PerVU;
+        state.load_data_eof = aura_engine::DataEofBehavior::StopVuOnEof;
+        state.load_max_duration_ms_str = "200".into();
+        state.load_sla_p95_str = "150".into();
+        state.load_sla_err_str = "1.5".into();
+        let data_cfg = state.build_load_runner_config();
+        let feeder = data_cfg.data_feeder.expect("data feeder set");
+        assert_eq!(feeder.file_path, "users.csv");
+        assert_eq!(feeder.sharing_mode, aura_engine::DataSharingMode::PerVU);
+        assert_eq!(feeder.eof_behavior, aura_engine::DataEofBehavior::StopVuOnEof);
+        assert_eq!(data_cfg.sample_assertions.max_duration_ms, Some(200));
+        let sla = data_cfg.sla_thresholds.expect("sla gates set");
+        assert_eq!(sla.max_p95_ms, Some(150));
+        assert_eq!(sla.max_error_rate_percent, Some(1.5));
     }
 }

@@ -43,3 +43,5 @@ investigation.cany/project.toml
 investigation.cany/journal/2026-11-26.jsonl
 docs/FEATURE_ROADMAP.md
 pinned/play.log
+investigation.cany/
+investigation.cany/*

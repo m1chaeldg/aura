@@ -300,6 +300,36 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
         if let Some(j_max) = flow.jitter_max_ms {
             out.push_str(&format!("jitter_max_ms = {}\n", j_max));
         }
+        if let Some(gm) = flow.gaussian_mean_ms {
+            out.push_str(&format!("gaussian_mean_ms = {}\n", gm));
+        }
+        if let Some(gs) = flow.gaussian_stddev_ms {
+            out.push_str(&format!("gaussian_stddev_ms = {}\n", gs));
+        }
+        if let Some(w) = flow.weight_percent {
+            out.push_str(&format!("weight_percent = {}\n", w));
+        }
+        if let Some(lc) = flow.loop_count {
+            out.push_str(&format!("loop_count = {}\n", lc));
+        }
+        if let Some(cond) = &flow.condition_if {
+            out.push_str(&format!("condition_if = \"{}\"\n", cond.replace('"', "\\\"")));
+        }
+        if let Some(lw) = &flow.loop_while {
+            out.push_str(&format!("loop_while = \"{}\"\n", lw.replace('"', "\\\"")));
+        }
+        if flow.max_loops != 10 {
+            out.push_str(&format!("max_loops = {}\n", flow.max_loops));
+        }
+        if let Some(md) = flow.max_duration_ms {
+            out.push_str(&format!("max_duration_ms = {}\n", md));
+        }
+        if let Some(min_b) = flow.min_size_bytes {
+            out.push_str(&format!("min_size_bytes = {}\n", min_b));
+        }
+        if let Some(max_b) = flow.max_size_bytes {
+            out.push_str(&format!("max_size_bytes = {}\n", max_b));
+        }
     }
 
     match &req.body {
@@ -461,6 +491,14 @@ pub fn file_request_to_spec(req: &AuraFileRequest) -> String {
     if !req.variables.is_empty() {
         out.push_str("\n[variables]\n");
         for (k, v) in &req.variables {
+            out.push_str(&format!("{} = \"{}\"\n", k, v.replace('"', "\\\"")));
+        }
+    }
+
+    if !req.extractors.is_empty() {
+        out.push_str("\n[extractors]\n");
+        for ext in &req.extractors {
+            let (k, v) = aura_core::extractors::serialize_extractor_kv(ext);
             out.push_str(&format!("{} = \"{}\"\n", k, v.replace('"', "\\\"")));
         }
     }
