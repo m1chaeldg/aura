@@ -7,11 +7,16 @@ use gpui::WindowOptions;
 use gpui_kit::AppContext as _;
 
 mod cli_load;
+mod cli_mock;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("load") {
         let code = cli_load::run_headless_load_sync(&args[2..]);
+        std::process::exit(code);
+    }
+    if args.get(1).map(String::as_str) == Some("mock") {
+        let code = cli_mock::run_headless_mock_sync(&args[2..]);
         std::process::exit(code);
     }
 

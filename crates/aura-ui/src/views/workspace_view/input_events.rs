@@ -211,6 +211,33 @@ impl AuraWorkspaceView {
                         InputKey::InterceptorRuleTarget => {
                             self.state.draft_rule_target = val;
                         }
+                        InputKey::MockHostPort => {
+                            self.state.mock_host_port = val;
+                        }
+                        InputKey::MockDraftMethod => {
+                            self.state.mock_draft_method = val;
+                        }
+                        InputKey::MockDraftPath => {
+                            self.state.mock_draft_path = val;
+                        }
+                        InputKey::MockDraftStatus => {
+                            self.state.mock_draft_status = val;
+                        }
+                        InputKey::MockDraftBody => {
+                            self.state.mock_draft_body = val;
+                        }
+                        InputKey::MockDraftHeaderRule => {
+                            self.state.mock_draft_header_rule = val;
+                        }
+                        InputKey::MockDraftQueryRule => {
+                            self.state.mock_draft_query_rule = val;
+                        }
+                        InputKey::MockDraftBodyRule => {
+                            self.state.mock_draft_body_rule = val;
+                        }
+                        InputKey::MockDraftDatasetPath => {
+                            self.state.mock_draft_dataset_path = val;
+                        }
                         InputKey::GitCommitMessage => {
                             self.state.git_commit_message = val;
                         }

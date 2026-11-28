@@ -111,6 +111,15 @@ pub enum InputKey {
     InterceptorBindAddr,
     InterceptorRuleMatch,
     InterceptorRuleTarget,
+    MockHostPort,
+    MockDraftMethod,
+    MockDraftPath,
+    MockDraftStatus,
+    MockDraftBody,
+    MockDraftHeaderRule,
+    MockDraftQueryRule,
+    MockDraftBodyRule,
+    MockDraftDatasetPath,
     GitCommitMessage,
     GitNewBranchName,
     LoadIterations,
@@ -250,6 +259,15 @@ impl InputKey {
             | InputKey::InterceptorBindAddr
             | InputKey::InterceptorRuleMatch
             | InputKey::InterceptorRuleTarget
+            | InputKey::MockHostPort
+            | InputKey::MockDraftMethod
+            | InputKey::MockDraftPath
+            | InputKey::MockDraftStatus
+            | InputKey::MockDraftBody
+            | InputKey::MockDraftHeaderRule
+            | InputKey::MockDraftQueryRule
+            | InputKey::MockDraftBodyRule
+            | InputKey::MockDraftDatasetPath
             | InputKey::GitCommitMessage
             | InputKey::GitNewBranchName
             | InputKey::LoadIterations

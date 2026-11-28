@@ -186,6 +186,7 @@ impl AuraAppState {
             ("cmd:cookies", "Tools: Cookie Jar Manager", "Inspect, edit, and clear cookies"),
             ("cmd:proxy", "Tools: Global Proxy Settings", "Configure HTTP / HTTPS / SOCKS5 proxy"),
             ("cmd:capture_proxy", "Tools: Capture Proxy & Interceptor", "Local MITM capture proxy & rules"),
+            ("cmd:mock_server", "Tools: Mock Server", "Local & production mock server with rules, fakers & scripts"),
             ("cmd:security_vault", "Tools: Security Vaults & mTLS", "Configure HashiCorp Vault, AWS SM & certs"),
             ("cmd:load_tester", "Tools: Load Tester", "Run JMeter-style load & SLA tests"),
             ("cmd:ai_toggle", "AI: Toggle AI Assistant", "Show or hide the AI Assistant drawer"),

@@ -230,6 +230,32 @@ pub struct AuraAppState {
     #[serde(skip)]
     pub is_interceptor_modal_open: bool,
     #[serde(skip)]
+    pub is_mock_modal_open: bool,
+    #[serde(skip)]
+    pub mock_config: aura_core::mock::MockServerConfigFile,
+    #[serde(skip)]
+    pub mock_server_handle: Option<aura_mock::MockServerHandle>,
+    #[serde(skip)]
+    pub mock_host_port: String,
+    #[serde(skip)]
+    pub mock_draft_method: String,
+    #[serde(skip)]
+    pub mock_draft_path: String,
+    #[serde(skip)]
+    pub mock_draft_status: String,
+    #[serde(skip)]
+    pub mock_draft_mode: aura_core::mock::MockResponseMode,
+    #[serde(skip)]
+    pub mock_draft_body: String,
+    #[serde(skip)]
+    pub mock_draft_header_rule: String,
+    #[serde(skip)]
+    pub mock_draft_query_rule: String,
+    #[serde(skip)]
+    pub mock_draft_body_rule: String,
+    #[serde(skip)]
+    pub mock_draft_dataset_path: String,
+    #[serde(skip)]
     pub interceptor_bind_addr: String,
     #[serde(skip)]
     pub draft_rule_match: String,
@@ -525,6 +551,19 @@ impl Default for AuraAppState {
             draft_cookie_secure: false,
             is_proxy_modal_open: false,
             is_interceptor_modal_open: false,
+            is_mock_modal_open: false,
+            mock_config: aura_core::mock::MockServerConfigFile::default(),
+            mock_server_handle: None,
+            mock_host_port: "127.0.0.1:18080".to_string(),
+            mock_draft_method: "GET".to_string(),
+            mock_draft_path: "/api/users/:id".to_string(),
+            mock_draft_status: "200".to_string(),
+            mock_draft_mode: aura_core::mock::MockResponseMode::Template,
+            mock_draft_body: r#"{"id":"{{req.params.id}}","uuid":"{{$uuid}}","email":"{{$faker.internet.email}}"}"#.to_string(),
+            mock_draft_header_rule: String::new(),
+            mock_draft_query_rule: String::new(),
+            mock_draft_body_rule: String::new(),
+            mock_draft_dataset_path: String::new(),
             interceptor_bind_addr: "127.0.0.1:8888".to_string(),
             draft_rule_match: String::new(),
             draft_rule_target: String::new(),

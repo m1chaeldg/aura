@@ -4,6 +4,7 @@ members = [
     "crates/aura-parser",
     "crates/aura-scripting",
     "crates/aura-engine",
+    "crates/aura-mock",
     "crates/aura-sync",
     "crates/aura-ui",
 ]
@@ -26,6 +27,7 @@ aura-core = { path = "crates/aura-core" }
 aura-parser = { path = "crates/aura-parser" }
 aura-scripting = { path = "crates/aura-scripting" }
 aura-engine = { path = "crates/aura-engine" }
+aura-mock = { path = "crates/aura-mock" }
 aura-sync = { path = "crates/aura-sync" }
 aura-ui = { path = "crates/aura-ui" }
 anyhow = "1"

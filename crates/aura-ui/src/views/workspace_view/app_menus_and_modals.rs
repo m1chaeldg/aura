@@ -76,6 +76,9 @@ impl AuraWorkspaceView {
             "cmd:capture_proxy" => {
                 self.state.is_interceptor_modal_open = true;
             }
+            "cmd:mock_server" => {
+                self.state.is_mock_modal_open = true;
+            }
             "cmd:security_vault" => {
                 self.state.is_security_vault_modal_open = true;
             }
@@ -244,6 +247,7 @@ impl AuraWorkspaceView {
                     ("cmd:cookies", "Cookie Jar Manager"),
                     ("cmd:proxy", "Global Proxy Settings"),
                     ("cmd:capture_proxy", "Capture Proxy & Interceptor"),
+                    ("cmd:mock_server", "Mock Server..."),
                     ("cmd:security_vault", "Security Vaults & mTLS"),
                     ("cmd:load_tester", "Load Tester"),
                     ("cmd:settings", "Settings & Auto-Update..."),

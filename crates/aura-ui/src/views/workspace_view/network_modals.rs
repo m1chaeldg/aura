@@ -18,6 +18,7 @@ impl AuraWorkspaceView {
         let el = self.render_cookie_jar_modal(el, cx);
         let el = self.render_global_proxy_modal(el, cx);
         let el = self.render_capture_proxy_modal(el, cx);
+        let el = self.render_mock_server_modal(el, cx);
         self.render_codegen_modal(el, cx)
     }
 

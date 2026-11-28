@@ -141,6 +141,26 @@ impl AuraWorkspaceView {
                                 })),
                         )
                     })
+                    .when(self.state.mock_server_handle.is_some(), |el| {
+                        let hits = self
+                            .state
+                            .mock_server_handle
+                            .as_ref()
+                            .map(|h| h.hit_logs().len())
+                            .unwrap_or(0);
+                        el.child(
+                            Button::new("active-mock-pill")
+                                .label(format!("Mock LIVE ({hits})"))
+                                .xsmall()
+                                .primary()
+                                .rounded(ButtonRounded::Medium)
+                                .tooltip("Local Mock Server is running — click to configure")
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.state.is_mock_modal_open = true;
+                                    cx.notify();
+                                })),
+                        )
+                    })
                     .when(self.state.load_is_running, |el| {
                         el.child(
                             Button::new("active-load-pill")

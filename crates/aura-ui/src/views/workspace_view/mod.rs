@@ -30,6 +30,7 @@ mod load_report_panel;
 mod load_requests_panel;
 mod load_tester_modal;
 mod main_pane;
+mod mock_server_modal;
 mod modals;
 mod network_modals;
 mod security_modal;

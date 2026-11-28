@@ -9,6 +9,7 @@ pub mod extractors;
 pub mod graphql;
 pub mod grpc;
 pub mod interceptor;
+pub mod mock;
 pub mod model;
 pub mod security;
 pub mod security_schemes;

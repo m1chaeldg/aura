@@ -578,4 +578,64 @@ impl AuraWorkspaceView {
         })
         .detach();
     }
+
+    pub(super) fn dispatch_toggle_mock_server(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.state.mock_server_handle.take() {
+            handle.stop();
+            self.state.status_message = Some("Mock server stopped".to_string());
+            cx.notify();
+            return;
+        }
+
+        let mut cfg = self.state.mock_config.clone();
+        let raw_hp = self.state.mock_host_port.trim();
+        if let Some((h, p_str)) = raw_hp.rsplit_once(':') {
+            if !h.is_empty() {
+                cfg.host = h.to_string();
+            }
+            if let Ok(p) = p_str.parse::<u16>() {
+                cfg.port = p;
+            }
+        }
+        if !self.state.mock_draft_dataset_path.trim().is_empty() {
+            let ds_path = self.state.mock_draft_dataset_path.trim().to_string();
+            cfg.datasets.retain(|d| d.name != "user_data");
+            cfg.datasets.push(aura_core::mock::MockDatasetConfig {
+                name: "user_data".to_string(),
+                source: aura_core::mock::MockDatasetSource::File {
+                    path: ds_path,
+                    stateful_crud: true,
+                    id_field: "id".to_string(),
+                },
+            });
+        }
+
+        let display_addr = format!("{}:{}", cfg.host, cfg.port);
+        self.state.status_message = Some(format!("Starting mock server on {display_addr}..."));
+        cx.notify();
+
+        cx.spawn(move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let server = aura_mock::MockServer::from_config(cfg);
+                let res = server.start().await;
+                let _ = this.update(&mut cx, |this, cx| {
+                    match res {
+                        Ok(handle) => {
+                            let addr = handle.listen_addr;
+                            this.state.mock_server_handle = Some(handle);
+                            this.state.status_message =
+                                Some(format!("Mock server listening on http://{addr}"));
+                        }
+                        Err(e) => {
+                            this.state.status_message =
+                                Some(format!("Failed to start mock server: {e}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
 }

@@ -4,7 +4,7 @@ pub mod engine;
 pub mod grpc;
 pub mod interceptor_proxy;
 pub mod logging;
-pub mod mock;
+pub use aura_mock as mock;
 pub mod mtls;
 pub mod oauth2;
 pub mod proxy;
@@ -24,7 +24,7 @@ pub use logging::{
     default_log_dir, init_system_logging, BroadcasterLayer, LogBroadcaster, LogEntry, LogLevel,
     LoggingGuard,
 };
-pub use mock::MockServer;
+pub use mock::{MockServer, MockServerHandle};
 pub use mtls::{build_reqwest_identity, resolve_client_cert_for_url};
 pub use oauth2::{
     exchange_oauth2_token, maybe_refresh_oauth2_auth, run_oauth2_token_acquisition,

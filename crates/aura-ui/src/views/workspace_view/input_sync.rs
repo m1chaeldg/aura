@@ -1423,6 +1423,90 @@ impl AuraWorkspaceView {
             );
         }
 
+        if self.state.is_mock_modal_open {
+            inputs.ensure_input(
+                InputKey::MockHostPort,
+                &self.state.mock_host_port,
+                "127.0.0.1:18080",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftMethod,
+                &self.state.mock_draft_method,
+                "GET",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftPath,
+                &self.state.mock_draft_path,
+                "/api/users/:id",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftStatus,
+                &self.state.mock_draft_status,
+                "200",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftHeaderRule,
+                &self.state.mock_draft_header_rule,
+                "Header rule: X-Env=dev",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftQueryRule,
+                &self.state.mock_draft_query_rule,
+                "Query rule: role=admin",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftBodyRule,
+                &self.state.mock_draft_body_rule,
+                "Body rule: $.op=double or substring",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftBody,
+                &self.state.mock_draft_body,
+                "Response body / Template / JS script",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::MockDraftDatasetPath,
+                &self.state.mock_draft_dataset_path,
+                "Optional user dataset path (CSV / JSON / NDJSON)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+        }
+
         if self.state.is_git_modal_open {
             inputs.ensure_input(
                 InputKey::GitCommitMessage,

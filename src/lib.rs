@@ -27,7 +27,7 @@ pub mod reporting {
     pub use aura_engine::runner_reporting::*;
 }
 pub mod mock {
-    pub use aura_engine::mock::*;
+    pub use aura_mock::*;
 }
 pub mod logging {
     pub use aura_engine::logging::*;

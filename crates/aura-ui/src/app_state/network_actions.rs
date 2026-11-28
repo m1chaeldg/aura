@@ -182,6 +182,111 @@ impl AuraAppState {
     pub fn set_codegen_language(&mut self, lang: CodegenLanguage) {
         self.codegen_language = lang;
     }
+
+    // --- Mock Server Actions ---
+
+    pub fn cycle_mock_draft_mode(&mut self) {
+        use aura_core::mock::MockResponseMode;
+        self.mock_draft_mode = match self.mock_draft_mode {
+            MockResponseMode::Static => MockResponseMode::Template,
+            MockResponseMode::Template => MockResponseMode::Dataset,
+            MockResponseMode::Dataset => MockResponseMode::Script,
+            MockResponseMode::Script => MockResponseMode::Static,
+        };
+    }
+
+    pub fn add_mock_route_from_draft(&mut self) {
+        use aura_core::mock::{
+            MatchOperator, MockBodyMatcher, MockHeaderMatcher, MockQueryMatcher, MockResponseMode,
+            MockRouteRule,
+        };
+
+        let method = if self.mock_draft_method.trim().is_empty() {
+            "GET".to_string()
+        } else {
+            self.mock_draft_method.trim().to_uppercase()
+        };
+        let path = if self.mock_draft_path.trim().is_empty() {
+            "/".to_string()
+        } else {
+            self.mock_draft_path.trim().to_string()
+        };
+        let status = self.mock_draft_status.trim().parse::<u16>().unwrap_or(200);
+
+        let mut rule = MockRouteRule::simple(method, path, status, self.mock_draft_body.clone());
+        rule.response.mode = self.mock_draft_mode;
+        if self.mock_draft_mode == MockResponseMode::Script {
+            rule.response.script = self.mock_draft_body.clone();
+            rule.response.body.clear();
+        }
+        if !self.mock_draft_header_rule.trim().is_empty() {
+            if let Some((k, v)) = self.mock_draft_header_rule.split_once('=') {
+                rule.rule.headers.push(MockHeaderMatcher {
+                    name: k.trim().to_string(),
+                    operator: MatchOperator::Equals,
+                    value: v.trim().to_string(),
+                });
+            }
+        }
+        if !self.mock_draft_query_rule.trim().is_empty() {
+            if let Some((k, v)) = self.mock_draft_query_rule.split_once('=') {
+                rule.rule.query.push(MockQueryMatcher {
+                    name: k.trim().to_string(),
+                    operator: MatchOperator::Equals,
+                    value: v.trim().to_string(),
+                });
+            }
+        }
+        if !self.mock_draft_body_rule.trim().is_empty() {
+            if let Some((jp, val)) = self.mock_draft_body_rule.split_once('=') {
+                rule.rule.body = Some(MockBodyMatcher::JsonPath {
+                    path: jp.trim().to_string(),
+                    operator: MatchOperator::Equals,
+                    value: val.trim().to_string(),
+                });
+            } else {
+                rule.rule.body = Some(MockBodyMatcher::Contains {
+                    value: self.mock_draft_body_rule.trim().to_string(),
+                });
+            }
+        }
+
+        self.mock_config.routes.push(rule);
+        if let Some(handle) = &self.mock_server_handle {
+            handle.replace_route_rules(self.mock_config.routes.clone());
+        }
+        self.status_message = Some("Added mock route rule".to_string());
+    }
+
+    pub fn remove_mock_route(&mut self, idx: usize) {
+        if idx < self.mock_config.routes.len() {
+            self.mock_config.routes.remove(idx);
+            if let Some(handle) = &self.mock_server_handle {
+                handle.replace_route_rules(self.mock_config.routes.clone());
+            }
+        }
+    }
+
+    pub fn toggle_mock_route(&mut self, idx: usize) {
+        if let Some(r) = self.mock_config.routes.get_mut(idx) {
+            r.enabled = !r.enabled;
+            if let Some(handle) = &self.mock_server_handle {
+                handle.replace_route_rules(self.mock_config.routes.clone());
+            }
+        }
+    }
+
+    pub fn generate_mock_routes_from_tabs(&mut self) {
+        let reqs: Vec<aura_core::model::AuraRequest> =
+            self.tabs.iter().map(|t| t.request.clone()).collect();
+        let generated = aura_core::mock::generate_mock_config_from_requests(&reqs);
+        let count = generated.routes.len();
+        self.mock_config.routes.extend(generated.routes);
+        if let Some(handle) = &self.mock_server_handle {
+            handle.replace_route_rules(self.mock_config.routes.clone());
+        }
+        self.status_message = Some(format!("Generated {count} mock route(s) from open tabs"));
+    }
 }
 
 pub(super) fn edit_request_proxy_field(

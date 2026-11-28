@@ -536,6 +536,7 @@ dependencies = [
  "anyhow",
  "aura-core",
  "aura-engine",
+ "aura-mock",
  "aura-parser",
  "aura-scripting",
  "aura-sync",
@@ -579,6 +580,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "aura-core",
+ "aura-mock",
  "aura-scripting",
  "base64 0.22.1",
  "bytes",
@@ -605,6 +607,24 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "aura-mock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aura-core",
+ "aura-scripting",
+ "chrono",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "uuid",
 ]
 
@@ -658,6 +678,7 @@ dependencies = [
  "anyhow",
  "aura-core",
  "aura-engine",
+ "aura-mock",
  "aura-parser",
  "aura-scripting",
  "aura-sync",
