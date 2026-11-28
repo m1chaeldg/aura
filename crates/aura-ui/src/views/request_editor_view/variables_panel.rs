@@ -269,7 +269,11 @@ impl RequestEditorView {
                                                 .text_xs()
                                                 .text_color(muted)
                                                 .truncate()
-                                                .child(v),
+                                                .child(if aura_core::model::VariableItem::is_secret_uri(&v) {
+                                                    "•••••••• (secret)".to_string()
+                                                } else {
+                                                    v
+                                                }),
                                         ),
                                 );
                             }

@@ -113,6 +113,24 @@ impl AuraWorkspaceView {
                             self.state.vault_config.aws_profile =
                                 if val.trim().is_empty() { None } else { Some(val) };
                         }
+                        InputKey::VaultProfileName => {
+                            self.state.draft_vault_profile_name = val;
+                        }
+                        InputKey::AwsProfileName => {
+                            self.state.draft_aws_profile_name = val;
+                        }
+                        InputKey::KeePassProfileName => {
+                            self.state.draft_keepass_name = val;
+                        }
+                        InputKey::KeePassDbPath => {
+                            self.state.draft_keepass_db_path = val;
+                        }
+                        InputKey::KeePassKeyfilePath => {
+                            self.state.draft_keepass_keyfile_path = val;
+                        }
+                        InputKey::KeePassPassword => {
+                            self.state.draft_keepass_password = val;
+                        }
                         InputKey::KeychainService => {
                             self.state.keychain_service = val;
                         }

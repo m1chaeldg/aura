@@ -505,6 +505,38 @@ impl AuraWorkspaceView {
                                                     ))
                                                     .child(
                                                         Button::new(ElementId::NamedInteger(
+                                                            "env-var-sec".into(),
+                                                            idx as u64,
+                                                        ))
+                                                        .label(if var.is_secret { "Secret" } else { "Plain" })
+                                                        .xsmall()
+                                                        .outline()
+                                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                                            this.state.toggle_env_var_secret(idx);
+                                                            cx.notify();
+                                                        })),
+                                                    )
+                                                    .when(var.is_secret, |row| {
+                                                        let revealed = self
+                                                            .state
+                                                            .revealed_env_secret_rows
+                                                            .contains(&idx);
+                                                        row.child(
+                                                            Button::new(ElementId::NamedInteger(
+                                                                "env-var-rev".into(),
+                                                                idx as u64,
+                                                            ))
+                                                            .label(if revealed { "Hide" } else { "Show" })
+                                                            .xsmall()
+                                                            .ghost()
+                                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                                this.state.toggle_env_var_reveal(idx);
+                                                                cx.notify();
+                                                            })),
+                                                        )
+                                                    })
+                                                    .child(
+                                                        Button::new(ElementId::NamedInteger(
                                                             "env-var-kc".into(),
                                                             idx as u64,
                                                         ))

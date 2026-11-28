@@ -51,12 +51,25 @@ pub async fn execute_request_with_options(
     let mut script_errors = Vec::new();
 
     let mut resolved_ctx = context.clone();
-    crate::vaults::resolve_template_secrets(
+    let mut scrubber = aura_core::security::SecretScrubber::new();
+    for s in crate::vaults::resolve_template_secrets(
         &mut resolved_ctx,
         &options.vault_config,
         req.settings.verify_ssl,
     )
-    .await;
+    .await?
+    {
+        scrubber.add_secret(s);
+    }
+    for s in crate::vaults::resolve_inline_secrets_in_request(
+        req,
+        &mut resolved_ctx,
+        &options.vault_config,
+    )
+    .await?
+    {
+        scrubber.add_secret(s);
+    }
 
     let mut working_vars = collect_working_vars(req, &resolved_ctx);
     let script_http_handler = build_script_http_handler(req.settings.verify_ssl);
@@ -169,15 +182,17 @@ pub async fn execute_request_with_options(
         request_builder = request_builder.query(&url_params);
     }
 
-    let query_summary = format_kv_for_log(&url_params, false);
-    let headers_summary = format_kv_for_log(&header_pairs, false);
+    let query_summary = scrubber.scrub(&format_kv_for_log(&url_params, false));
+    let headers_summary = scrubber.scrub(&format_kv_for_log(&header_pairs, false));
+    let scrubbed_url = scrubber.scrub(&rendered_url);
+    let scrubbed_payload = scrubber.scrub(&payload_summary);
     tracing::info!(
         target: "aura_engine::request",
         method = %req.method,
-        url = %rendered_url,
+        url = %scrubbed_url,
         query_params = %query_summary,
         headers = %headers_summary,
-        payload = %payload_summary,
+        payload = %scrubbed_payload,
         "Dispatching HTTP request"
     );
 

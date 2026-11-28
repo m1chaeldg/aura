@@ -238,7 +238,7 @@ async fn test_hashicorp_vault_and_aws_secrets_manager_loopback() {
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
-        for _ in 0..2 {
+        loop {
             if let Ok((mut sock, _)) = listener.accept().await {
                 let mut buf = [0u8; 4096];
                 let n = sock.read(&mut buf).await.unwrap_or(0);
@@ -268,6 +268,7 @@ async fn test_hashicorp_vault_and_aws_secrets_manager_loopback() {
         vault_namespace: None,
         aws_region: "us-east-1".into(),
         aws_profile: None,
+        ..Default::default()
     };
     let v = resolve_secret_reference("vault://secret/data/prod#api_key", &cfg, true)
         .await
@@ -300,7 +301,57 @@ async fn test_hashicorp_vault_and_aws_secrets_manager_loopback() {
     )
     .await
     .unwrap_or_default();
-    let _ = direct_v;
+    assert_eq!(direct_v, "vault_secret_value");
+
+    // Named profile + TTL cache + fail-fast + inline request secret resolution
+    aura_engine::clear_secret_cache();
+    let named_cfg = VaultConfig {
+        hashicorp_profiles: vec![aura_engine::HashiCorpVaultProfile {
+            id: "hc-test-1".into(),
+            name: "prod".into(),
+            addr: format!("http://{addr}"),
+            namespace: None,
+            verify_ssl: true,
+        }],
+        vault_token: "vault-tok".into(),
+        ..Default::default()
+    };
+    let mut ctx = aura_core::templating::TemplateContext::new();
+    ctx.environment_vars
+        .insert("API_KEY".into(), "vault://prod@secret/data/prod#api_key".into());
+    let scrubbed = aura_engine::resolve_template_secrets(&mut ctx, &named_cfg, true)
+        .await
+        .expect("named profile vault resolution");
+    assert_eq!(ctx.environment_vars.get("API_KEY").unwrap(), "vault_secret_value");
+    assert_eq!(scrubbed, vec!["vault_secret_value".to_string()]);
+    assert!(aura_engine::secret_cache_len() >= 1);
+
+    // Fail-fast on unknown profile
+    let mut bad_ctx = aura_core::templating::TemplateContext::new();
+    bad_ctx
+        .environment_vars
+        .insert("BAD".into(), "vault://missing@secret/data/prod#api_key".into());
+    assert!(aura_engine::resolve_template_secrets(&mut bad_ctx, &named_cfg, true)
+        .await
+        .is_err());
+
+    // Inline secret token in request URL/header
+    let mut req = aura_core::model::AuraRequest::new("inline-sec", aura_core::model::HttpMethod::GET, "https://example.com");
+    req.headers.push(aura_core::model::HeaderItem {
+        key: "X-Api-Key".into(),
+        value: "{{vault://prod@secret/data/prod#api_key}}".into(),
+        enabled: true,
+        description: None,
+    });
+    let mut inline_ctx = aura_core::templating::TemplateContext::new();
+    let inline_scrubbed = aura_engine::resolve_inline_secrets_in_request(&req, &mut inline_ctx, &named_cfg)
+        .await
+        .expect("inline secret resolution");
+    assert_eq!(inline_scrubbed, vec!["vault_secret_value".to_string()]);
+    assert_eq!(
+        inline_ctx.render(&req.headers[0].value),
+        "vault_secret_value"
+    );
 }
 
 #[cfg(target_os = "windows")]

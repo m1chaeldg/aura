@@ -15,6 +15,38 @@ pub struct VariableItem {
     pub is_secret: bool,
 }
 
+impl VariableItem {
+    /// Returns true if `value` is an external/keychain secret reference URI.
+    pub fn is_secret_uri(val: &str) -> bool {
+        let v = val.trim();
+        v.starts_with("keyring://")
+            || v.starts_with("vault://")
+            || v.starts_with("aws-sm://")
+            || v.starts_with("keepass://")
+    }
+
+    /// Canonical OS Keychain service name for an environment profile.
+    pub fn env_keychain_service(env_name: &str) -> String {
+        let slug: String = env_name
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        let slug = slug.trim_matches('_');
+        if slug.is_empty() {
+            "env-default".to_string()
+        } else {
+            format!("env-{slug}")
+        }
+    }
+
+    /// Canonical OS Keychain URI for a secret variable in an environment.
+    pub fn env_keychain_uri(env_name: &str, key: &str) -> String {
+        format!("keyring://{}/{}", Self::env_keychain_service(env_name), key.trim())
+    }
+}
+
 /// Environment profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvironmentProfile {

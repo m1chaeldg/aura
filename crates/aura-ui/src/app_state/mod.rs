@@ -248,6 +248,20 @@ pub struct AuraAppState {
     #[serde(skip)]
     pub keychain_value: String,
     #[serde(skip)]
+    pub draft_vault_profile_name: String,
+    #[serde(skip)]
+    pub draft_aws_profile_name: String,
+    #[serde(skip)]
+    pub draft_keepass_name: String,
+    #[serde(skip)]
+    pub draft_keepass_db_path: String,
+    #[serde(skip)]
+    pub draft_keepass_keyfile_path: String,
+    #[serde(skip)]
+    pub draft_keepass_password: String,
+    #[serde(skip)]
+    pub revealed_env_secret_rows: std::collections::HashSet<usize>,
+    #[serde(skip)]
     pub draft_cert_domain: String,
     #[serde(skip)]
     pub draft_cert_path: String,
@@ -520,6 +534,13 @@ impl Default for AuraAppState {
             keychain_service: "aura".to_string(),
             keychain_key: String::new(),
             keychain_value: String::new(),
+            draft_vault_profile_name: String::new(),
+            draft_aws_profile_name: String::new(),
+            draft_keepass_name: String::new(),
+            draft_keepass_db_path: String::new(),
+            draft_keepass_keyfile_path: String::new(),
+            draft_keepass_password: String::new(),
+            revealed_env_secret_rows: std::collections::HashSet::new(),
             draft_cert_domain: String::new(),
             draft_cert_path: String::new(),
             draft_cert_key_path: String::new(),
@@ -1287,6 +1308,21 @@ impl AuraAppState {
         profile
             .variables
             .retain(|v| !v.key.trim().is_empty() || !v.value.trim().is_empty());
+        // Persist any newly entered plaintext secret variables into the OS Keychain
+        // and replace their in-memory value with a `keyring://` reference before saving TOML.
+        let env_svc = aura_core::model::VariableItem::env_keychain_service(&profile.name);
+        for v in &mut profile.variables {
+            let key = v.key.trim().to_string();
+            if v.is_secret && !key.is_empty() && !aura_core::model::VariableItem::is_secret_uri(&v.value)
+            {
+                if let Err(e) = aura_engine::keychain_set(&env_svc, &key, &v.value) {
+                    tracing::warn!(error = %e, key = %key, "Failed to store secret in OS Keychain");
+                } else {
+                    v.value = aura_core::model::VariableItem::env_keychain_uri(&profile.name, &key);
+                }
+            }
+        }
+        self.revealed_env_secret_rows.clear();
         let saved_path = aura_sync::save_environment_to_dir(
             &root,
             &profile,

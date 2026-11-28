@@ -44,7 +44,12 @@ pub use runner_reporting::{
 };
 pub use sse::{execute_sse_request, SseStreamParser};
 pub use vaults::{
-    fetch_aws_secrets_manager, fetch_hashicorp_vault_secret, keychain_delete, keychain_get,
-    keychain_set, resolve_secret_reference, resolve_template_secrets, VaultConfig,
+    clear_secret_cache, delete_keepass_profile_password, delete_vault_profile_token,
+    fetch_aws_secrets_manager, fetch_hashicorp_vault_secret, fetch_keepass_secret,
+    get_keepass_profile_password, get_vault_profile_token, keychain_delete, keychain_get,
+    keychain_set, resolve_inline_secrets_in_request, resolve_secret_reference,
+    resolve_template_secrets, secret_cache_len, set_keepass_profile_password,
+    set_vault_profile_token, test_aws_credentials, test_hashicorp_vault_connection,
+    test_keepass_connection, AwsVaultProfile, HashiCorpVaultProfile, KeePassProfile, VaultConfig,
 };
 pub use websocket::{connect_websocket, WsCommand, WsEvent};

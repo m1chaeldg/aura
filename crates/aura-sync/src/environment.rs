@@ -14,6 +14,10 @@ pub struct TomlEnvironmentSchema {
     pub name: String,
     #[serde(default)]
     pub variables: BTreeMap<String, String>,
+    /// Secret variables: values are never stored in plaintext.
+    /// Stores either `"keyring"` (local OS Keychain) or a secret URI (`vault://`, `aws-sm://`, `keepass://`, `keyring://`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub secrets: BTreeMap<String, String>,
 }
 
 /// Sanitize an environment name into a safe filesystem stem.
@@ -43,8 +47,11 @@ pub fn environments_dir(workspace_root: &Path) -> PathBuf {
 }
 
 /// Serialize an `EnvironmentProfile` into TOML, encoding disabled keys with trailing `~`.
+/// Variables with `is_secret = true` or a secret URI value are serialized under `[secrets]`
+/// without ever writing plaintext secret values to disk.
 pub fn environment_to_toml(env: &EnvironmentProfile) -> Result<String> {
     let mut vars_map = BTreeMap::new();
+    let mut secrets_map = BTreeMap::new();
     for v in &env.variables {
         let raw_key = v.key.trim();
         if raw_key.is_empty() {
@@ -55,14 +62,34 @@ pub fn environment_to_toml(env: &EnvironmentProfile) -> Result<String> {
         } else {
             format!("{}~", raw_key)
         };
-        vars_map.insert(key, v.value.clone());
+        if v.is_secret || VariableItem::is_secret_uri(&v.value) {
+            let ref_val = if VariableItem::is_secret_uri(&v.value) {
+                v.value.trim().to_string()
+            } else {
+                "keyring".to_string()
+            };
+            secrets_map.insert(key, ref_val);
+        } else {
+            vars_map.insert(key, v.value.clone());
+        }
     }
 
     let schema = TomlEnvironmentSchema {
         name: env.name.clone(),
         variables: vars_map,
+        secrets: secrets_map,
     };
     toml::to_string_pretty(&schema).context("Failed to serialize environment to TOML")
+}
+
+fn parse_tilde_key(k: String) -> (String, bool) {
+    if let Some(stripped) = k.strip_suffix('~') {
+        (stripped.to_string(), false)
+    } else if let Some(stripped) = k.strip_prefix('~') {
+        (stripped.to_string(), false)
+    } else {
+        (k, true)
+    }
 }
 
 /// Parse a TOML string into an `EnvironmentProfile`.
@@ -71,20 +98,29 @@ pub fn toml_to_environment(toml_str: &str, existing_id: Option<&str>) -> Result<
     let schema: TomlEnvironmentSchema =
         toml::from_str(toml_str).context("Failed to parse TOML environment")?;
 
-    let mut variables = Vec::with_capacity(schema.variables.len());
+    let mut variables = Vec::with_capacity(schema.variables.len() + schema.secrets.len());
     for (k, v) in schema.variables {
-        let (clean_key, enabled) = if let Some(stripped) = k.strip_suffix('~') {
-            (stripped.to_string(), false)
-        } else if let Some(stripped) = k.strip_prefix('~') {
-            (stripped.to_string(), false)
-        } else {
-            (k, true)
-        };
+        let (clean_key, enabled) = parse_tilde_key(k);
+        let is_secret = VariableItem::is_secret_uri(&v);
         variables.push(VariableItem {
             key: clean_key,
             value: v,
             enabled,
-            is_secret: false,
+            is_secret,
+        });
+    }
+    for (k, v) in schema.secrets {
+        let (clean_key, enabled) = parse_tilde_key(k);
+        let resolved_ref = if v.trim().is_empty() || v.trim().eq_ignore_ascii_case("keyring") {
+            VariableItem::env_keychain_uri(&schema.name, &clean_key)
+        } else {
+            v
+        };
+        variables.push(VariableItem {
+            key: clean_key,
+            value: resolved_ref,
+            enabled,
+            is_secret: true,
         });
     }
 
@@ -203,5 +239,61 @@ mod tests {
         let parsed = toml_to_environment(raw, None).unwrap();
         assert_eq!(parsed.variables[0].key, "OLD_KEY");
         assert!(!parsed.variables[0].enabled);
+    }
+
+    #[test]
+    fn test_environment_toml_secrets_never_persist_plaintext() {
+        let env = EnvironmentProfile {
+            id: "env-sec".to_string(),
+            name: "Prod API".to_string(),
+            variables: vec![
+                VariableItem {
+                    key: "BASE_URL".to_string(),
+                    value: "https://api.prod.internal".to_string(),
+                    enabled: true,
+                    is_secret: false,
+                },
+                VariableItem {
+                    key: "LOCAL_SECRET".to_string(),
+                    value: "super_plaintext_secret_value".to_string(),
+                    enabled: true,
+                    is_secret: true,
+                },
+                VariableItem {
+                    key: "VAULT_SECRET".to_string(),
+                    value: "vault://prod@secret/data/api#token".to_string(),
+                    enabled: true,
+                    is_secret: true,
+                },
+                VariableItem {
+                    key: "DISABLED_KP".to_string(),
+                    value: "keepass://work@API/Stripe#Password".to_string(),
+                    enabled: false,
+                    is_secret: true,
+                },
+            ],
+        };
+
+        let toml_str = environment_to_toml(&env).unwrap();
+        assert!(!toml_str.contains("super_plaintext_secret_value"));
+        assert!(toml_str.contains("[secrets]"));
+        assert!(toml_str.contains("LOCAL_SECRET = \"keyring\""));
+        assert!(toml_str.contains("VAULT_SECRET = \"vault://prod@secret/data/api#token\""));
+        assert!(toml_str.contains("\"DISABLED_KP~\" = \"keepass://work@API/Stripe#Password\""));
+
+        let parsed = toml_to_environment(&toml_str, Some("env-sec")).unwrap();
+        let local = parsed.variables.iter().find(|v| v.key == "LOCAL_SECRET").unwrap();
+        assert!(local.is_secret);
+        assert!(local.enabled);
+        assert_eq!(local.value, "keyring://env-prod_api/LOCAL_SECRET");
+
+        let vault = parsed.variables.iter().find(|v| v.key == "VAULT_SECRET").unwrap();
+        assert!(vault.is_secret);
+        assert_eq!(vault.value, "vault://prod@secret/data/api#token");
+
+        let disabled = parsed.variables.iter().find(|v| v.key == "DISABLED_KP").unwrap();
+        assert!(disabled.is_secret);
+        assert!(!disabled.enabled);
+        assert_eq!(disabled.value, "keepass://work@API/Stripe#Password");
     }
 }

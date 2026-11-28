@@ -7,8 +7,18 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-static VAR_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{\{([a-zA-Z0-9_$.-]+)\}\}").unwrap());
+static VAR_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\{\{((?:keyring|vault|aws-sm|keepass)://[^{}\r\n]+|[a-zA-Z0-9_$.-]+)\}\}")
+        .unwrap()
+});
+
+/// Extract all variable / inline-secret keys referenced via `{{...}}` in a template string.
+pub fn extract_template_keys(template: &str) -> Vec<String> {
+    VAR_REGEX
+        .captures_iter(template)
+        .map(|caps| caps[1].to_string())
+        .collect()
+}
 
 /// Context for resolving variables in a request
 #[derive(Debug, Clone, Default)]

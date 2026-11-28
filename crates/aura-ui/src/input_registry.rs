@@ -83,8 +83,14 @@ pub enum InputKey {
     VaultAddr,
     VaultToken,
     VaultNamespace,
+    VaultProfileName,
     VaultAwsRegion,
     VaultAwsProfile,
+    AwsProfileName,
+    KeePassProfileName,
+    KeePassDbPath,
+    KeePassKeyfilePath,
+    KeePassPassword,
     KeychainService,
     KeychainKey,
     KeychainValue,
@@ -282,7 +288,13 @@ impl InputKey {
             | InputKey::AiHttpName
             | InputKey::AiHttpUrl
             | InputKey::AiHttpModel
-            | InputKey::AiHttpApiKey => None,
+            | InputKey::AiHttpApiKey
+            | InputKey::VaultProfileName
+            | InputKey::AwsProfileName
+            | InputKey::KeePassProfileName
+            | InputKey::KeePassDbPath
+            | InputKey::KeePassKeyfilePath
+            | InputKey::KeePassPassword => None,
         }
     }
 }

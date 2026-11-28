@@ -1084,11 +1084,13 @@ impl AuraWorkspaceView {
                             cx,
                             Self::handle_input_event,
                         );
+                        let is_masked = var.is_secret
+                            && !self.state.revealed_env_secret_rows.contains(&idx);
                         inputs.ensure_input(
                             InputKey::EnvVarValue(idx),
                             &var.value,
-                            "value",
-                            false,
+                            if var.is_secret { "secret value or vault:// / aws-sm:// / keepass:// URI" } else { "value" },
+                            is_masked,
                             window,
                             cx,
                             Self::handle_input_event,
@@ -1182,10 +1184,64 @@ impl AuraWorkspaceView {
                 Self::handle_input_event,
             );
             inputs.ensure_input(
+                InputKey::VaultProfileName,
+                &self.state.draft_vault_profile_name,
+                "Profile name (e.g. prod-vault)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
                 InputKey::VaultAwsRegion,
                 &self.state.vault_config.aws_region,
                 "AWS Region (e.g. us-east-1)",
                 false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::AwsProfileName,
+                &self.state.draft_aws_profile_name,
+                "Profile name (e.g. aws-prod)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeePassProfileName,
+                &self.state.draft_keepass_name,
+                "Profile name (e.g. work-db)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeePassDbPath,
+                &self.state.draft_keepass_db_path,
+                "Path to .kdbx database",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeePassKeyfilePath,
+                &self.state.draft_keepass_keyfile_path,
+                "Keyfile path (optional)",
+                false,
+                window,
+                cx,
+                Self::handle_input_event,
+            );
+            inputs.ensure_input(
+                InputKey::KeePassPassword,
+                &self.state.draft_keepass_password,
+                "Master password (stored in Keychain)",
+                true,
                 window,
                 cx,
                 Self::handle_input_event,

@@ -221,7 +221,134 @@ impl AuraAppState {
             keychain_set(&env_svc, &key, &var.value).map_err(|e| format!("{e}"))?;
             var.value = format!("keyring://{env_svc}/{key}");
         }
+        var.is_secret = true;
         Ok(var.value.clone())
+    }
+
+    pub fn toggle_env_var_secret(&mut self, idx: usize) {
+        if let Some(ref mut ed) = self.environment_editor {
+            if let Some(var) = ed.profile.variables.get_mut(idx) {
+                var.is_secret = !var.is_secret;
+                if !var.is_secret {
+                    self.revealed_env_secret_rows.remove(&idx);
+                }
+            }
+        }
+    }
+
+    pub fn toggle_env_var_reveal(&mut self, idx: usize) {
+        if self.revealed_env_secret_rows.contains(&idx) {
+            self.revealed_env_secret_rows.remove(&idx);
+        } else {
+            self.revealed_env_secret_rows.insert(idx);
+        }
+    }
+
+    pub fn add_hashicorp_vault_profile(&mut self) -> Result<String, String> {
+        let name = self.draft_vault_profile_name.trim().to_string();
+        let addr = self.vault_config.vault_addr.trim().to_string();
+        if name.is_empty() || addr.is_empty() {
+            return Err("Profile name and Vault address are required".to_string());
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let token = self.vault_config.vault_token.trim().to_string();
+        if !token.is_empty() {
+            aura_engine::set_vault_profile_token(&id, &token).map_err(|e| format!("{e}"))?;
+        }
+        self.vault_config
+            .hashicorp_profiles
+            .push(aura_engine::HashiCorpVaultProfile {
+                id,
+                name: name.clone(),
+                addr,
+                namespace: self.vault_config.vault_namespace.clone(),
+                verify_ssl: true,
+            });
+        self.draft_vault_profile_name.clear();
+        self.vault_config.vault_token.clear();
+        self.persist_security_preferences();
+        aura_engine::clear_secret_cache();
+        Ok(name)
+    }
+
+    pub fn remove_hashicorp_vault_profile(&mut self, idx: usize) {
+        if idx < self.vault_config.hashicorp_profiles.len() {
+            let removed = self.vault_config.hashicorp_profiles.remove(idx);
+            let _ = aura_engine::delete_vault_profile_token(&removed.id);
+            self.persist_security_preferences();
+            aura_engine::clear_secret_cache();
+        }
+    }
+
+    pub fn add_aws_vault_profile(&mut self) -> Result<String, String> {
+        let name = self.draft_aws_profile_name.trim().to_string();
+        let region = self.vault_config.aws_region.trim().to_string();
+        if name.is_empty() || region.is_empty() {
+            return Err("Profile name and AWS region are required".to_string());
+        }
+        self.vault_config
+            .aws_profiles
+            .push(aura_engine::AwsVaultProfile {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: name.clone(),
+                region,
+                profile: self.vault_config.aws_profile.clone(),
+                endpoint_override: None,
+            });
+        self.draft_aws_profile_name.clear();
+        self.persist_security_preferences();
+        aura_engine::clear_secret_cache();
+        Ok(name)
+    }
+
+    pub fn remove_aws_vault_profile(&mut self, idx: usize) {
+        if idx < self.vault_config.aws_profiles.len() {
+            self.vault_config.aws_profiles.remove(idx);
+            self.persist_security_preferences();
+            aura_engine::clear_secret_cache();
+        }
+    }
+
+    pub fn add_keepass_profile(&mut self) -> Result<String, String> {
+        let name = self.draft_keepass_name.trim().to_string();
+        let db_path = self.draft_keepass_db_path.trim().to_string();
+        if name.is_empty() || db_path.is_empty() {
+            return Err("Profile name and .kdbx database path are required".to_string());
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        if !self.draft_keepass_password.is_empty() {
+            aura_engine::set_keepass_profile_password(&id, &self.draft_keepass_password)
+                .map_err(|e| format!("{e}"))?;
+        }
+        let keyfile_path = if self.draft_keepass_keyfile_path.trim().is_empty() {
+            None
+        } else {
+            Some(self.draft_keepass_keyfile_path.trim().to_string())
+        };
+        self.vault_config
+            .keepass_profiles
+            .push(aura_engine::KeePassProfile {
+                id,
+                name: name.clone(),
+                db_path,
+                keyfile_path,
+            });
+        self.draft_keepass_name.clear();
+        self.draft_keepass_db_path.clear();
+        self.draft_keepass_keyfile_path.clear();
+        self.draft_keepass_password.clear();
+        self.persist_security_preferences();
+        aura_engine::clear_secret_cache();
+        Ok(name)
+    }
+
+    pub fn remove_keepass_profile(&mut self, idx: usize) {
+        if idx < self.vault_config.keepass_profiles.len() {
+            let removed = self.vault_config.keepass_profiles.remove(idx);
+            let _ = aura_engine::delete_keepass_profile_password(&removed.id);
+            self.persist_security_preferences();
+            aura_engine::clear_secret_cache();
+        }
     }
 }
 
