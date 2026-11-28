@@ -64,6 +64,7 @@ Each release archive includes the `aura` binary, `README.md`, `CHANGELOG.md`, `L
   - Live filesystem watcher automatically refreshes the sidebar when `.aura` files or folders are added, renamed, or deleted externally.
 - **Environments, Templating & Security**:
   - Cascading `{{var}}` resolution: **Request → Environment → Collection → OS Environment (`{{$ENV_VAR}}`)**.
+  - **Git-safe Secret Management**: Environment `[secrets]` backed by **OS Keychain** (Windows Credential Manager, macOS Keychain, Linux `secret-tool`), **HashiCorp Vault** (KV v1/v2), **AWS Secrets Manager**, and **KeePass (`.kdbx`)** with in-memory TTL caching and fail-fast resolution.
   - Auth schemes: Bearer, Basic, API Key, AWS SigV4 (including `~/.aws/credentials` profiles), OAuth2, mTLS client certificates.
   - Built-in offline **JWT Inspector** and token-boundary **Secret Scrubber** to prevent credentials from leaking into logs.
 - **Sandboxed Offline Scripting (`deno_core` V8)**:
@@ -220,6 +221,28 @@ Supported `faker` namespaces include: `person` / `name`, `internet`, `number`, `
 #### Environment & OS Variable Templating
 
 In URLs, headers, query params, and request bodies, use `{{var_name}}` (resolved from Request → Environment → Collection → OS env `{{$VAR_NAME}}`).
+
+#### Secrets, OS Keychain & External Vaults
+
+Aura keeps secrets out of Git by storing local secret values in your **OS Keychain / Credential Manager** (Windows Credential Manager, macOS Keychain, Linux `secret-tool`) and supporting external secret providers:
+
+1. **Environment Secret Variables (Recommended, Git-safe)**:
+   - Open the **Environment Editor** from the Environment dropdown.
+   - Click **Plain** on a variable row to toggle it to **Secret** (values are masked; use **Show**/**Hide** to inspect).
+   - Enter the secret value and click **Save** (or **Keychain**). Aura stores the plaintext value in your OS Keychain (`Aura:env-<env_name>:<KEY>`) and writes only `[secrets]` (`KEY = "keyring"`) to `environment/<name>.toml`.
+   - Reference the variable normally in requests as `{{KEY}}`.
+
+2. **OS Keychain Manager (`keyring://service/key`)**:
+   - Open **Tools → Security Vaults & mTLS** to store, load, or delete shared entries under **OS KEYCHAIN / CREDENTIAL MANAGER**.
+   - Reference them in an environment variable or inline in any request field with `{{keyring://aura/my_key}}`.
+
+3. **External Secret Providers (`vault://`, `aws-sm://`, `keepass://`)**:
+   - Configure named profiles in **Tools → Security Vaults & mTLS** (Vault tokens and KeePass master passwords are stored in your OS Keychain, never plaintext preferences):
+     - **HashiCorp Vault (KV v1/v2)**: `vault://[profile@]secret/data/app#api_key`
+     - **AWS Secrets Manager**: `aws-sm://[profile@]prod/db#password`
+     - **KeePass (`.kdbx`)**: `keepass://[profile@]Group/EntryTitle#Password` (defaults to `Password` if `#Field` is omitted)
+   - Use any URI as an environment variable value or inline (e.g. `Authorization: Bearer {{vault://prod@secret/data/api#token}}`).
+   - Resolved secrets are cached in memory (default 300s TTL; use **Clear Secret Cache** in the Security modal to flush immediately), fail fast on resolution errors, and are automatically redacted from logs by `SecretScrubber`.
 
 #### Local `MockServer` (Fakes for Offline Testing)
 

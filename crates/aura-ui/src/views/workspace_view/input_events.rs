@@ -43,20 +43,38 @@ impl AuraWorkspaceView {
                         }
                         InputKey::EnvName => {
                             if let Some(ref mut env_ed) = self.state.environment_editor {
-                                env_ed.profile.name = val;
+                                if let Some(draft) = env_ed.current_mut() {
+                                    if draft.profile.name != val {
+                                        draft.profile.name = val;
+                                        draft.is_dirty = true;
+                                        env_ed.last_saved_message = None;
+                                    }
+                                }
                             }
                         }
                         InputKey::EnvVarKey(idx) => {
                             if let Some(ref mut env_ed) = self.state.environment_editor {
-                                if let Some(v) = env_ed.profile.variables.get_mut(*idx) {
-                                    v.key = val;
+                                if let Some(draft) = env_ed.current_mut() {
+                                    if let Some(v) = draft.profile.variables.get_mut(*idx) {
+                                        if v.key != val {
+                                            v.key = val;
+                                            draft.is_dirty = true;
+                                            env_ed.last_saved_message = None;
+                                        }
+                                    }
                                 }
                             }
                         }
                         InputKey::EnvVarValue(idx) => {
                             if let Some(ref mut env_ed) = self.state.environment_editor {
-                                if let Some(v) = env_ed.profile.variables.get_mut(*idx) {
-                                    v.value = val;
+                                if let Some(draft) = env_ed.current_mut() {
+                                    if let Some(v) = draft.profile.variables.get_mut(*idx) {
+                                        if v.value != val {
+                                            v.value = val;
+                                            draft.is_dirty = true;
+                                            env_ed.last_saved_message = None;
+                                        }
+                                    }
                                 }
                             }
                         }

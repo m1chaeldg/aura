@@ -1198,8 +1198,7 @@ impl AuraAppState {
         self.is_env_dropdown_open = false;
     }
 
-    pub fn open_new_environment_editor(&mut self) {
-        self.is_env_dropdown_open = false;
+    fn new_environment_draft() -> EnvironmentDraft {
         let profile = aura_core::model::EnvironmentProfile {
             id: uuid::Uuid::new_v4().to_string(),
             name: "New Environment".to_string(),
@@ -1211,26 +1210,90 @@ impl AuraAppState {
             }],
         };
         let code_buffer = aura_sync::environment_to_toml(&profile).unwrap_or_default();
-        self.environment_editor = Some(EnvironmentEditorState {
+        EnvironmentDraft {
             original_path: None,
             profile,
             mode: EnvironmentEditorMode::Ui,
             code_buffer,
             code_error: None,
-        });
+            is_dirty: true,
+        }
     }
 
-    pub fn open_environment_editor(&mut self, id: &str) {
-        self.is_env_dropdown_open = false;
-        if let Some((path, env)) = self.environments.iter().find(|(_, e)| e.id == id) {
-            let code_buffer = aura_sync::environment_to_toml(env).unwrap_or_default();
-            self.environment_editor = Some(EnvironmentEditorState {
+    fn build_env_drafts(&self) -> Vec<EnvironmentDraft> {
+        self.environments
+            .iter()
+            .map(|(path, env)| EnvironmentDraft {
                 original_path: Some(path.clone()),
                 profile: env.clone(),
                 mode: EnvironmentEditorMode::Ui,
-                code_buffer,
+                code_buffer: aura_sync::environment_to_toml(env).unwrap_or_default(),
                 code_error: None,
+                is_dirty: false,
+            })
+            .collect()
+    }
+
+    pub fn open_environment_manager(&mut self, select_id: Option<&str>) {
+        self.is_env_dropdown_open = false;
+        self.revealed_env_secret_rows.clear();
+        let mut drafts = self.build_env_drafts();
+        if drafts.is_empty() {
+            drafts.push(Self::new_environment_draft());
+        }
+        let selected_id = select_id
+            .and_then(|id| drafts.iter().find(|d| d.profile.id == id).map(|d| d.profile.id.clone()))
+            .or_else(|| {
+                self.active_environment_id.as_ref().and_then(|aid| {
+                    drafts.iter().find(|d| &d.profile.id == aid).map(|d| d.profile.id.clone())
+                })
+            })
+            .unwrap_or_else(|| drafts[0].profile.id.clone());
+
+        self.environment_editor = Some(EnvironmentEditorState {
+            drafts,
+            selected_id,
+            confirm_close: false,
+            last_saved_message: None,
+        });
+    }
+
+    pub fn open_new_environment_editor(&mut self) {
+        self.is_env_dropdown_open = false;
+        self.revealed_env_secret_rows.clear();
+        let new_draft = Self::new_environment_draft();
+        let new_id = new_draft.profile.id.clone();
+
+        if let Some(ref mut ed) = self.environment_editor {
+            ed.drafts.push(new_draft);
+            ed.selected_id = new_id;
+            ed.confirm_close = false;
+            ed.last_saved_message = None;
+        } else {
+            let mut drafts = self.build_env_drafts();
+            drafts.push(new_draft);
+            self.environment_editor = Some(EnvironmentEditorState {
+                drafts,
+                selected_id: new_id,
+                confirm_close: false,
+                last_saved_message: None,
             });
+        }
+    }
+
+    pub fn open_environment_editor(&mut self, id: &str) {
+        self.open_environment_manager(Some(id));
+    }
+
+    pub fn select_environment_draft(&mut self, id: &str) {
+        let Some(ref mut ed) = self.environment_editor else {
+            return;
+        };
+        if ed.selected_id != id && ed.drafts.iter().any(|d| d.profile.id == id) {
+            ed.selected_id = id.to_string();
+            ed.confirm_close = false;
+            ed.last_saved_message = None;
+            self.revealed_env_secret_rows.clear();
         }
     }
 
@@ -1238,18 +1301,22 @@ impl AuraAppState {
         let Some(ref mut ed) = self.environment_editor else {
             return;
         };
-        if ed.mode == mode {
+        let Some(draft) = ed.current_mut() else {
+            return;
+        };
+        if draft.mode == mode {
             return;
         }
         match mode {
             EnvironmentEditorMode::Code => {
-                ed.code_buffer = aura_sync::environment_to_toml(&ed.profile).unwrap_or_default();
-                ed.code_error = None;
-                ed.mode = EnvironmentEditorMode::Code;
+                draft.code_buffer =
+                    aura_sync::environment_to_toml(&draft.profile).unwrap_or_default();
+                draft.code_error = None;
+                draft.mode = EnvironmentEditorMode::Code;
             }
             EnvironmentEditorMode::Ui => {
-                if ed.code_error.is_none() {
-                    ed.mode = EnvironmentEditorMode::Ui;
+                if draft.code_error.is_none() {
+                    draft.mode = EnvironmentEditorMode::Ui;
                 }
             }
         }
@@ -1259,85 +1326,286 @@ impl AuraAppState {
         let Some(ref mut ed) = self.environment_editor else {
             return;
         };
-        ed.code_buffer = text.clone();
-        match aura_sync::toml_to_environment(&text, Some(&ed.profile.id)) {
+        let Some(draft) = ed.current_mut() else {
+            return;
+        };
+        if draft.code_buffer == text {
+            return;
+        }
+        draft.code_buffer = text.clone();
+        draft.is_dirty = true;
+        match aura_sync::toml_to_environment(&text, Some(&draft.profile.id)) {
             Ok(parsed) => {
-                ed.profile = parsed;
-                ed.code_error = None;
+                draft.profile = parsed;
+                draft.code_error = None;
             }
             Err(err) => {
-                ed.code_error = Some(err.to_string());
+                draft.code_error = Some(err.to_string());
             }
         }
+        ed.last_saved_message = None;
     }
 
     pub fn format_environment_code_buffer(&mut self) {
         let Some(ref mut ed) = self.environment_editor else {
             return;
         };
-        if ed.code_error.is_none() {
-            if let Ok(formatted) = aura_sync::environment_to_toml(&ed.profile) {
-                ed.code_buffer = formatted;
+        let Some(draft) = ed.current_mut() else {
+            return;
+        };
+        if draft.code_error.is_none() {
+            if let Ok(formatted) = aura_sync::environment_to_toml(&draft.profile) {
+                if draft.code_buffer != formatted {
+                    draft.code_buffer = formatted;
+                    draft.is_dirty = true;
+                    ed.last_saved_message = None;
+                }
             }
+        }
+    }
+
+    pub fn request_close_environment_editor(&mut self) {
+        if let Some(ref mut ed) = self.environment_editor {
+            if ed.has_dirty() && !ed.confirm_close {
+                ed.confirm_close = true;
+                return;
+            }
+        }
+        self.close_environment_editor();
+    }
+
+    pub fn cancel_close_environment_editor(&mut self) {
+        if let Some(ref mut ed) = self.environment_editor {
+            ed.confirm_close = false;
         }
     }
 
     pub fn close_environment_editor(&mut self) {
         self.environment_editor = None;
+        self.revealed_env_secret_rows.clear();
     }
 
-    pub fn save_environment_editor(&mut self) -> anyhow::Result<()> {
-        if let Some(ref ed) = self.environment_editor {
-            if ed.mode == EnvironmentEditorMode::Code {
-                if let Some(ref err) = ed.code_error {
-                    anyhow::bail!("Fix TOML syntax errors before saving: {err}");
-                }
+    fn persist_env_draft(
+        root: &std::path::Path,
+        draft: &mut EnvironmentDraft,
+    ) -> anyhow::Result<PathBuf> {
+        if draft.mode == EnvironmentEditorMode::Code {
+            if let Some(ref err) = draft.code_error {
+                anyhow::bail!("Fix TOML syntax errors before saving: {err}");
             }
         }
-        let Some(editor) = self.environment_editor.take() else {
-            return Ok(());
-        };
-        let Some(root) = self.workspace_store.workspace_root.clone() else {
-            self.status_message = Some("Open a workspace folder first to save environments".to_string());
-            return Ok(());
-        };
-        let mut profile = editor.profile;
-        if profile.name.trim().is_empty() {
-            profile.name = "environment".to_string();
+        if draft.profile.name.trim().is_empty() {
+            draft.profile.name = "environment".to_string();
         }
-        profile
+        draft
+            .profile
             .variables
             .retain(|v| !v.key.trim().is_empty() || !v.value.trim().is_empty());
         // Persist any newly entered plaintext secret variables into the OS Keychain
         // and replace their in-memory value with a `keyring://` reference before saving TOML.
-        let env_svc = aura_core::model::VariableItem::env_keychain_service(&profile.name);
-        for v in &mut profile.variables {
+        let env_svc = aura_core::model::VariableItem::env_keychain_service(&draft.profile.name);
+        for v in &mut draft.profile.variables {
             let key = v.key.trim().to_string();
-            if v.is_secret && !key.is_empty() && !aura_core::model::VariableItem::is_secret_uri(&v.value)
+            if v.is_secret
+                && !key.is_empty()
+                && !aura_core::model::VariableItem::is_secret_uri(&v.value)
             {
                 if let Err(e) = aura_engine::keychain_set(&env_svc, &key, &v.value) {
                     tracing::warn!(error = %e, key = %key, "Failed to store secret in OS Keychain");
                 } else {
-                    v.value = aura_core::model::VariableItem::env_keychain_uri(&profile.name, &key);
+                    v.value =
+                        aura_core::model::VariableItem::env_keychain_uri(&draft.profile.name, &key);
                 }
             }
         }
-        self.revealed_env_secret_rows.clear();
         let saved_path = aura_sync::save_environment_to_dir(
-            &root,
-            &profile,
-            editor.original_path.as_deref(),
+            root,
+            &draft.profile,
+            draft.original_path.as_deref(),
         )?;
-        self.reload_environments_from_workspace();
-        // Keep active_environment_id pointing to the saved profile if it was active or newly created
-        if let Some((_, matched)) = self.environments.iter().find(|(p, _)| p == &saved_path) {
-            if self.active_environment_id.as_deref() == Some(&profile.id)
-                || self.active_environment_id.is_none()
-            {
-                self.active_environment_id = Some(matched.id.clone());
+        draft.original_path = Some(saved_path.clone());
+        draft.code_buffer = aura_sync::environment_to_toml(&draft.profile).unwrap_or_default();
+        draft.code_error = None;
+        draft.is_dirty = false;
+        Ok(saved_path)
+    }
+
+    pub fn save_environment_editor(&mut self) -> anyhow::Result<()> {
+        let Some(ref mut ed) = self.environment_editor else {
+            return Ok(());
+        };
+        let Some(draft) = ed.current() else {
+            return Ok(());
+        };
+        if draft.mode == EnvironmentEditorMode::Code {
+            if let Some(ref err) = draft.code_error {
+                anyhow::bail!("Fix TOML syntax errors before saving: {err}");
             }
         }
-        self.status_message = Some(format!("Saved environment '{}'", profile.name));
+        let Some(root) = self.workspace_store.workspace_root.clone() else {
+            self.status_message =
+                Some("Open a workspace folder first to save environments".to_string());
+            return Ok(());
+        };
+        let selected_id = ed.selected_id.clone();
+        let was_active = self.active_environment_id.as_deref() == Some(selected_id.as_str());
+        let saved_path = {
+            let draft = ed.current_mut().expect("checked above");
+            Self::persist_env_draft(&root, draft)?
+        };
+        self.revealed_env_secret_rows.clear();
+        self.reload_environments_from_workspace();
+
+        let mut saved_name = String::new();
+        if let Some(ref mut ed) = self.environment_editor {
+            if let Some((_, matched)) = self.environments.iter().find(|(p, _)| p == &saved_path) {
+                saved_name = matched.name.clone();
+                if let Some(draft) = ed.current_mut() {
+                    draft.profile.id = matched.id.clone();
+                }
+                ed.selected_id = matched.id.clone();
+                if was_active || self.active_environment_id.is_none() {
+                    self.active_environment_id = Some(matched.id.clone());
+                }
+            } else if let Some(draft) = ed.current() {
+                saved_name = draft.profile.name.clone();
+            }
+            ed.confirm_close = false;
+            ed.last_saved_message = Some(format!("Saved '{saved_name}'"));
+        }
+        self.status_message = Some(format!("Saved environment '{saved_name}'"));
+        Ok(())
+    }
+
+    pub fn save_all_environment_drafts(&mut self) -> anyhow::Result<()> {
+        let Some(ref ed) = self.environment_editor else {
+            return Ok(());
+        };
+        for draft in &ed.drafts {
+            if draft.is_dirty && draft.mode == EnvironmentEditorMode::Code {
+                if let Some(ref err) = draft.code_error {
+                    anyhow::bail!(
+                        "Fix TOML syntax errors in '{}' before saving: {err}",
+                        draft.profile.name
+                    );
+                }
+            }
+        }
+        let Some(root) = self.workspace_store.workspace_root.clone() else {
+            self.status_message =
+                Some("Open a workspace folder first to save environments".to_string());
+            return Ok(());
+        };
+        let mut saved_count = 0usize;
+        let mut saved_paths: Vec<(String, PathBuf)> = Vec::new();
+        if let Some(ref mut ed) = self.environment_editor {
+            for draft in &mut ed.drafts {
+                if draft.is_dirty {
+                    let old_id = draft.profile.id.clone();
+                    let path = Self::persist_env_draft(&root, draft)?;
+                    saved_paths.push((old_id, path));
+                    saved_count += 1;
+                }
+            }
+        }
+        if saved_count == 0 {
+            return self.save_environment_editor();
+        }
+        self.revealed_env_secret_rows.clear();
+        self.reload_environments_from_workspace();
+
+        if let Some(ref mut ed) = self.environment_editor {
+            for (old_id, path) in saved_paths {
+                if let Some((_, matched)) = self.environments.iter().find(|(p, _)| p == &path) {
+                    if let Some(draft) = ed.drafts.iter_mut().find(|d| d.profile.id == old_id) {
+                        draft.profile.id = matched.id.clone();
+                    }
+                    if ed.selected_id == old_id {
+                        ed.selected_id = matched.id.clone();
+                    }
+                    if self.active_environment_id.as_deref() == Some(old_id.as_str())
+                        || self.active_environment_id.is_none()
+                    {
+                        self.active_environment_id = Some(matched.id.clone());
+                    }
+                }
+            }
+            ed.confirm_close = false;
+            ed.last_saved_message = Some(format!("Saved {saved_count} environment(s)"));
+        }
+        self.status_message = Some(format!("Saved {saved_count} environment(s)"));
+        Ok(())
+    }
+
+    pub fn save_all_and_close_environment_editor(&mut self) -> anyhow::Result<()> {
+        self.save_all_environment_drafts()?;
+        self.close_environment_editor();
+        Ok(())
+    }
+
+    pub fn duplicate_environment_in_editor(&mut self, id: &str) -> anyhow::Result<()> {
+        let Some(ref mut ed) = self.environment_editor else {
+            return Ok(());
+        };
+        let Some(src) = ed.drafts.iter().find(|d| d.profile.id == id).cloned() else {
+            return Ok(());
+        };
+        let mut dup_profile = src.profile;
+        dup_profile.id = uuid::Uuid::new_v4().to_string();
+        dup_profile.name = format!("{} Copy", dup_profile.name);
+        let code_buffer = aura_sync::environment_to_toml(&dup_profile).unwrap_or_default();
+        let new_id = dup_profile.id.clone();
+        let mut new_draft = EnvironmentDraft {
+            original_path: None,
+            profile: dup_profile,
+            mode: EnvironmentEditorMode::Ui,
+            code_buffer,
+            code_error: None,
+            is_dirty: true,
+        };
+        if let Some(root) = self.workspace_store.workspace_root.clone() {
+            if let Ok(saved_path) = Self::persist_env_draft(&root, &mut new_draft) {
+                self.reload_environments_from_workspace();
+                if let Some((_, matched)) = self.environments.iter().find(|(p, _)| p == &saved_path) {
+                    new_draft.profile.id = matched.id.clone();
+                }
+            }
+        }
+        let final_id = new_draft.profile.id.clone();
+        if let Some(ref mut ed) = self.environment_editor {
+            ed.drafts.push(new_draft);
+            ed.selected_id = final_id.clone();
+            ed.confirm_close = false;
+            ed.last_saved_message = None;
+        } else {
+            let _ = new_id;
+        }
+        self.revealed_env_secret_rows.clear();
+        Ok(())
+    }
+
+    pub fn delete_environment_in_editor(&mut self, id: &str) -> anyhow::Result<()> {
+        let has_path = self
+            .environment_editor
+            .as_ref()
+            .and_then(|ed| ed.drafts.iter().find(|d| d.profile.id == id))
+            .is_some_and(|d| d.original_path.is_some());
+        if has_path {
+            self.delete_environment(id)?;
+        }
+        if let Some(ref mut ed) = self.environment_editor {
+            ed.drafts.retain(|d| d.profile.id != id);
+            if ed.drafts.is_empty() {
+                let blank = Self::new_environment_draft();
+                ed.selected_id = blank.profile.id.clone();
+                ed.drafts.push(blank);
+            } else if ed.selected_id == id {
+                ed.selected_id = ed.drafts[0].profile.id.clone();
+            }
+            ed.confirm_close = false;
+            ed.last_saved_message = None;
+        }
+        self.revealed_env_secret_rows.clear();
         Ok(())
     }
 
@@ -1585,10 +1853,10 @@ mod tests {
         state.open_new_environment_editor();
 
         {
-            let ed = state.environment_editor.as_mut().unwrap();
-            assert_eq!(ed.mode, EnvironmentEditorMode::Ui);
-            ed.profile.name = "Staging".to_string();
-            ed.profile.variables = vec![
+            let draft = state.environment_editor.as_mut().unwrap().current_mut().unwrap();
+            assert_eq!(draft.mode, EnvironmentEditorMode::Ui);
+            draft.profile.name = "Staging".to_string();
+            draft.profile.variables = vec![
                 aura_core::model::VariableItem {
                     key: "API_URL".to_string(),
                     value: "https://staging.example.com".to_string(),
@@ -1607,12 +1875,12 @@ mod tests {
         // Switch UI -> Code: serializes current profile to TOML
         state.set_environment_editor_mode(EnvironmentEditorMode::Code);
         {
-            let ed = state.environment_editor.as_ref().unwrap();
-            assert_eq!(ed.mode, EnvironmentEditorMode::Code);
-            assert!(ed.code_error.is_none());
-            assert!(ed.code_buffer.contains("name = \"Staging\""));
-            assert!(ed.code_buffer.contains("API_URL = \"https://staging.example.com\""));
-            assert!(ed.code_buffer.contains("\"DEBUG~\" = \"1\""));
+            let draft = state.environment_editor.as_ref().unwrap().current().unwrap();
+            assert_eq!(draft.mode, EnvironmentEditorMode::Code);
+            assert!(draft.code_error.is_none());
+            assert!(draft.code_buffer.contains("name = \"Staging\""));
+            assert!(draft.code_buffer.contains("API_URL = \"https://staging.example.com\""));
+            assert!(draft.code_buffer.contains("\"DEBUG~\" = \"1\""));
         }
 
         // Edit in Code mode with valid TOML -> updates profile
@@ -1621,12 +1889,13 @@ mod tests {
                 .to_string(),
         );
         {
-            let ed = state.environment_editor.as_ref().unwrap();
-            assert!(ed.code_error.is_none());
-            assert_eq!(ed.profile.name, "Production");
-            assert_eq!(ed.profile.variables.len(), 1);
-            assert_eq!(ed.profile.variables[0].key, "API_URL");
-            assert_eq!(ed.profile.variables[0].value, "https://api.example.com");
+            let draft = state.environment_editor.as_ref().unwrap().current().unwrap();
+            assert!(draft.code_error.is_none());
+            assert_eq!(draft.profile.name, "Production");
+            assert_eq!(draft.profile.variables.len(), 1);
+            assert_eq!(draft.profile.variables[0].key, "API_URL");
+            assert_eq!(draft.profile.variables[0].value, "https://api.example.com");
+            assert!(draft.is_dirty);
         }
 
         // Edit with invalid TOML -> records error and blocks switching back or saving
@@ -1635,11 +1904,13 @@ mod tests {
             .environment_editor
             .as_ref()
             .unwrap()
+            .current()
+            .unwrap()
             .code_error
             .is_some());
         state.set_environment_editor_mode(EnvironmentEditorMode::Ui);
         assert_eq!(
-            state.environment_editor.as_ref().unwrap().mode,
+            state.environment_editor.as_ref().unwrap().current().unwrap().mode,
             EnvironmentEditorMode::Code
         );
         assert!(state.save_environment_editor().is_err());
@@ -1650,10 +1921,54 @@ mod tests {
             "name = \"Production\"\n\n[variables]\nTOKEN = \"xyz\"\n".to_string(),
         );
         state.set_environment_editor_mode(EnvironmentEditorMode::Ui);
-        let ed = state.environment_editor.as_ref().unwrap();
-        assert_eq!(ed.mode, EnvironmentEditorMode::Ui);
-        assert!(ed.code_error.is_none());
-        assert_eq!(ed.profile.variables[0].key, "TOKEN");
+        let draft = state.environment_editor.as_ref().unwrap().current().unwrap();
+        assert_eq!(draft.mode, EnvironmentEditorMode::Ui);
+        assert!(draft.code_error.is_none());
+        assert_eq!(draft.profile.variables[0].key, "TOKEN");
+    }
+
+    #[test]
+    fn test_environment_manager_switch_save_without_close_and_confirm() {
+        let dir = std::env::temp_dir().join(format!("aura_env_mgr_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut state = AuraAppState::new();
+        state.workspace_store.workspace_root = Some(dir.clone());
+
+        // Create two environments
+        state.open_new_environment_editor();
+        let id1 = state.environment_editor.as_ref().unwrap().selected_id.clone();
+        state.environment_editor.as_mut().unwrap().current_mut().unwrap().profile.name =
+            "Dev".to_string();
+        state.save_environment_editor().unwrap();
+
+        // Modal must remain open after Save!
+        assert!(state.environment_editor.is_some());
+        let saved_id1 = state.environment_editor.as_ref().unwrap().selected_id.clone();
+        assert!(!state.environment_editor.as_ref().unwrap().current().unwrap().is_dirty);
+
+        // Add second profile while modal is open
+        state.open_new_environment_editor();
+        let id2 = state.environment_editor.as_ref().unwrap().selected_id.clone();
+        assert_ne!(id1, id2);
+        state.environment_editor.as_mut().unwrap().current_mut().unwrap().profile.name =
+            "Prod".to_string();
+
+        // Switch back to Dev without losing Prod's dirty draft
+        state.select_environment_draft(&saved_id1);
+        assert_eq!(state.environment_editor.as_ref().unwrap().selected_id, saved_id1);
+        assert_eq!(state.environment_editor.as_ref().unwrap().dirty_count(), 1);
+
+        // Request close with dirty draft -> triggers confirm_close, keeps modal open
+        state.request_close_environment_editor();
+        assert!(state.environment_editor.as_ref().unwrap().confirm_close);
+
+        // Save all & close -> persists Prod and closes modal
+        state.save_all_and_close_environment_editor().unwrap();
+        assert!(state.environment_editor.is_none());
+        assert_eq!(state.environments.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

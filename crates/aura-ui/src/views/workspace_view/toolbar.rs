@@ -285,6 +285,7 @@ impl AuraWorkspaceView {
                     .children(env_list.into_iter().enumerate().map(|(idx, (eid, ename))| {
                         let is_sel = active_env_id.as_deref() == Some(eid.as_str());
                         let eid_click = eid.clone();
+                        let eid_edit = eid.clone();
                         ListItem::new(ElementId::NamedInteger("env-opt".into(), idx as u64))
                             .selected(is_sel)
                             .px_2()
@@ -298,27 +299,67 @@ impl AuraWorkspaceView {
                                 h_flex()
                                     .justify_between()
                                     .w_full()
+                                    .gap_1()
                                     .text_xs()
                                     .child(
-                                        div()
-                                            .text_color(if is_sel {
-                                                cx.theme().foreground
-                                            } else {
-                                                cx.theme().muted_foreground
+                                        h_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap_1p5()
+                                            .when(is_sel, |el| {
+                                                el.child(
+                                                    icon(IconName::Check)
+                                                        .xsmall()
+                                                        .text_color(cx.theme().primary),
+                                                )
                                             })
-                                            .truncate()
-                                            .child(ename),
+                                            .child(
+                                                div()
+                                                    .text_color(if is_sel {
+                                                        cx.theme().foreground
+                                                    } else {
+                                                        cx.theme().muted_foreground
+                                                    })
+                                                    .truncate()
+                                                    .child(ename),
+                                            ),
                                     )
-                                    .when(is_sel, |el| {
-                                        el.child(
-                                            icon(IconName::Check)
-                                                .xsmall()
-                                                .text_color(cx.theme().primary),
-                                        )
-                                    }),
+                                    .child(
+                                        Button::new(ElementId::NamedInteger(
+                                            "env-opt-edit".into(),
+                                            idx as u64,
+                                        ))
+                                        .icon(icon(IconName::SlidersHorizontal))
+                                        .xsmall()
+                                        .ghost()
+                                        .tooltip("Edit environment")
+                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                            cx.stop_propagation();
+                                            this.state.open_environment_editor(&eid_edit);
+                                            cx.notify();
+                                        })),
+                                    ),
                             )
                     }))
                     .child(Separator::horizontal().my_1())
+                    .child(
+                        ListItem::new("env-opt-manage")
+                            .px_2()
+                            .py_1()
+                            .rounded(cx.theme().radius)
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.state.open_environment_manager(None);
+                                cx.notify();
+                            }))
+                            .child(
+                                h_flex()
+                                    .gap_1p5()
+                                    .text_xs()
+                                    .text_color(cx.theme().foreground)
+                                    .child(icon(IconName::SlidersHorizontal).xsmall())
+                                    .child("Manage Environments..."),
+                            ),
+                    )
                     .child(
                         ListItem::new("env-opt-new")
                             .px_2()

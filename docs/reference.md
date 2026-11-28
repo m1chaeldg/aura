@@ -58,6 +58,18 @@ Each `.aura` file represents one request and is safe to version-control with Git
 - `[[extractors]]`: Zero-JS native extractors (`source`: `json_path`, `regex_body`, `regex_header`, `header`, `cookie`).
 - `[scripts]`: `pre_request` and `post_response` JavaScript hooks; `tests` for BDD test scripts.
 
+### Environment Profiles & Secrets (`environment/<name>.toml`)
+
+Environment profiles live under `<workspace>/environment/<name>.toml` and support Git-safe secret references:
+
+- `[variables]`: Plain key-value variables (`BASE_URL = "https://api.example.com"`). Prefix or suffix with `~` to disable.
+- `[secrets]`: Secret variables whose plaintext values are never written to disk:
+  - `API_KEY = "keyring"` — stored in the OS Keychain under `Aura:env-<env_name>:API_KEY`.
+  - `VAULT_TOKEN = "vault://[profile@]secret/data/app#token"` — resolved from HashiCorp Vault KV v1/v2.
+  - `DB_PASS = "aws-sm://[profile@]prod/db#password"` — resolved from AWS Secrets Manager.
+  - `KP_PASS = "keepass://[profile@]Group/Entry#Password"` — resolved from a KeePass `.kdbx` database.
+- Any `keyring://`, `vault://`, `aws-sm://`, or `keepass://` URI can also be used inline as `{{<uri>}}` in request URLs, headers, params, auth fields, or bodies. Resolved secrets are cached in memory (300s default TTL) and redacted from logs.
+
 See [file_format.md](./file_format.md) and [examples/](./examples/) for complete examples.
 
 ---

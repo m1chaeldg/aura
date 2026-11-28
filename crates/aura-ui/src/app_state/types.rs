@@ -384,14 +384,43 @@ pub enum EnvironmentEditorMode {
     Code,
 }
 
-/// State for the modal Environment Profile Editor.
+/// A single environment profile draft inside the Environment Manager modal.
 #[derive(Debug, Clone)]
-pub struct EnvironmentEditorState {
+pub struct EnvironmentDraft {
     pub original_path: Option<PathBuf>,
     pub profile: aura_core::model::EnvironmentProfile,
     pub mode: EnvironmentEditorMode,
     pub code_buffer: String,
     pub code_error: Option<String>,
+    pub is_dirty: bool,
+}
+
+/// State for the modal Environment Manager.
+#[derive(Debug, Clone)]
+pub struct EnvironmentEditorState {
+    pub drafts: Vec<EnvironmentDraft>,
+    pub selected_id: String,
+    pub confirm_close: bool,
+    pub last_saved_message: Option<String>,
+}
+
+impl EnvironmentEditorState {
+    pub fn current(&self) -> Option<&EnvironmentDraft> {
+        self.drafts.iter().find(|d| d.profile.id == self.selected_id)
+    }
+
+    pub fn current_mut(&mut self) -> Option<&mut EnvironmentDraft> {
+        let id = self.selected_id.clone();
+        self.drafts.iter_mut().find(|d| d.profile.id == id)
+    }
+
+    pub fn dirty_count(&self) -> usize {
+        self.drafts.iter().filter(|d| d.is_dirty).count()
+    }
+
+    pub fn has_dirty(&self) -> bool {
+        self.drafts.iter().any(|d| d.is_dirty)
+    }
 }
 
 /// Top-bar dropdown menu categories.

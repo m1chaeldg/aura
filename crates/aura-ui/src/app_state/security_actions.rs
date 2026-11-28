@@ -203,12 +203,16 @@ impl AuraAppState {
         let Some(ref mut ed) = self.environment_editor else {
             return Err("Environment editor is not open".to_string());
         };
-        let Some(var) = ed.profile.variables.get_mut(idx) else {
+        let Some(draft) = ed.current_mut() else {
+            return Err("No environment profile selected".to_string());
+        };
+        let Some(var) = draft.profile.variables.get_mut(idx) else {
             return Err("Variable row out of range".to_string());
         };
         let env_svc = format!(
             "env-{}",
-            ed.profile
+            draft
+                .profile
                 .name
                 .to_lowercase()
                 .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
@@ -222,15 +226,22 @@ impl AuraAppState {
             var.value = format!("keyring://{env_svc}/{key}");
         }
         var.is_secret = true;
-        Ok(var.value.clone())
+        draft.is_dirty = true;
+        let uri = var.value.clone();
+        ed.last_saved_message = None;
+        Ok(uri)
     }
 
     pub fn toggle_env_var_secret(&mut self, idx: usize) {
         if let Some(ref mut ed) = self.environment_editor {
-            if let Some(var) = ed.profile.variables.get_mut(idx) {
-                var.is_secret = !var.is_secret;
-                if !var.is_secret {
-                    self.revealed_env_secret_rows.remove(&idx);
+            if let Some(draft) = ed.current_mut() {
+                if let Some(var) = draft.profile.variables.get_mut(idx) {
+                    var.is_secret = !var.is_secret;
+                    if !var.is_secret {
+                        self.revealed_env_secret_rows.remove(&idx);
+                    }
+                    draft.is_dirty = true;
+                    ed.last_saved_message = None;
                 }
             }
         }

@@ -6,11 +6,26 @@ impl AuraWorkspaceView {
         if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
             && (event.keystroke.key == "s" || event.keystroke.key == "S")
         {
+            if self.state.environment_editor.is_some() {
+                if let Err(e) = self.state.save_environment_editor() {
+                    self.state.status_message = Some(format!("Failed to save environment: {e}"));
+                }
+                cx.notify();
+                return;
+            }
             self.dispatch_save_active_tab(false, cx);
             return;
         }
 
         let key = event.keystroke.key.as_str();
+
+        if self.state.environment_editor.is_some() {
+            if key == "escape" {
+                self.state.request_close_environment_editor();
+                cx.notify();
+            }
+            return;
+        }
 
         if self.state.editor_dialog.is_some() {
             if key == "escape" {

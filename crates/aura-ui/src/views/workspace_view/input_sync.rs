@@ -1063,50 +1063,52 @@ impl AuraWorkspaceView {
         }
 
         if let Some(ref env_ed) = self.state.environment_editor {
-            match env_ed.mode {
-                crate::app_state::EnvironmentEditorMode::Ui => {
-                    inputs.ensure_input(
-                        InputKey::EnvName,
-                        &env_ed.profile.name,
-                        "Environment name (e.g. Production)...",
-                        false,
-                        window,
-                        cx,
-                        Self::handle_input_event,
-                    );
-                    for (idx, var) in env_ed.profile.variables.iter().enumerate() {
+            if let Some(draft) = env_ed.current() {
+                match draft.mode {
+                    crate::app_state::EnvironmentEditorMode::Ui => {
                         inputs.ensure_input(
-                            InputKey::EnvVarKey(idx),
-                            &var.key,
-                            "VARIABLE_KEY",
+                            InputKey::EnvName,
+                            &draft.profile.name,
+                            "Environment name (e.g. Production)...",
                             false,
                             window,
                             cx,
                             Self::handle_input_event,
                         );
-                        let is_masked = var.is_secret
-                            && !self.state.revealed_env_secret_rows.contains(&idx);
-                        inputs.ensure_input(
-                            InputKey::EnvVarValue(idx),
-                            &var.value,
-                            if var.is_secret { "secret value or vault:// / aws-sm:// / keepass:// URI" } else { "value" },
-                            is_masked,
+                        for (idx, var) in draft.profile.variables.iter().enumerate() {
+                            inputs.ensure_input(
+                                InputKey::EnvVarKey(idx),
+                                &var.key,
+                                "VARIABLE_KEY",
+                                false,
+                                window,
+                                cx,
+                                Self::handle_input_event,
+                            );
+                            let is_masked = var.is_secret
+                                && !self.state.revealed_env_secret_rows.contains(&idx);
+                            inputs.ensure_input(
+                                InputKey::EnvVarValue(idx),
+                                &var.value,
+                                if var.is_secret { "secret value or vault:// / aws-sm:// / keepass:// URI" } else { "value" },
+                                is_masked,
+                                window,
+                                cx,
+                                Self::handle_input_event,
+                            );
+                        }
+                    }
+                    crate::app_state::EnvironmentEditorMode::Code => {
+                        inputs.ensure_editor(
+                            InputKey::EnvCode,
+                            &draft.code_buffer,
+                            "name = \"Production\"\n\n[variables]\nBASE_URL = \"https://api.example.com\"\n",
+                            InputKey::EnvCode.editor_language().unwrap_or("toml"),
                             window,
                             cx,
-                            Self::handle_input_event,
+                            Self::handle_editor_event,
                         );
                     }
-                }
-                crate::app_state::EnvironmentEditorMode::Code => {
-                    inputs.ensure_editor(
-                        InputKey::EnvCode,
-                        &env_ed.code_buffer,
-                        "name = \"Production\"\n\n[variables]\nBASE_URL = \"https://api.example.com\"\n",
-                        InputKey::EnvCode.editor_language().unwrap_or("toml"),
-                        window,
-                        cx,
-                        Self::handle_editor_event,
-                    );
                 }
             }
         }
