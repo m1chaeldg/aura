@@ -36,3 +36,26 @@ fn test_tab_close_aborts_in_flight_request() {
     state.close_tab(&tab_id);
     assert!(token.is_cancelled());
 }
+
+#[test]
+fn test_top_menu_and_env_dropdown_toggles() {
+    use aura_ui::app_state::TopMenuKind;
+
+    let mut state = AuraAppState::new();
+    assert_eq!(state.open_top_menu, None);
+    state.toggle_top_menu(TopMenuKind::Tools);
+    assert_eq!(state.open_top_menu, Some(TopMenuKind::Tools));
+    state.toggle_top_menu(TopMenuKind::Tools);
+    assert_eq!(state.open_top_menu, None);
+
+    state.toggle_top_menu(TopMenuKind::File);
+    assert_eq!(state.open_top_menu, Some(TopMenuKind::File));
+    state.close_top_menu();
+    assert_eq!(state.open_top_menu, None);
+
+    assert!(!state.is_env_dropdown_open);
+    state.toggle_env_dropdown();
+    assert!(state.is_env_dropdown_open);
+    state.close_env_dropdown();
+    assert!(!state.is_env_dropdown_open);
+}

@@ -11,6 +11,7 @@ Aura stores collections as human-readable, Git-friendly `.aura` TOML files, keep
 - [Installation](#installation)
 - [Features Overview](#features-overview)
 - [User Guide: How to Use Aura](#user-guide-how-to-use-aura)
+- [Documentation & Reference](#documentation--reference)
 - [Examples: Scripts, Tests, Fakes & Runner](#examples-scripts-tests-fakes--runner)
   - [1. Pre-Request & Post-Response Scripts](#1-pre-request--post-response-scripts)
   - [2. Tests (No-Code Assertions & BDD JavaScript)](#2-tests-no-code-assertions--bdd-javascript)
@@ -98,6 +99,17 @@ Each release archive includes the `aura` binary, `README.md`, `CHANGELOG.md`, `L
    - Use the **Environment** dropdown on the right side of the top toolbar to switch between profiles (e.g. `dev`, `staging`, `prod`). Variables like `{{base_url}}` update automatically.
 5. **Save & Sync**:
    - Press `Ctrl+S` (or rely on debounced auto-save) to write clean `.aura` TOML files to disk. Use the **Git** toolbar button to commit and push your collection.
+6. **Tools & Network Utilities**:
+   - Secondary tools (Cookie Jar, Global Proxy, MITM Capture Proxy, Security Vaults & mTLS, Load Tester, Settings) live in the **Tools** menu (and **Tools** toolbar button) or Command Palette (`Ctrl+K`), keeping the main toolbar clean while showing live pills whenever Proxy, Capture, or Load Test is running.
+
+---
+
+## Documentation & Reference
+
+- **[Reference Guide](docs/reference.md)**: Complete reference for the UI, keyboard shortcuts, `.aura` TOML spec, JS scripting API, and `aura load` CLI flags/exit codes.
+- **[`.aura` File Format](docs/file_format.md)**: Annotated walkthrough of the lossless `.aura` TOML format.
+- **[Scripting & Chaining](docs/scripting_and_chaining.md)**: Declarative `[assert]` rules, async `fetch`/`aura.sendRequest`, and `aura.setNextRequest` chaining.
+- **[Sample Collections](docs/examples/)**: Ready-to-use `.aura` examples for REST CRUD, GraphQL, and request chaining.
 
 ---
 

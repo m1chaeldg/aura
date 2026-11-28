@@ -1,0 +1,31 @@
+version = "1.0"
+name = "Get Repository Info"
+method = "POST"
+url = "{{graphql_endpoint}}"
+protocol = "graphql"
+
+[headers]
+Accept = "application/json"
+
+[body]
+type = "GraphQL"
+
+[body.content]
+query = '''
+query GetRepo($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    name
+    stargazerCount
+  }
+}
+'''
+variables = '''
+{
+  "owner": "aura-api",
+  "name": "aura"
+}
+'''
+
+[assert]
+"res.status" = "== 200"
+"res.body.data.repository.name" = "isString"

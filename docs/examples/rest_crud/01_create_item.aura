@@ -1,0 +1,43 @@
+version = "1.0"
+name = "01 Create Item"
+method = "POST"
+url = "{{base_url}}/items"
+
+[settings]
+inherit_auth = true
+verify_ssl = true
+follow_redirects = true
+max_redirects = 5
+timeout_ms = 5000
+
+[headers]
+Accept = "application/json"
+Content-Type = "application/json"
+~X-Debug-Trace = "1"
+
+[params.query]
+dry_run = "false"
+
+[auth]
+type = "bearer"
+token = "{{api_token}}"
+
+[body]
+type = "Json"
+content = '''
+{
+  "name": "aura-widget",
+  "owner": "{{$randomEmail}}"
+}
+'''
+
+[assert]
+"res.status" = "== 201"
+"res.duration_ms" = "< 1000"
+"res.body.id" = "isDefined"
+
+[[extractors]]
+enabled = true
+variable = "created_item_id"
+kind = "JsonPath"
+expression = "$.id"
