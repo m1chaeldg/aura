@@ -16,6 +16,7 @@ timeout_ms = 15000
 Content-Type = "application/json"
 Accept = "application/json"
 X-Request-Id = "{{$uuid}}"
+~X-Debug-Trace = "1"
 
 [auth]
 type = "bearer"
@@ -26,9 +27,7 @@ dry_run = "false"
 
 [flow]
 once_per_run = false
-retry_until = "response.status == 201"
-retry_interval_ms = 1000
-max_retries = 3
+max_duration_ms = 5000
 
 # ------------------------------------------------------------------------------
 # Request Body (Multipart file references strictly use relative paths)
@@ -36,49 +35,52 @@ max_retries = 3
 [body.json]
 ```json
 {
-  "email": "{{$randomEmail}}",
-  "username": "developer_{{$randomInt}}",
-  "avatar_attachment": "./fixtures/avatar.png"
+  "email": "{{generated_email}}",
+  "username": "developer_{{$randomInt}}"
 }
 ```
 
 # ------------------------------------------------------------------------------
-# Script Hooks (Executed via deno_core isolate)
+# Script Hooks (Executed via deno_core V8 isolate)
 # ------------------------------------------------------------------------------
 [scripts.pre-request]
 ```javascript
-const timestamp = Date.now().toString();
-const secret = aura.getSecret("signing_key");
-const encoder = new TextEncoder();
-
-const key = await crypto.subtle.importKey(
-  "raw",
-  encoder.encode(secret),
-  { name: "HMAC", hash: "SHA-256" },
-  false,
-  ["sign"]
-);
-
-const signatureBuffer = await crypto.subtle.sign(
-  "HMAC",
-  key,
-  encoder.encode(`${timestamp}.${aura.request.getBody()}`)
-);
-
-const signature = Array.from(new Uint8Array(signatureBuffer))
-  .map(b => b.toString(16).padStart(2, "0"))
-  .join("");
-
-aura.setHeader("X-Signature", signature);
-aura.setHeader("X-Timestamp", timestamp);
+// Generate dynamic values and store them for {{template}} interpolation
+const email = faker.internet.email();
+aura.variables.set("generated_email", email);
+console.log("Creating user with email:", email);
 ```
 
 [scripts.post-response]
 ```javascript
-aura.test("User created successfully", () => {
-  expect(aura.response.status).to.equal(201);
-  const data = aura.response.json();
-  expect(data.id).to.be.a("string");
-  aura.setEnvVar("created_user_id", data.id);
+if (response.status === 201 || response.status === 200) {
+  const data = response.json();
+  if (data && data.id) {
+    aura.variables.set("created_user_id", data.id);
+  }
+}
+```
+
+[scripts.tests]
+```javascript
+describe("Create User Account", () => {
+  it("returns 200 or 201", () => {
+    expect(response.status).toBeGreaterThanOrEqual(200);
+    expect(response.status).toBeLessThan(300);
+  });
+
+  it("returns JSON content-type", () => {
+    expect(response.headers["content-type"]).toContain("application/json");
+  });
 });
 ```
+
+# ------------------------------------------------------------------------------
+# No-Code Declarative Assertions & Zero-JS Extractors
+# ------------------------------------------------------------------------------
+[assert]
+res.duration_ms = "< 5000"
+res.headers.content-type = "contains application/json"
+
+[extractors]
+created_user_id = "jsonpath:$.id"

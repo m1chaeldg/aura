@@ -1,5 +1,4 @@
 use super::AuraWorkspaceView;
-use crate::app_state::TopMenuKind;
 use crate::theme::icon;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -156,19 +155,6 @@ impl AuraWorkspaceView {
                                 })),
                         )
                     })
-                    .child(
-                        Button::new("toolbar-tools-shortcut-btn")
-                            .icon(icon(IconName::SlidersHorizontal))
-                            .label("Tools")
-                            .small()
-                            .ghost()
-                            .rounded(ButtonRounded::Medium)
-                            .tooltip("Open Tools menu (Cookies, Proxy, Capture, Vaults, Load Tester, Settings)")
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.state.toggle_top_menu(TopMenuKind::Tools);
-                                cx.notify();
-                            })),
-                    )
                     .content(self.render_env_selector_dropdown(cx)),
             )
     }

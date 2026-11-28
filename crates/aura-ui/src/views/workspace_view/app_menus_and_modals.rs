@@ -100,6 +100,14 @@ impl AuraWorkspaceView {
             "cmd:help" => {
                 self.state.is_help_modal_open = true;
             }
+            "cmd:open_docs" => {
+                let docs_url = format!("https://github.com/{GITHUB_REPO}/tree/main/docs");
+                let _ = UpdateService::open_url_in_browser(&docs_url);
+            }
+            "cmd:open_repo" => {
+                let repo_url = format!("https://github.com/{GITHUB_REPO}");
+                let _ = UpdateService::open_url_in_browser(&repo_url);
+            }
             "cmd:about" => {
                 self.state.is_about_modal_open = true;
             }
@@ -254,7 +262,9 @@ impl AuraWorkspaceView {
                 TopMenuKind::Help,
                 "Help",
                 &[
-                    ("cmd:help", "Documentation & Shortcuts"),
+                    ("cmd:help", "Help & Quick Reference"),
+                    ("cmd:open_docs", "Documentation (GitHub)..."),
+                    ("cmd:open_repo", "GitHub Repository..."),
                     ("cmd:check_updates", "Check for Updates..."),
                     ("cmd:about", "About Aura & Version"),
                 ],
@@ -685,6 +695,17 @@ impl AuraWorkspaceView {
                     .footer(
                         DialogFooter::new()
                             .child(
+                                Button::new("about-open-repo-btn")
+                                    .label("Open GitHub Repo")
+                                    .small()
+                                    .outline()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|_this, _, _window, _cx| {
+                                        let url = format!("https://github.com/{GITHUB_REPO}");
+                                        let _ = UpdateService::open_url_in_browser(&url);
+                                    })),
+                            )
+                            .child(
                                 Button::new("about-check-updates-btn")
                                     .label("Check for Updates")
                                     .small()
@@ -711,28 +732,34 @@ impl AuraWorkspaceView {
         })
         .when(self.state.is_help_modal_open, |el| {
             let view_close = cx.entity().clone();
+            let repo_url = format!("https://github.com/{GITHUB_REPO}");
+            let docs_url = format!("https://github.com/{GITHUB_REPO}/tree/main/docs");
             let help_sections: &[(&str, &str)] = &[
                 (
+                    "Full Documentation & Sample Collections",
+                    "Complete guides for using Aura, writing pre-request & post-response scripts, creating declarative [assert] & BDD tests, request chaining, and load testing — plus ready-to-run .aura examples — live in the GitHub repository (docs/ & docs/examples/).",
+                ),
+                (
                     "Keyboard Shortcuts",
-                    "Ctrl+K: Command Palette · Ctrl+N: New Request · Ctrl+S: Save · Ctrl+W: Close Tab · Ctrl+Enter: Send Request",
+                    "Ctrl+K / Ctrl+P: Command Palette · Ctrl+N: New Request · Ctrl+S: Save · Ctrl+W: Close Tab · Ctrl+Enter: Send Request · Ctrl+R: Reset Split 50/50",
                 ),
                 (
-                    "Variables & Cascade",
-                    "Precedence: Request → Active Environment → Collection → Built-in ({{$uuid}}, {{$timestamp}}, {{$faker.*}}) → OS Env ($VAR). Secrets: vault://, aws-sm://, keychain://.",
+                    "Variables, Environments & Secrets",
+                    "Precedence: Request → Active Environment → Collection → Built-in ({{$uuid}}, {{$timestamp}}, {{$randomEmail}}) → OS Env ({{$VAR}}). Secrets: keyring://, vault://, aws-sm://, keepass://.",
                 ),
                 (
-                    "Scripting & BDD Tests",
-                    "Use aura.variables.get/set, fetch(), aura.sendRequest(), aura.setNextRequest(), describe/it/test/expect, and offline faker.* in Pre-request, Post-response, and Tests.",
+                    "Pre-Request, Post-Response & BDD Tests",
+                    "Use aura.variables.get/set, fetch(), aura.sendRequest(), aura.setNextRequest(), describe/it/test/expect, and offline faker.* in the Scripts and Tests tabs.",
                 ),
                 (
-                    "Declarative [assert] & [extract]",
-                    "Zero-JS rules in .aura Spec or Tests tab: e.g. res.status: eq 200, res.body.id: isNumber, or [extract] token = \"jsonpath:$.token\".",
+                    "Declarative [assert] & [extractors]",
+                    "Zero-JS rules in .aura Spec or Tests tab: e.g. res.status = \"== 200\", res.body.id = \"isNumber\", or [extractors] token = \"jsonpath:$.token\".",
                 ),
             ];
             el.child(
                 Dialog::new(cx)
-                    .w(px(540.0))
-                    .title("Aura Help & Quick Reference")
+                    .w(px(560.0))
+                    .title("Aura Help & Documentation")
                     .on_close(move |_, _window, app| {
                         let _ = view_close.update(app, |this, cx| {
                             this.state.is_help_modal_open = false;
@@ -742,9 +769,30 @@ impl AuraWorkspaceView {
                     .child(
                         v_flex()
                             .id("help-modal-scroll")
-                            .max_h(px(360.))
+                            .max_h(px(380.))
                             .overflow_y_scrollbar()
                             .gap_2()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .p_2p5()
+                                    .rounded(radius)
+                                    .border_1()
+                                    .border_color(cx.theme().primary)
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(fg)
+                                            .child("GitHub Repository & Online Documentation"),
+                                    )
+                                    .child(div().text_xs().text_color(muted).child(format!(
+                                        "Repository: {repo_url}"
+                                    )))
+                                    .child(div().text_xs().text_color(muted).child(format!(
+                                        "Docs & Examples: {docs_url}"
+                                    ))),
+                            )
                             .children(help_sections.iter().map(|(title, body)| {
                                 v_flex()
                                     .gap_1()
@@ -763,17 +811,38 @@ impl AuraWorkspaceView {
                             })),
                     )
                     .footer(
-                        DialogFooter::new().child(
-                            Button::new("help-close-btn")
-                                .label("Close")
-                                .small()
-                                .primary()
-                                .rounded(ButtonRounded::Medium)
-                                .on_click(cx.listener(|this, _, _window, cx| {
-                                    this.state.is_help_modal_open = false;
-                                    cx.notify();
-                                })),
-                        ),
+                        DialogFooter::new()
+                            .child(
+                                Button::new("help-open-docs-btn")
+                                    .label("Open Docs on GitHub")
+                                    .small()
+                                    .outline()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(move |_this, _, _window, _cx| {
+                                        let _ = UpdateService::open_url_in_browser(&docs_url);
+                                    })),
+                            )
+                            .child(
+                                Button::new("help-open-repo-btn")
+                                    .label("Open GitHub Repo")
+                                    .small()
+                                    .outline()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(move |_this, _, _window, _cx| {
+                                        let _ = UpdateService::open_url_in_browser(&repo_url);
+                                    })),
+                            )
+                            .child(
+                                Button::new("help-close-btn")
+                                    .label("Close")
+                                    .small()
+                                    .primary()
+                                    .rounded(ButtonRounded::Medium)
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.state.is_help_modal_open = false;
+                                        cx.notify();
+                                    })),
+                            ),
                     ),
             )
         })

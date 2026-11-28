@@ -192,7 +192,9 @@ impl AuraAppState {
             ("cmd:ai_discover", "AI: Discover Local CLIs", "Auto-discover Claude, Codex, Copilot, Cursor, Gemini, Antigravity & Ollama"),
             ("cmd:ai_settings", "AI: AI & Agent Settings", "Configure AI CLIs, OpenAI-compatible & Anthropic endpoints"),
             ("cmd:settings", "Settings: Preferences & Auto-Update", "Configure auto-save and GitHub release checks"),
-            ("cmd:help", "Help: Documentation & Shortcuts", "View Aura guide, variables, and shortcuts"),
+            ("cmd:help", "Help: Help & Quick Reference", "View Aura quick reference, shortcuts, and GitHub links"),
+            ("cmd:open_docs", "Help: Documentation (GitHub)", "Open full Aura docs & examples on GitHub"),
+            ("cmd:open_repo", "Help: GitHub Repository", "Open Aura GitHub repository in browser"),
             ("cmd:check_updates", "Help: Check for Updates", "Check GitHub Releases for new Aura version"),
             ("cmd:about", "Help: About Aura & Version", "Show version, license, and build info"),
         ];

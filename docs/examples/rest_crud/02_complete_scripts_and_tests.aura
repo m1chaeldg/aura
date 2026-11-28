@@ -1,0 +1,88 @@
+version = "1.0"
+name = "02 Complete Scripts and Tests Demo"
+method = "POST"
+url = "https://postman-echo.com/post"
+
+[settings]
+inherit_auth = false
+verify_ssl = true
+follow_redirects = true
+max_redirects = 5
+timeout_ms = 10000
+
+[headers]
+Accept = "application/json"
+Content-Type = "application/json"
+X-Trace-Id = "{{trace_id}}"
+
+[params.query]
+source = "aura-demo"
+
+[body.json]
+```json
+{
+  "email": "{{fake_email}}",
+  "fullName": "{{fake_name}}",
+  "role": "developer",
+  "active": true
+}
+```
+
+[scripts.pre-request]
+```javascript
+// Generate dynamic fake values before the request is sent
+const traceId = faker.datatype.uuid();
+const fakeEmail = faker.internet.email();
+const fakeName = faker.person.fullName();
+
+aura.variables.set("trace_id", traceId);
+aura.variables.set("fake_email", fakeEmail);
+aura.variables.set("fake_name", fakeName);
+
+console.log("Pre-request prepared trace_id:", traceId, "email:", fakeEmail);
+```
+
+[scripts.post-response]
+```javascript
+// Inspect response and store echoed trace_id for downstream requests
+if (response.status === 200) {
+    const body = response.json();
+    const echoedTrace = body?.headers?.["x-trace-id"];
+    if (echoedTrace) {
+        aura.variables.set("last_echoed_trace", echoedTrace);
+    }
+    console.log("Post-response status:", response.status, "duration_ms:", response.duration_ms);
+}
+```
+
+[scripts.tests]
+```javascript
+describe("Postman Echo POST", () => {
+    it("responds with 200 OK within 5 seconds", () => {
+        expect(response.status).toBe(200);
+        expect(response.duration_ms).toBeLessThan(5000);
+    });
+
+    it("echoes the generated JSON payload", () => {
+        const data = response.json();
+        expect(data).to.have.property("json");
+        expect(data.json.email).toContain("@");
+        expect(data.json.active).to.be.true;
+    });
+});
+
+aura.test("Response header includes application/json", () => {
+    expect(response.headers["content-type"]).toContain("application/json");
+});
+```
+
+[assert]
+res.status = "== 200"
+res.duration_ms = "< 5000"
+res.headers.content-type = "contains application/json"
+res.body.json.email = "isString"
+res.body.json.active = "== true"
+~res.body.disabled_check = "isDefined"
+
+[extractors]
+extracted_email = "jsonpath:$.json.email"

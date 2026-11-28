@@ -101,12 +101,13 @@ Each release archive includes the `aura` binary, `README.md`, `CHANGELOG.md`, `L
 5. **Save & Sync**:
    - Press `Ctrl+S` (or rely on debounced auto-save) to write clean `.aura` TOML files to disk. Use the **Git** toolbar button to commit and push your collection.
 6. **Tools & Network Utilities**:
-   - Secondary tools (Cookie Jar, Global Proxy, MITM Capture Proxy, Security Vaults & mTLS, Load Tester, Settings) live in the **Tools** menu (and **Tools** toolbar button) or Command Palette (`Ctrl+K`), keeping the main toolbar clean while showing live pills whenever Proxy, Capture, or Load Test is running.
+   - Secondary tools (Cookie Jar, Global Proxy, MITM Capture Proxy, Security Vaults & mTLS, Load Tester, Settings) live in the **Tools** menu or Command Palette (`Ctrl+K`), keeping the main toolbar clean while showing live pills whenever Proxy, Capture, or Load Test is running.
 
 ---
 
 ## Documentation & Reference
 
+- **[User Guide](docs/user_guide.md)**: Complete step-by-step guide on how to use Aura, environments & secrets, writing pre/post scripts, creating tests, chaining, and load testing.
 - **[Reference Guide](docs/reference.md)**: Complete reference for the UI, keyboard shortcuts, `.aura` TOML spec, JS scripting API, and `aura load` CLI flags/exit codes.
 - **[`.aura` File Format](docs/file_format.md)**: Annotated walkthrough of the lossless `.aura` TOML format.
 - **[Scripting & Chaining](docs/scripting_and_chaining.md)**: Declarative `[assert]` rules, async `fetch`/`aura.sendRequest`, and `aura.setNextRequest` chaining.
@@ -286,7 +287,7 @@ See the ready-to-import example collection in [docs/examples/chaining/](docs/exa
 
 #### UI Load Tester
 
-Click **Load Test** in the top toolbar to configure Virtual Users (VUs), iterations or duration, ramp-up/ramp-down, spike stages, target RPS, think-time, CSV/JSON data feeders, and SLA thresholds, and view live aggregate metrics.
+Open **Tools → Load Tester** from the top menu (or run `Tools: Load Tester` from the Command Palette) to configure Virtual Users (VUs), iterations or duration, ramp-up/ramp-down, spike stages, target RPS, think-time, CSV/JSON data feeders, and SLA thresholds, and view live aggregate metrics.
 
 #### Headless CLI Load Runner (`aura load`)
 
